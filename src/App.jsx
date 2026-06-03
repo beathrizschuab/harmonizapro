@@ -117,10 +117,8 @@ const todayISO=()=>new Date().toISOString().slice(0,10);
 
 
 // ─── SUPABASE DATA HOOKS ─────────────────────────────────────────────────────
-// useSupaTable: carrega uma tabela e retorna [data, setter, loading]
-// setter aceita função (como useState) ou valor direto
-// Toda alteração é sincronizada com o Supabase automaticamente
-function useSupaTable(table, initFallback = []) {
+// Salva tudo numa única tabela "app_data" com campo JSON — sem problema de colunas
+function useSupaTable(key, initFallback = []) {
   const [data, setDataRaw] = useState(initFallback);
   const [loading, setLoading] = useState(true);
   const uid = useRef(null);
@@ -130,86 +128,41 @@ function useSupaTable(table, initFallback = []) {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user || cancelled) return;
       uid.current = user.id;
-      supabase.from(table).select("*").eq("user_id", user.id).then(({ data: rows }) => {
-        if (!cancelled && rows) setDataRaw(rows.length > 0 ? rows : initFallback);
-        setLoading(false);
+      supabase.from("app_data").select("value").eq("user_id", user.id).eq("key", key).single().then(({ data: row }) => {
+        if (!cancelled) {
+          if (row && row.value) {
+            try { setDataRaw(JSON.parse(row.value)); } catch { setDataRaw(initFallback); }
+          }
+          setLoading(false);
+        }
       });
     });
     return () => { cancelled = true; };
-  }, [table]);
+  }, [key]);
 
-  const setData = useCallback(async (valOrFn) => {
+  const setData = useCallback((valOrFn) => {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
-      // Sync to Supabase async (fire and forget)
       (async () => {
         if (!uid.current) return;
-        // upsert all records with user_id set
-        const toUpsert = Array.isArray(next)
-          ? next.map(r => ({ ...r, user_id: uid.current }))
-          : [{ ...next, user_id: uid.current }];
-        await supabase.from(table).upsert(toUpsert, { onConflict: "id" });
-        // delete removed records
-        if (Array.isArray(prev) && Array.isArray(next)) {
-          const nextIds = new Set(next.map(r => r.id));
-          const removed = prev.filter(r => r.id && !nextIds.has(r.id));
-          for (const r of removed) {
-            await supabase.from(table).delete().eq("id", r.id);
-          }
-        }
+        await supabase.from("app_data").upsert({
+          user_id: uid.current,
+          key,
+          value: JSON.stringify(next),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id,key" });
       })();
       return next;
     });
-  }, [table]);
+  }, [key]);
 
   return [data, setData, loading];
 }
 
-// useSettings: objeto único por usuário (não array)
+// useSettings: usa o mesmo mecanismo JSON
 function useSettings(defaults) {
-  const [data, setDataRaw] = useState(defaults);
-  const [loading, setLoading] = useState(true);
-  const uid = useRef(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user || cancelled) return;
-      uid.current = user.id;
-      supabase.from("settings").select("*").eq("user_id", user.id).single().then(({ data: row }) => {
-        if (!cancelled && row) {
-          setDataRaw({
-            doctorName: row.doctor_name || defaults.doctorName,
-            doctorTitle: row.doctor_title || defaults.doctorTitle,
-            clinicName: row.clinic_name || defaults.clinicName,
-            procedures: row.procedures || [],
-            locations: row.locations || [],
-          });
-        }
-        if (!cancelled) setLoading(false);
-      });
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  const setData = useCallback(async (valOrFn) => {
-    setDataRaw(prev => {
-      const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
-      (async () => {
-        if (!uid.current) return;
-        await supabase.from("settings").upsert({
-          user_id: uid.current,
-          doctor_name: next.doctorName,
-          doctor_title: next.doctorTitle,
-          clinic_name: next.clinicName,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id" });
-      })();
-      return next;
-    });
-  }, []);
-
-  return [data, setData, loading];
+  const [data, setData] = useSupaTable("settings", defaults);
+  return [data, setData, false];
 }
 
 // Compatibilidade: manter useLocalStorage para dados locais temporários
@@ -1461,7 +1414,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
       h(Card,null,
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Despesas"),
-          h(Btn,{onClick:()=>{setEditExp(null);setForm(blank);setShowNewExp(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Despesa")
+          h(Btn,{onClick:()=>{setEditExp(null);setForm(blankExp);setShowNewExp(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Despesa")
         ),
         expenses.map((e,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${P.border}`}},
           h("div",null,h("div",{style:{fontSize:13,color:P.text}},e.desc),h("div",{style:{fontSize:11,color:P.text3}},`${e.date} · ${e.cat}`)),
