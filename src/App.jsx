@@ -1835,7 +1835,7 @@ function AppInner({ session, onLogout }) {
           page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),returnRules}),
           page==="estoque"&&h(Estoque,{products,setProducts}),
           page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
-          page==="relatorios"&&h(Relatorios,{patients, returnRules, onSelectPatient:handleSelectPatient, onNav:handleNav}),
+          page==="relatorios"&&h(Relatorios,{patients, incomes, expenses}),
           page==="config"&&h(Configuracoes,{procedures:procedureNames,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules})
         )
       )
