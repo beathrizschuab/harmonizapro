@@ -1510,7 +1510,7 @@ function AniversariantesDoMes({patients,onSelectPatient,onNav}){
   );
 }
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
-function Relatorios({patients,onSelectPatient,onNav}){
+function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav}){
   const now=new Date();
   const[selMonth,setSelMonth]=useState(now.getMonth());
   const[selYear,setSelYear]=useState(now.getFullYear());
