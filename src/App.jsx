@@ -126,17 +126,17 @@ function useSupaTable(key, initFallback = []) {
   useEffect(() => {
     let cancelled = false;
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user || cancelled) return;
+      if (!user || cancelled) { if(!cancelled) setLoading(false); return; }
       uid.current = user.id;
-      supabase.from("app_data").select("value").eq("user_id", user.id).eq("key", key).maybeSingle().then(({ data: row }) => {
+      supabase.from("app_data").select("value").eq("user_id", user.id).eq("key", key).maybeSingle().then(({ data: row, error }) => {
         if (!cancelled) {
-          if (row && row.value) {
+          if (!error && row && row.value) {
             try { setDataRaw(JSON.parse(row.value)); } catch { setDataRaw(initFallback); }
           }
           setLoading(false);
         }
-      });
-    });
+      }).catch(() => { if(!cancelled) setLoading(false); });
+    }).catch(() => { if(!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [key]);
 
@@ -993,16 +993,16 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
   }
   function saveSession(){
     const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,dose:sForm.dose,region:sForm.region,location:sForm.location,value:Number(sForm.value)||0,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1,notes:sForm.notes,evolution:sForm.evolution,faceMap:sForm.useFaceMap?sessionFaceMap:null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90};
-    upd(p=>editSess?{...p,sessions:p.sessions.map(x=>x.id===s.id?s:x),lastVisit:s.date}:{...p,sessions:[s,...(p.sessions||[])],lastVisit:s.date});
+    upd(p=>editSess?{...p,sessions:(p.sessions||[]).map(x=>x.id===s.id?s:x),lastVisit:s.date}:{...p,sessions:[s,...(p.sessions||[])],lastVisit:s.date});
     setShowNewS(false);setEditSess(null);setSForm(blankS);setSessionFaceMap(null);
   }
-  function toggleFinStatus(sessId,newSt){upd(p=>({...p,sessions:p.sessions.map(s=>s.id===sessId?{...s,finStatus:newSt,paid:newSt==="Pago"}:s)}));}
-  function delSession(id){if(window.confirm("Excluir sessão?"))upd(p=>({...p,sessions:p.sessions.filter(s=>s.id!==id)}));}
-  function addMedia(sessId,files,type){const news=files.map(f=>({id:Date.now()+Math.random(),name:f.name,type:f.type,url:URL.createObjectURL(f),date:new Date().toLocaleDateString("pt-BR")}));upd(p=>({...p,sessions:p.sessions.map(s=>s.id===sessId?{...s,[type]:[...(s[type]||[]),...news]}:s)}));}
-  function removeMedia(sessId,fid,type){upd(p=>({...p,sessions:p.sessions.map(s=>s.id===sessId?{...s,[type]:(s[type]||[]).filter(f=>f.id!==fid)}:s)}));}
+  function toggleFinStatus(sessId,newSt){upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,finStatus:newSt,paid:newSt==="Pago"}:s)}));}
+  function delSession(id){if(window.confirm("Excluir sessão?"))upd(p=>({...p,sessions:(p.sessions||[]).filter(s=>s.id!==id)}));}
+  function addMedia(sessId,files,type){const news=files.map(f=>({id:Date.now()+Math.random(),name:f.name,type:f.type,url:URL.createObjectURL(f),date:new Date().toLocaleDateString("pt-BR")}));upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,[type]:[...(s[type]||[]),...news]}:s)}));}
+  function removeMedia(sessId,fid,type){upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,[type]:(s[type]||[]).filter(f=>f.id!==fid)}:s)}));}
   function saveIntercorrencia(sessId){
     const ic={id:Date.now(),...icForm,date:icForm.date||new Date().toLocaleDateString("pt-BR"),photos:[]};
-    upd(p=>({...p,sessions:p.sessions.map(s=>s.id===sessId?{...s,intercorrencias:[...(s.intercorrencias||[]),ic]}:s),intercorrencias:[...(p.intercorrencias||[]),{...ic,sessId}]}));
+    upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,intercorrencias:[...(s.intercorrencias||[]),ic]}:s),intercorrencias:[...(p.intercorrencias||[]),{...ic,sessId}]}));
     setShowIntercorr(null);setIcForm({type:"Edema",notes:"",conduct:"",date:""});
   }
   function addPlanejamento(){
@@ -1337,14 +1337,14 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const ifv=k=>v=>setIncForm(p=>({...p,[k]:v}));
   const h=createElement;
-  const allS=patients.flatMap((p,i)=>p.sessions.map(s=>({...s,pname:p.name,pi:i,pid:p.id})));
+  const allS=patients.flatMap((p,i)=>(p.sessions||[]).map(s=>({...s,pname:p.name,pi:i,pid:p.id})));
   const sessionsRec=allS.filter(s=>s.paid).reduce((a,s)=>a+s.value,0);
   const incomesRec=incomes.filter(i=>i.status==="Pago").reduce((a,i)=>a+Number(i.value||0),0);
   const received=sessionsRec+incomesRec;
   const pending=allS.filter(s=>!s.paid).reduce((a,s)=>a+s.value,0);
   const totalExp=expenses.reduce((a,e)=>a+Number(e.value||0),0);
   const months=[{m:"Jan",rec:38000,exp:14000},{m:"Fev",rec:41000,exp:13200},{m:"Mar",rec:44500,exp:15100},{m:"Abr",rec:42000,exp:14800},{m:"Mai",rec:received||48200,exp:totalExp}];
-  function toggleFinStatus(pid,sid,newSt){setPatients(prev=>prev.map(p=>p.id!==pid?p:{...p,sessions:p.sessions.map(s=>s.id!==sid?s:{...s,finStatus:newSt,paid:newSt==="Pago"})}));}
+  function toggleFinStatus(pid,sid,newSt){setPatients(prev=>prev.map(p=>p.id!==pid?p:{...p,sessions:(p.sessions||[]).map(s=>s.id!==sid?s:{...s,finStatus:newSt,paid:newSt==="Pago"})}));}
   function saveExp(){
     if(editExp)setExpenses(prev=>prev.map(e=>e.id===editExp.id?{...e,...form,value:Number(form.value)||0}:e));
     else setExpenses(prev=>[...prev,{...form,id:Date.now(),value:Number(form.value)||0}]);
@@ -1758,25 +1758,33 @@ function App(){
 }
 
 function AppInner({ session, onLogout }) {
-  const[patients,setPatients]=useSupaTable("patients",INIT_PATIENTS);
-  const[agenda,setAgenda]=useSupaTable("agenda",INIT_AGENDA);
-  const[expenses,setExpenses]=useSupaTable("expenses",INIT_EXPENSES);
-  const[incomes,setIncomes]=useSupaTable("incomes",[]);
-  const[products,setProducts]=useSupaTable("products",[
+  const[patients,setPatients,loadingPatients]=useSupaTable("patients",INIT_PATIENTS);
+  const[agenda,setAgenda,loadingAgenda]=useSupaTable("agenda",INIT_AGENDA);
+  const[expenses,setExpenses,loadingExpenses]=useSupaTable("expenses",INIT_EXPENSES);
+  const[incomes,setIncomes,loadingIncomes]=useSupaTable("incomes",[]);
+  const[products,setProducts,loadingProducts]=useSupaTable("products",[
     {id:"p1",name:"Botox Allergan 100U",cat:"Toxina Botulínica",qty:2,min:5,unit:"un",expiry:"12/2026",cost:800,emoji:"💉",status:"critical"},
     {id:"p2",name:"Juvederm Ultra 1ml",cat:"Ácido Hialurônico",qty:5,min:8,unit:"sir",expiry:"08/2026",cost:450,emoji:"✨",status:"low"},
     {id:"p3",name:"Sculptra 367mg",cat:"Bioestimulador",qty:7,min:4,unit:"fr",expiry:"09/2026",cost:950,emoji:"🧪",status:"ok"},
     {id:"p4",name:"Fio PDO 29G Mono",cat:"Fios de PDO",qty:48,min:20,unit:"un",expiry:"01/2028",cost:35,emoji:"🧵",status:"ok"},
     {id:"p5",name:"Profhilo 2ml",cat:"Skinbooster",qty:4,min:3,unit:"sir",expiry:"11/2026",cost:520,emoji:"💧",status:"ok"},
   ]);
-  const[settingsData,setSettings]=useSettings({doctorName:"Dra. Sofia",doctorTitle:"Médica Responsável",clinicName:"HarmonizaPro"});
-  const[procedures,setProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
-  const[locations,setLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
-  const[returnRules,setReturnRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
-  const procedureNames=Array.isArray(procedures)?procedures.map(p=>typeof p==="string"?p:(p.name||p)).filter(Boolean):INIT_PROCEDURES;
-  const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
+  const[settingsData,setSettings,loadingSettings]=useSettings({doctorName:"Dra. Sofia",doctorTitle:"Médica Responsável",clinicName:"HarmonizaPro"});
+  const[procedures,setProcedures,loadingProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
+  const[locations,setLocations,loadingLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
+  const[returnRules,setReturnRules,loadingRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
+  // Todos os useState ANTES de qualquer return condicional (regra dos hooks)
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
+
+  // Aguarda todos os dados carregarem antes de renderizar a UI
+  const isLoading = loadingPatients||loadingAgenda||loadingExpenses||loadingIncomes||loadingProducts||loadingSettings||loadingProcedures||loadingLocations||loadingRules;
+  if(isLoading) return createElement("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:P.bg,color:P.text3,fontSize:14,fontFamily:"sans-serif",flexDirection:"column",gap:12}},
+    createElement("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:P.accent3}},"HarmonizaPro"),
+    createElement("div",null,"Carregando dados...")
+  );
+  const procedureNames=Array.isArray(procedures)?procedures.map(p=>typeof p==="string"?p:(p.name||p)).filter(Boolean):INIT_PROCEDURES;
+  const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
   const h=createElement;
   const todayStr=new Date().toISOString().slice(0,10);
   const todayApptCount=agenda.filter(a=>a.date===todayStr).length;
