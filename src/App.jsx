@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback, createElement, Fragment } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, createElement, Fragment, Component } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
@@ -174,6 +174,25 @@ function useLocalStorage(key,init){
   return[val,set];
 }
 
+// ─── ERROR BOUNDARY (mostra o erro real em vez de tela branca) ────────────────
+class ErrorBoundary extends Component {
+  constructor(props){ super(props); this.state = { error: null, info: null }; }
+  static getDerivedStateFromError(error){ return { error }; }
+  componentDidCatch(error, info){ this.setState({ info }); console.error("ErrorBoundary capturou:", error, info); }
+  render(){
+    if (this.state.error) {
+      const h = createElement;
+      return h("div", { style: { padding: 24, color: P.text, fontFamily: "monospace", whiteSpace: "pre-wrap", background: P.bg, minHeight: "100%" } },
+        h("div", { style: { fontFamily: "'Cormorant Garamond',serif", fontSize: 22, color: P.red, marginBottom: 12 } }, "Ocorreu um erro nesta página"),
+        h("div", { style: { fontSize: 13, marginBottom: 10 } }, String(this.state.error && this.state.error.message || this.state.error)),
+        h("div", { style: { fontSize: 11, color: P.text3, marginBottom: 14 } }, (this.state.error && this.state.error.stack) || ""),
+        h("div", { style: { fontSize: 11, color: P.text3 } }, (this.state.info && this.state.info.componentStack) || ""),
+        h("button", { onClick: () => this.setState({ error: null, info: null }), style: { marginTop: 14, padding: "8px 16px", borderRadius: 8, border: `1px solid ${P.border}`, background: P.card, color: P.text, cursor: "pointer" } }, "Tentar novamente")
+      );
+    }
+    return this.props.children;
+  }
+}
 // ─── TELA DE LOGIN ────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState("");
@@ -1521,7 +1540,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   // SAFE: sempre array, nunca crasha
   const safePats=Array.isArray(patients)?patients.filter(Boolean):[];
   const parseDMY2=s=>{if(!s)return null;try{const[d,m,y]=String(s).split("/");const dt=new Date(y+"-"+m+"-"+d);return isNaN(dt)?null:dt;}catch{return null;}};
-  const allS=safePats.flatMap(p=>((p&&p.sessions)||[]).map(s=>({...s,pname:p.name||"",pid:p.id,value:Number(s.value)||0})));
+  const allS=safePats.flatMap(p=>((p&&Array.isArray(p.sessions)?p.sessions:[])).filter(Boolean).map(s=>({...s,pname:p.name||"",pid:p.id,value:Number(s.value)||0,procedure:typeof s.procedure==="string"?s.procedure:String(s.procedure||"")})));
   const monthSessions=allS.filter(s=>{try{const d=parseDMY2(s.date);return d&&d.getMonth()===selMonth&&d.getFullYear()===selYear;}catch{return false;}});
   const monthRevenue=monthSessions.filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0);
   // procedimentos
@@ -1548,7 +1567,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const forecastRev=Math.round([0,1,2].map(i=>{const m=(selMonth-i+12)%12,y=selMonth-i<0?selYear-1:selYear;return allS.filter(s=>{try{const d=parseDMY2(s.date);return d&&d.getMonth()===m&&d.getFullYear()===y&&s.paid;}catch{return false;}}).reduce((a,s)=>a+(Number(s.value)||0),0);}).reduce((a,v)=>a+v,0)/3*1.05);
   // top combos
   const combos={};
-  safePats.forEach(p=>{const ss=(p.sessions||[]).filter(Boolean);ss.forEach((a,i)=>ss.slice(i+1).forEach(b=>{try{const da=parseDMY2(a.date)||new Date(0),db=parseDMY2(b.date)||new Date(0);if(Math.abs(da-db)<7*864e5){const key=[a.procedure||"?",b.procedure||"?"].sort().join(" + ");combos[key]=(combos[key]||0)+1;}}catch{};}));});
+  safePats.forEach(p=>{const ss=(Array.isArray(p.sessions)?p.sessions:[]).filter(Boolean);ss.forEach((a,i)=>ss.slice(i+1).forEach(b=>{try{const da=parseDMY2(a.date)||new Date(0),db=parseDMY2(b.date)||new Date(0);if(Math.abs(da-db)<7*864e5){const key=[a.procedure||"?",b.procedure||"?"].sort().join(" + ");combos[key]=(combos[key]||0)+1;}}catch{};}));});
   const comboList=Object.entries(combos).sort((a,b)=>b[1]-a[1]).slice(0,5);
   function prevMonth(){if(selMonth===0){setSelMonth(11);setSelYear(y=>y-1);}else setSelMonth(m=>m-1);}
   function nextMonth(){if(selMonth===11){setSelMonth(0);setSelYear(y=>y+1);}else setSelMonth(m=>m+1);}
@@ -1837,16 +1856,18 @@ function AppInner({ session, onLogout }) {
           h(GlobalSearch,{patients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav})
         ),
         h("div",{style:{flex:1,overflowY:"auto",padding:24}},
-          page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,settings,returnRules}),
-          page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav}),
-          page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,locations:locationNames}),
-          page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
-          page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
-          page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),returnRules}),
-          page==="estoque"&&h(Estoque,{products,setProducts}),
-          page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
-          page==="relatorios"&&h(Relatorios,{patients, incomes, expenses, onSelectPatient: handleSelectPatient, onNav: handleNav}),
-          page==="config"&&h(Configuracoes,{procedures:procedureNames,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules})
+          h(ErrorBoundary,{key:page},
+            page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,settings,returnRules}),
+            page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav}),
+            page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,locations:locationNames}),
+            page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
+            page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
+            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),returnRules}),
+            page==="estoque"&&h(Estoque,{products,setProducts}),
+            page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
+            page==="relatorios"&&h(Relatorios,{patients, incomes, expenses, onSelectPatient: handleSelectPatient, onNav: handleNav}),
+            page==="config"&&h(Configuracoes,{procedures:procedureNames,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules})
+          )
         )
       )
     )
