@@ -1530,6 +1530,32 @@ function AniversariantesDoMes({patients,onSelectPatient,onNav}){
     )
   );
 }
+// ─── PAGAMENTOS CARD (extraído para evitar IIFE no build) ────────────────────
+function PagamentosCard({allS}){
+  const h=createElement;
+  const pmMap={};
+  allS.filter(s=>s.paid).forEach(s=>{const pm=s.payMethod||"Outro";pmMap[pm]=(pmMap[pm]||0)+(Number(s.value)||0);});
+  const pmTotal=Object.values(pmMap).reduce((a,v)=>a+v,0)||1;
+  const pmColors={"Pix":P.green,"Cartão Crédito":"#7aaed4","Cartão Débito":"#5a8aad","Dinheiro":P.accent,"Transferência":P.rose2,"Pendente":P.yellow};
+  const entries=Object.entries(pmMap).sort((a,b)=>b[1]-a[1]);
+  return h(Card,null,
+    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Formas de Pagamento"),
+    entries.length===0
+      ?h("div",{style:{fontSize:12,color:P.text3,textAlign:"center",padding:"16px 0"}},"Sem dados")
+      :entries.map(([pm,val])=>{
+        const pct=Math.round((val/pmTotal)*100);
+        return h("div",{key:pm,style:{marginBottom:12}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text2,marginBottom:5}},
+            h("span",null,pm),
+            h("span",{style:{color:pmColors[pm]||P.accent}},pct+"%")
+          ),
+          h("div",{style:{height:4,borderRadius:2,background:P.bg3,overflow:"hidden"}},
+            h("div",{style:{height:"100%",width:pct+"%",background:pmColors[pm]||P.accent,borderRadius:2}})
+          )
+        );
+      })
+  );
+}
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
 function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav}){
   const now=new Date();
@@ -1635,7 +1661,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     ),
     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
       h(Card,null,h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Ranking de Pacientes"),[...safePats].sort((a,b)=>(b.sessions||[]).reduce((s,x)=>s+(Number(x.value)||0),0)-(a.sessions||[]).reduce((s,x)=>s+(Number(x.value)||0),0)).slice(0,5).map((p,i)=>h("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:12,padding:"9px 0",borderBottom:"1px solid "+P.border}},h("div",{style:{fontSize:16,color:P.accent,fontFamily:"'Cormorant Garamond',serif",minWidth:22}},(i+1)+"°"),h(Avatar,{name:p.name,size:30,idx:i,src:p.profilePhoto}),h("div",{style:{flex:1}},h("div",{style:{fontSize:13,color:P.text}},p.name),h("div",{style:{fontSize:11,color:P.text3}},(p.sessions||[]).length+" sessões")),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.green}},fmtCurr((p.sessions||[]).reduce((a,s)=>a+(Number(s.value)||0),0)))))),
-      h(Card,null,h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Formas de Pagamento"),(()=>{const pmMap={};allS.filter(s=>s.paid).forEach(s=>{const pm=s.payMethod||"Outro";pmMap[pm]=(pmMap[pm]||0)+(Number(s.value)||0);});const pmTotal=Object.values(pmMap).reduce((a,v)=>a+v,0)||1;const pmColors={"Pix":P.green,"Cartão Crédito":"#7aaed4","Cartão Débito":"#5a8aad","Dinheiro":P.accent,"Transferência":P.rose2,"Pendente":P.yellow};return Object.entries(pmMap).sort((a,b)=>b[1]-a[1]).map(([pm,val])=>{const pct=Math.round((val/pmTotal)*100);return h("div",{key:pm,style:{marginBottom:12}},h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text2,marginBottom:5}},h("span",null,pm),h("span",{style:{color:pmColors[pm]||P.accent}},pct+"%")),h("div",{style:{height:4,borderRadius:2,background:P.bg3,overflow:"hidden"}},h("div",{style:{height:"100%",width:pct+"%",background:pmColors[pm]||P.accent,borderRadius:2}})));});}))()
+      h(PagamentosCard,{allS})
     )
   );
 }
