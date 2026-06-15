@@ -325,13 +325,13 @@ function FaceMap({mapType="botox",points={},onChange,readOnly=false}){
       h("path",{d:"M112 182 Q122 177 130 178 Q138 177 148 182 Q138 190 130 190 Q122 190 112 182Z",fill:P.border,stroke:P.accent2,strokeWidth:"1"}),
       h("path",{d:"M112 182 Q130 186 148 182",fill:"none",stroke:P.accent2,strokeWidth:"1"}),
       h("path",{d:"M110 205 Q130 225 150 205",fill:"none",stroke:P.text3,strokeWidth:"1"}),
-      ...zones.map(z=>{
+      h("g",null,zones.map(z=>{
         const val=points[z.k]||0,isSet=val>0,isAct=active===z.k;
         return h("g",{key:z.k,onClick:()=>click(z.k),style:{cursor:readOnly?"default":"pointer"}},
-          h("circle",{cx:z.cx,cy:z.cy,r:z.r,fill:isAct?"rgba(92,31,50,.5)":isSet?`${zColor}22`:"rgba(255,255,255,.03)",stroke:isAct?zColor:isSet?zColor+"99":P.border,strokeWidth:isAct?2:1.5,strokeDasharray:isSet||isAct?"none":"3,2"}),
-          isSet?h("text",{x:z.cx,y:z.cy+4,textAnchor:"middle",fill:P.accent3,fontSize:9,fontWeight:600},`${val}${unit}`):h("text",{x:z.cx,y:z.cy+4,textAnchor:"middle",fill:P.text3,fontSize:11},"+")
+          h("circle",{cx:z.cx,cy:z.cy,r:z.r,fill:isAct?"rgba(92,31,50,.5)":isSet?(zColor+"22"):"rgba(255,255,255,.03)",stroke:isAct?zColor:isSet?(zColor+"99"):P.border,strokeWidth:isAct?2:1.5,strokeDasharray:isSet||isAct?"none":"3,2"}),
+          isSet?h("text",{x:z.cx,y:z.cy+4,textAnchor:"middle",fill:P.accent3,fontSize:9,fontWeight:600},(val+""+unit)):h("text",{x:z.cx,y:z.cy+4,textAnchor:"middle",fill:P.text3,fontSize:11},"+")
         );
-      })
+      }))
     ),
     h("div",{style:{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}},
       zones.map(z=>h("div",{key:z.k,style:{position:"absolute",left:z.cx<130?Math.max(0,z.cx-z.r-52):z.cx+z.r+4,top:z.cy-7,fontSize:8,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",whiteSpace:"nowrap"}},z.label))
@@ -1492,9 +1492,14 @@ function DonutChart({catList,totalCat}){
   if(!catList||!catList.length||!totalCat)return h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:20}},"Sem dados");
   const R=52,cx=70,cy=70,stroke=22,circ=2*Math.PI*R;
   let offset=0;
-  const slices=catList.map(([cat,val])=>{const dash=(val/Math.max(totalCat,1))*circ;const el=h("circle",{key:cat,cx,cy,r:R,fill:"none",stroke:CAT_COLORS_GLOBAL[cat]||P.text3,strokeWidth:stroke,strokeDasharray:`${dash} ${circ-dash}`,strokeDashoffset:-offset,style:{transform:"rotate(-90deg)",transformOrigin:`${cx}px ${cy}px`}});offset+=dash;return el;});
+  const slices=catList.map(([cat,val])=>{
+    const dash=(val/Math.max(totalCat,1))*circ;
+    const el=h("circle",{key:cat,cx,cy,r:R,fill:"none",stroke:CAT_COLORS_GLOBAL[cat]||P.text3,strokeWidth:stroke,strokeDasharray:dash+" "+(circ-dash),strokeDashoffset:-offset,style:{transform:"rotate(-90deg)",transformOrigin:cx+"px "+cy+"px"}});
+    offset+=dash;
+    return el;
+  });
   return h("svg",{width:140,height:140,viewBox:"0 0 140 140"},
-    h(Fragment,null,...slices),
+    h("g",null,slices),
     h("text",{x:cx,y:cy-6,textAnchor:"middle",fill:P.accent3,fontSize:13,fontWeight:600},catList.length),
     h("text",{x:cx,y:cy+10,textAnchor:"middle",fill:P.text3,fontSize:9},"categorias")
   );
