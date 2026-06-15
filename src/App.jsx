@@ -128,7 +128,7 @@ function useSupaTable(key, initFallback = []) {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user || cancelled) return;
       uid.current = user.id;
-      supabase.from("app_data").select("value").eq("user_id", user.id).eq("key", key).single().then(({ data: row }) => {
+      supabase.from("app_data").select("value").eq("user_id", user.id).eq("key", key).maybeSingle().then(({ data: row }) => {
         if (!cancelled) {
           if (row && row.value) {
             try { setDataRaw(JSON.parse(row.value)); } catch { setDataRaw(initFallback); }
@@ -161,8 +161,10 @@ function useSupaTable(key, initFallback = []) {
 
 // useSettings: usa o mesmo mecanismo JSON
 function useSettings(defaults) {
-  const [data, setData] = useSupaTable("settings", defaults);
-  return [data, setData, false];
+  const [data, setData, loading] = useSupaTable("settings", defaults);
+  // Garante que data seja sempre um objeto (não array)
+  const safeData = (data && !Array.isArray(data) && typeof data === "object") ? data : defaults;
+  return [safeData, setData, loading];
 }
 
 // Compatibilidade: manter useLocalStorage para dados locais temporários
