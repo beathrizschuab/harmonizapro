@@ -1493,7 +1493,11 @@ function DonutChart({catList,totalCat}){
   const R=52,cx=70,cy=70,stroke=22,circ=2*Math.PI*R;
   let offset=0;
   const slices=catList.map(([cat,val])=>{const dash=(val/Math.max(totalCat,1))*circ;const el=h("circle",{key:cat,cx,cy,r:R,fill:"none",stroke:CAT_COLORS_GLOBAL[cat]||P.text3,strokeWidth:stroke,strokeDasharray:`${dash} ${circ-dash}`,strokeDashoffset:-offset,style:{transform:"rotate(-90deg)",transformOrigin:`${cx}px ${cy}px`}});offset+=dash;return el;});
-  return h("svg",{width:140,height:140,viewBox:"0 0 140 140"},...slices,h("text",{x:cx,y:cy-6,textAnchor:"middle",fill:P.accent3,fontSize:13,fontWeight:600},catList.length),h("text",{x:cx,y:cy+10,textAnchor:"middle",fill:P.text3,fontSize:9},"categorias"));
+  return h("svg",{width:140,height:140,viewBox:"0 0 140 140"},
+    h(Fragment,null,...slices),
+    h("text",{x:cx,y:cy-6,textAnchor:"middle",fill:P.accent3,fontSize:13,fontWeight:600},catList.length),
+    h("text",{x:cx,y:cy+10,textAnchor:"middle",fill:P.text3,fontSize:9},"categorias")
+  );
 }
 // ─── ANIVERSARIANTES DO MÊS ───────────────────────────────────────────────────
 function AniversariantesDoMes({patients,onSelectPatient,onNav}){
