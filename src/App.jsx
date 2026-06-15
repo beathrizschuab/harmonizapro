@@ -1749,7 +1749,7 @@ function App(){
   }, "Carregando...");
 
   // Não logada → tela de login
-  if (!session) return createElement(LoginScreen, { onLogin: () => {} });
+  if (!session) return createElement(LoginScreen, { onLogin: () => supabase.auth.getSession().then(({data:{session:s}})=>setSession(s)) });
 
   // Logada → sistema completo
   return createElement(AppInner, { session, onLogout: () => supabase.auth.signOut() });
@@ -1835,7 +1835,7 @@ function AppInner({ session, onLogout }) {
           page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),returnRules}),
           page==="estoque"&&h(Estoque,{products,setProducts}),
           page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
-         page==="relatorios"&&h(Relatorios,{patients, onSelectPatient: handleSelectPatient, onNav: handleNav}),
+          page==="relatorios"&&h(Relatorios,{patients, incomes, expenses, onSelectPatient: handleSelectPatient, onNav: handleNav}),
           page==="config"&&h(Configuracoes,{procedures:procedureNames,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules})
         )
       )
