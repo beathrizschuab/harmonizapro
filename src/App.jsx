@@ -1565,7 +1565,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   // evolução 6 meses
   const last6=Array.from({length:6},(_,i)=>{const d=new Date(selYear,selMonth-5+i,1);return{m:d.getMonth(),y:d.getFullYear(),label:MONTH_NAMES[d.getMonth()].slice(0,3)};});
   const monthlyData=last6.map(({m,y,label})=>{const ss=allS.filter(s=>{try{const d=parseDMY2(s.date);return d&&d.getMonth()===m&&d.getFullYear()===y;}catch{return false;}});return{label,rec:ss.filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0),count:ss.length};});
-  const maxRec=Math.max(...monthlyData.map(d=>d.rec),1);
+  const maxRec=monthlyData.reduce((a,d)=>d.rec>a?d.rec:a,1);
   // fidelização
   const totalPatsWithSessions=safePats.filter(p=>(p.sessions||[]).length>0).length;
   const returnedOnTime=safePats.filter(p=>{try{const s=[...(p.sessions||[])].sort((a,b)=>(parseDMY2(b.date)||new Date(0))-(parseDMY2(a.date)||new Date(0)));if(s.length<2)return false;const d1=parseDMY2(s[1].date),d2=parseDMY2(s[0].date);if(!d1||!d2)return false;return Math.floor((d2-d1)/864e5)<=(Number(s[1].returnReminderDays)||90)*1.2;}catch{return false;}}).length;
@@ -1580,7 +1580,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const comboList=Object.entries(combos).sort((a,b)=>b[1]-a[1]).slice(0,5);
   function prevMonth(){if(selMonth===0){setSelMonth(11);setSelYear(y=>y-1);}else setSelMonth(m=>m-1);}
   function nextMonth(){if(selMonth===11){setSelMonth(0);setSelYear(y=>y+1);}else setSelMonth(m=>m+1);}
-  const maxBarVal=procList.length===0?1:chartMode==="receita"?Math.max(...procList.map(([,d])=>d.total),1):Math.max(...procList.map(([,d])=>d.count),1);
+  const maxBarVal=procList.length===0?1:chartMode==="receita"?procList.reduce((a,[,d])=>d.total>a?d.total:a,1):procList.reduce((a,[,d])=>d.count>a?d.count:a,1);
   return h("div",null,
     h(SectionHeader,{title:"Relatórios",sub:"Análise completa da clínica"}),
     h(AniversariantesDoMes,{patients:safePats,onSelectPatient,onNav}),
