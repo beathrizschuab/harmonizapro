@@ -1864,67 +1864,86 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia}){
   const h=createElement;
   const [filterProc,setFilterProc]=useState("Todos");
   const [lightbox,setLightbox]=useState(null);
-  const sessions=(patient.sessions||[]).filter(s=>(s.photos||[]).length>0);
-  const procs=["Todos",...new Set(sessions.map(s=>s.procedure))];
-  const filtered=filterProc==="Todos"?sessions:sessions.filter(s=>s.procedure===filterProc);
-  const sorted=[...filtered].sort((a,b)=>{
-    try{const da=new Date(a.date.split("/").reverse().join("-")),db=new Date(b.date.split("/").reverse().join("-"));return da-db;}catch{return 0;}
-  });
-  const allPhotos=sorted.flatMap(s=>(s.photos||[]).map(p=>({...p,sessDate:s.date,sessProcedure:s.procedure,sessId:s.id})));
+  // Todas as sessões, ordenadas por data mais antiga primeiro
+  const allSessions=(patient.sessions||[]);
+  const parseDt=s=>{try{const[d,m,y]=String(s||"").split("/");return new Date(y+"-"+m+"-"+d);}catch{return new Date(0);}};
+  const sorted=[...allSessions].sort((a,b)=>parseDt(a.date)-parseDt(b.date));
+  // Procedimentos únicos de todas as sessões (não só as com fotos)
+  const allProcs=["Todos",...new Set(allSessions.map(s=>s.procedure).filter(Boolean))];
+  const filtered=filterProc==="Todos"?sorted:sorted.filter(s=>s.procedure===filterProc);
+  // Todas as fotos do filtro atual, em ordem cronológica
+  const allPhotos=filtered.flatMap(s=>(s.photos||[]).map(p=>({...p,sessDate:s.date,sessProcedure:s.procedure,sessId:s.id})));
+  const totalFotos=allSessions.reduce((a,s)=>a+(s.photos||[]).length,0);
   return h("div",null,
+    // Cabeçalho + filtros
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Evolução Fotográfica"),
+      h("div",null,
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Evolução Fotográfica"),
+        h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},totalFotos+" foto(s) · "+allSessions.length+" sessão(ões)")
+      ),
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-        procs.map(proc=>h("button",{key:proc,onClick:()=>setFilterProc(proc),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filterProc===proc?P.rose:"transparent",border:`1px solid ${filterProc===proc?P.rose:P.border}`,color:filterProc===proc?P.accent3:P.text2}},proc))
+        allProcs.map(proc=>h("button",{key:proc,onClick:()=>setFilterProc(proc),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filterProc===proc?P.rose:"transparent",border:`1px solid ${filterProc===proc?P.rose:P.border}`,color:filterProc===proc?P.accent3:P.text2}},proc))
       )
     ),
-    sessions.length===0&&h(Card,{style:{textAlign:"center",padding:40}},
-      h("div",{style:{fontSize:32,marginBottom:12}},"📷"),
-      h("div",{style:{color:P.text3,fontSize:14}},"Nenhuma foto cadastrada."),
-      h("div",{style:{color:P.text3,fontSize:12,marginTop:8}},"Adicione fotos ao registrar ou editar uma sessão.")
-    ),
-    sorted.length>0&&h("div",null,
-      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:18}},
-        sorted.map(s=>h(Card,{key:s.id,style:{padding:0,overflow:"hidden"}},
-          h("div",{style:{padding:"12px 14px",borderBottom:`1px solid ${P.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}},
-            h("div",null,
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:P.text}},s.procedure),
-              h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},s.date)
-            ),
-            h("label",{style:{fontSize:11,color:P.accent,border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},
-              "+ Foto",
-              h("input",{type:"file",accept:"image/*",multiple:true,style:{display:"none"},onChange:e=>addMedia(s.id,[...e.target.files],"photos")})
-            )
-          ),
-          h("div",{style:{padding:12,display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}},
-            (s.photos||[]).map((ph,i)=>h("div",{key:ph.id,style:{position:"relative",aspectRatio:"1",cursor:"pointer"},onClick:()=>setLightbox({photos:s.photos,idx:i,proc:s.procedure,date:s.date})},
-              h("img",{src:ph.url,alt:ph.name,style:{width:"100%",height:"100%",objectFit:"cover",borderRadius:6,border:`1px solid ${P.border}`}}),
-              h("button",{onClick:e=>{e.stopPropagation();removeMedia(s.id,ph.id,"photos");},style:{position:"absolute",top:3,right:3,width:18,height:18,borderRadius:"50%",background:"rgba(0,0,0,.6)",border:"none",color:"#fff",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}},"×")
-            ))
-          )
-        ))
-      ),
-      allPhotos.length>=2&&h(Card,{style:{marginTop:18}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Comparação Antes / Depois"),
-        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
-          h("div",null,
-            h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,textAlign:"center"}},"Antes — "+allPhotos[0].sessDate),
-            h("img",{src:allPhotos[0].url,alt:"antes",style:{width:"100%",borderRadius:10,border:`1px solid ${P.border}`,objectFit:"cover",maxHeight:260}})
-          ),
-          h("div",null,
-            h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,textAlign:"center"}},"Depois — "+allPhotos[allPhotos.length-1].sessDate),
-            h("img",{src:allPhotos[allPhotos.length-1].url,alt:"depois",style:{width:"100%",borderRadius:10,border:`1px solid ${P.border}`,objectFit:"cover",maxHeight:260}})
-          )
+    // Comparação antes/depois (só aparece se tiver 2+ fotos)
+    allPhotos.length>=2&&h(Card,{style:{marginBottom:18,border:"1px solid rgba(92,31,50,.3)"}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"✦ Comparação Antes / Depois"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+        h("div",null,
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,textAlign:"center"}},"Antes — "+allPhotos[0].sessDate+" · "+allPhotos[0].sessProcedure),
+          h("img",{src:allPhotos[0].url,alt:"antes",onClick:()=>setLightbox({photos:allPhotos,idx:0}),style:{width:"100%",borderRadius:10,border:`1px solid ${P.border}`,objectFit:"cover",maxHeight:240,cursor:"zoom-in"}})
+        ),
+        h("div",null,
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,textAlign:"center"}},"Depois — "+allPhotos[allPhotos.length-1].sessDate+" · "+allPhotos[allPhotos.length-1].sessProcedure),
+          h("img",{src:allPhotos[allPhotos.length-1].url,alt:"depois",onClick:()=>setLightbox({photos:allPhotos,idx:allPhotos.length-1}),style:{width:"100%",borderRadius:10,border:`1px solid ${P.border}`,objectFit:"cover",maxHeight:240,cursor:"zoom-in"}})
         )
       )
     ),
-    lightbox&&h("div",{onClick:()=>setLightbox(null),style:{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:1000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14}},
-      h("div",{style:{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4}},lightbox.proc+" · "+lightbox.date),
-      h("img",{src:lightbox.photos[lightbox.idx].url,onClick:e=>e.stopPropagation(),style:{maxWidth:"85vw",maxHeight:"75vh",borderRadius:10,objectFit:"contain"}}),
-      h("div",{style:{display:"flex",gap:10}},
-        lightbox.idx>0&&h("button",{onClick:e=>{e.stopPropagation();setLightbox(l=>({...l,idx:l.idx-1}));},style:{background:"rgba(255,255,255,.12)",border:"none",color:"#fff",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontSize:16}},"‹"),
-        lightbox.idx<lightbox.photos.length-1&&h("button",{onClick:e=>{e.stopPropagation();setLightbox(l=>({...l,idx:l.idx+1}));},style:{background:"rgba(255,255,255,.12)",border:"none",color:"#fff",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontSize:16}},"›"),
-        h("button",{onClick:()=>setLightbox(null),style:{background:"rgba(255,255,255,.12)",border:"none",color:"#fff",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontSize:13}},"Fechar")
+    // Cards por sessão — TODAS as sessões aparecem para poder adicionar fotos
+    filtered.length===0
+      ?h(Card,{style:{textAlign:"center",padding:40}},
+          h("div",{style:{fontSize:32,marginBottom:12}},"📷"),
+          h("div",{style:{color:P.text3,fontSize:14}},"Nenhuma sessão encontrada."))
+      :h("div",{style:{display:"flex",flexDirection:"column",gap:14}},
+        filtered.map(s=>{
+          const fotos=s.photos||[];
+          return h(Card,{key:s.id,style:{padding:0,overflow:"hidden"}},
+            // Header da sessão
+            h("div",{style:{padding:"12px 16px",borderBottom:`1px solid ${P.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",background:"rgba(92,31,50,.04)"}},
+              h("div",null,
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text}},s.procedure),
+                h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},s.date+(s.location?" · 📍"+s.location:"")+" · "+fotos.length+" foto(s)")
+              ),
+              h("label",{style:{display:"flex",alignItems:"center",gap:5,fontSize:12,color:P.accent,border:`1px solid rgba(157,119,97,.4)`,borderRadius:8,padding:"5px 12px",cursor:"pointer",background:"rgba(157,119,97,.06)"}},
+                "📷 Adicionar",
+                h("input",{type:"file",accept:"image/*",multiple:true,style:{display:"none"},onChange:e=>{if(e.target.files.length)addMedia(s.id,[...e.target.files],"photos");}})
+              )
+            ),
+            // Grid de fotos ou estado vazio
+            fotos.length===0
+              ?h("div",{style:{padding:"20px",textAlign:"center",color:P.text3,fontSize:13}},"Nenhuma foto nesta sessão. Clique em 📷 Adicionar.")
+              :h("div",{style:{padding:12,display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}},
+                fotos.map((ph,i)=>h("div",{key:ph.id,style:{position:"relative",aspectRatio:"1",cursor:"zoom-in"},
+                  onClick:()=>setLightbox({photos:allPhotos,idx:allPhotos.findIndex(p=>p.id===ph.id)})},
+                  h("img",{src:ph.url,alt:ph.name,style:{width:"100%",height:"100%",objectFit:"cover",borderRadius:8,border:`1px solid ${P.border}`,display:"block"}}),
+                  h("div",{style:{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,.55)",borderRadius:"0 0 8px 8px",padding:"3px 6px",fontSize:9,color:"rgba(255,255,255,.8)",textAlign:"center"}},ph.date||s.date),
+                  h("button",{onClick:e=>{e.stopPropagation();removeMedia(s.id,ph.id,"photos");},style:{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.7)",border:"none",color:"#fff",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}},"×")
+                ))
+              )
+          );
+        })
+      ),
+    // Lightbox
+    lightbox&&h("div",{onClick:()=>setLightbox(null),style:{position:"fixed",inset:0,background:"rgba(0,0,0,.95)",zIndex:2000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}},
+      h("div",{style:{fontSize:12,color:"rgba(255,255,255,.5)"}},
+        lightbox.photos[lightbox.idx]?.sessProcedure+" · "+lightbox.photos[lightbox.idx]?.sessDate,
+        h("span",{style:{marginLeft:12}},`${lightbox.idx+1} / ${lightbox.photos.length}`)
+      ),
+      h("img",{src:lightbox.photos[lightbox.idx]?.url,onClick:e=>e.stopPropagation(),style:{maxWidth:"88vw",maxHeight:"78vh",borderRadius:10,objectFit:"contain",boxShadow:"0 8px 40px rgba(0,0,0,.8)"}}),
+      h("div",{style:{display:"flex",gap:10,alignItems:"center"}},
+        h("button",{onClick:e=>{e.stopPropagation();setLightbox(l=>({...l,idx:Math.max(0,l.idx-1)}));},disabled:lightbox.idx===0,style:{background:lightbox.idx===0?"rgba(255,255,255,.05)":"rgba(255,255,255,.15)",border:"none",color:"#fff",padding:"10px 20px",borderRadius:8,cursor:lightbox.idx===0?"default":"pointer",fontSize:18,opacity:lightbox.idx===0?.3:1}},"‹"),
+        h("button",{onClick:e=>{e.stopPropagation();setLightbox(l=>({...l,idx:Math.min(l.photos.length-1,l.idx+1)}));},disabled:lightbox.idx===lightbox.photos.length-1,style:{background:lightbox.idx===lightbox.photos.length-1?"rgba(255,255,255,.05)":"rgba(255,255,255,.15)",border:"none",color:"#fff",padding:"10px 20px",borderRadius:8,cursor:lightbox.idx===lightbox.photos.length-1?"default":"pointer",fontSize:18,opacity:lightbox.idx===lightbox.photos.length-1?.3:1}},"›"),
+        h("button",{onClick:()=>setLightbox(null),style:{background:"rgba(255,255,255,.1)",border:"1px solid rgba(255,255,255,.2)",color:"#fff",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontSize:13}},"✕ Fechar")
       )
     )
   );
