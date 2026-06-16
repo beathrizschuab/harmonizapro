@@ -370,14 +370,7 @@ function FaceMapEditor({sessionMap,onChange,readOnly=false}){
 function MediaGallery({items,onAdd,onRemove,label,docMode=false}){
   const[preview,setPreview]=useState(null);
   const h=createElement;
-  function addFiles(files){
-    const readers=files.map(f=>new Promise(res=>{
-      const r=new FileReader();
-      r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,type:f.type,url:e.target.result,date:new Date().toLocaleDateString("pt-BR")});
-      r.readAsDataURL(f);
-    }));
-    Promise.all(readers).then(items=>onAdd(items));
-  }
+  function addFiles(files){onAdd(files.map(f=>({id:Date.now()+Math.random(),name:f.name,type:f.type,url:URL.createObjectURL(f),date:new Date().toLocaleDateString("pt-BR")})));}
   return h("div",null,
     h("div",{style:{marginBottom:12}},h(UploadZone,{onFiles:addFiles,accept:docMode?"image/*,.pdf,.doc,.docx":"image/*",label})),
     items.length===0?h("div",{style:{textAlign:"center",padding:20,color:P.text3,fontSize:13}},"Nenhum arquivo.")
@@ -988,7 +981,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   );
 }
 // ─── PATIENT DETAIL ───────────────────────────────────────────────────────────
-function PatientDetail({patient,setPatients,onBack,procedures,locations,products,returnRules}){
+function PatientDetail({patient,setPatients,onBack,procedures,locations,products,setProducts,returnRules}){
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
   const[editSess,setEditSess]=useState(null);
@@ -998,9 +991,15 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
   const[showPlan,setShowPlan]=useState(false);
   const[showNewPkg,setShowNewPkg]=useState(false);
   const[pkgForm,setPkgForm]=useState({name:"",procedure:"",total:4,price:"",notes:""});
+  // ─ Orçamentos ─
+  const[showOrc,setShowOrc]=useState(false);
+  const[editOrc,setEditOrc]=useState(null);
+  const blankOrc={title:"",items:[],value:"",status:"espera",obs:"",created:"",expiry:""};
+  const[orcForm,setOrcForm]=useState(blankOrc);
+  const[orcItemInput,setOrcItemInput]=useState("");
   const h=createElement;
   const today=new Date();
-  const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",finStatus:"Pendente",paid:false,notes:"",evolution:"",useFaceMap:false,returnReminderDays:14};
+  const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",finStatus:"Pendente",paid:false,notes:"",evolution:"",useFaceMap:false,returnReminderDays:14,lote:"",qtdUsada:""};
   const[sForm,setSForm]=useState(blankS);
   const sfv=k=>v=>setSForm(p=>({...p,[k]:v}));
   // Auto-preenche prazo de retorno ao trocar procedimento
@@ -1013,7 +1012,7 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
   const[icForm,setIcForm]=useState({type:"Edema",notes:"",conduct:"",date:""});
   const[planForm,setPlanForm]=useState({title:"",steps:"",notes:""});
   const totalSpent=(patient.sessions||[]).reduce((a,s)=>a+s.value,0);
-  const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"mapa",l:"🗺 Mapa"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"}];
+  const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"fichaRapida",l:"⚡ Ficha Rápida"},{k:"orcamentos",l:"💼 Orçamentos"},{k:"mapa",l:"🗺 Mapa"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"}];
   function upd(fn){setPatients(prev=>prev.map(p=>p.id===patient.id?fn(p):p));}
   function savePat(){
     upd(p=>({...p,...patForm,age:Number(patForm.age),complaints:patForm.complaints.split(",").map(s=>s.trim()).filter(Boolean),
@@ -1021,22 +1020,31 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
     setEditPat(false);
   }
   function saveSession(){
-    const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,dose:sForm.dose,region:sForm.region,location:sForm.location,value:Number(sForm.value)||0,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1,notes:sForm.notes,evolution:sForm.evolution,faceMap:sForm.useFaceMap?sessionFaceMap:null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90};
+    const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,dose:sForm.dose,region:sForm.region,location:sForm.location,value:Number(sForm.value)||0,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1,notes:sForm.notes,evolution:sForm.evolution,faceMap:sForm.useFaceMap?sessionFaceMap:null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90,lote:sForm.lote||"",qtdUsada:sForm.qtdUsada||""};
     upd(p=>editSess?{...p,sessions:(p.sessions||[]).map(x=>x.id===s.id?s:x),lastVisit:s.date}:{...p,sessions:[s,...(p.sessions||[])],lastVisit:s.date});
+    // Abater do estoque automaticamente se informou produto, lote e quantidade
+    if(!editSess&&sForm.product&&sForm.qtdUsada&&Number(sForm.qtdUsada)>0&&setProducts){
+      const qtdAbater=Number(sForm.qtdUsada);
+      setProducts(prev=>prev.map(prod=>{
+        if(prod.name!==sForm.product)return prod;
+        const novaQty=Math.max(0,prod.qty-qtdAbater);
+        // Se tem lote informado, abate do lote específico
+        let lotes=prod.lotes||[];
+        if(sForm.lote){
+          lotes=lotes.map(l=>{
+            if(l.lote!==sForm.lote)return l;
+            return{...l,qtdAtual:Math.max(0,l.qtdAtual-qtdAbater)};
+          });
+        }
+        const calc=(q,m)=>q===0?"critical":q<m?"low":"ok";
+        return{...prod,qty:novaQty,lotes,status:calc(novaQty,prod.min)};
+      }));
+    }
     setShowNewS(false);setEditSess(null);setSForm(blankS);setSessionFaceMap(null);
   }
   function toggleFinStatus(sessId,newSt){upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,finStatus:newSt,paid:newSt==="Pago"}:s)}));}
   function delSession(id){if(window.confirm("Excluir sessão?"))upd(p=>({...p,sessions:(p.sessions||[]).filter(s=>s.id!==id)}));}
-  function addMedia(sessId,files,type){
-    const readers=files.map(f=>new Promise(res=>{
-      const r=new FileReader();
-      r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,type:f.type,url:e.target.result,date:new Date().toLocaleDateString("pt-BR")});
-      r.readAsDataURL(f);
-    }));
-    Promise.all(readers).then(news=>{
-      upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,[type]:[...(s[type]||[]),...news]}:s)}));
-    });
-  }
+  function addMedia(sessId,files,type){const news=files.map(f=>({id:Date.now()+Math.random(),name:f.name,type:f.type,url:URL.createObjectURL(f),date:new Date().toLocaleDateString("pt-BR")}));upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,[type]:[...(s[type]||[]),...news]}:s)}));}
   function removeMedia(sessId,fid,type){upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,[type]:(s[type]||[]).filter(f=>f.id!==fid)}:s)}));}
   function saveIntercorrencia(sessId){
     const ic={id:Date.now(),...icForm,date:icForm.date||new Date().toLocaleDateString("pt-BR"),photos:[]};
@@ -1065,6 +1073,20 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
     upd(p=>({...p,sessions_packages:(p.sessions_packages||[]).map(pkg=>{if(pkg.id!==pkgId||pkg.done<=0)return pkg;return{...pkg,done:pkg.done-1,sessions:(pkg.sessions||[]).slice(0,-1)};})}));
   }
   function deletePackage(pkgId){if(window.confirm("Excluir pacote?"))upd(p=>({...p,sessions_packages:(p.sessions_packages||[]).filter(pkg=>pkg.id!==pkgId)}));}
+  // ─── Orçamentos ───────────────────────────────────────────────────────────────
+  function saveOrcamento(){
+    const orc={id:editOrc?editOrc.id:Date.now(),title:orcForm.title,items:orcForm.items,value:Number(orcForm.value)||0,status:orcForm.status,obs:orcForm.obs,expiry:orcForm.expiry,created:editOrc?editOrc.created:new Date().toLocaleDateString("pt-BR"),convertedAt:editOrc?.convertedAt||null};
+    upd(p=>({...p,orcamentos:editOrc?(p.orcamentos||[]).map(o=>o.id===orc.id?orc:o):[orc,...(p.orcamentos||[])]}));
+    setShowOrc(false);setEditOrc(null);setOrcForm(blankOrc);setOrcItemInput("");
+  }
+  function deleteOrcamento(id){if(window.confirm("Excluir orçamento?"))upd(p=>({...p,orcamentos:(p.orcamentos||[]).filter(o=>o.id!==id)}));}
+  function updateOrcStatus(id,status){upd(p=>({...p,orcamentos:(p.orcamentos||[]).map(o=>o.id===id?{...o,status}:o)}));}
+  function converterEmTratamento(orc){
+    // Cria sessões a partir dos itens do orçamento
+    const novasSessoes=(orc.items||[]).map((item,i)=>({id:Date.now()+i,date:new Date().toLocaleDateString("pt-BR"),procedure:item,doctor:"Dra. Sofia",product:"",dose:"",region:"",location:locations[0]||"",value:orc.items.length>0?Math.round(orc.value/orc.items.length):0,paid:false,finStatus:"Pendente",payMethod:"Pendente",parcelas:1,notes:"Gerado do orçamento: "+orc.title,evolution:"",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:90,lote:"",qtdUsada:""}));
+    upd(p=>({...p,sessions:[...novasSessoes,...(p.sessions||[])],lastVisit:new Date().toLocaleDateString("pt-BR"),orcamentos:(p.orcamentos||[]).map(o=>o.id===orc.id?{...o,status:"aprovado",convertedAt:new Date().toLocaleDateString("pt-BR")}:o)}));
+    setTab("prontuario");
+  }
   const alertColors={alergia:P.red,hipertensão:"#c07070",diabetes:"#c4a96a",anticoagulante:"#9b7aad",gestante:"#d47090","lidocaína":P.red};
   function getAlertColor(txt){const t=txt.toLowerCase();for(const[k,v]of Object.entries(alertColors)){if(t.includes(k))return v;}return P.red;}
   return h("div",null,
@@ -1108,6 +1130,161 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
       )
     ),
     h(TabBar,{tabs,active:tab,onChange:setTab}),
+    // ─── FICHA RÁPIDA TAB ────────────────────────────────────────────────────────
+    tab==="fichaRapida"&&h("div",null,
+      h(Card,{style:{marginBottom:16,border:"1px solid rgba(192,112,112,.35)",background:"rgba(192,112,112,.04)"}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text,marginBottom:16}},"⚡ Ficha Rápida"),
+        h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}},
+          // Alergias
+          h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:"1px solid rgba(192,112,112,.3)"}},
+            h("div",{style:{fontSize:10,color:P.red,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"❤️ Alergias"),
+            h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},patient.allergies||"Nenhuma"),
+            patient.anamnese?.allergiesDetail&&h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},patient.anamnese.allergiesDetail)
+          ),
+          // Tabagismo
+          h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"🚭 Tabagismo"),
+            h("div",{style:{fontSize:14,color:patient.anamnese?.smoking==="Sim"?P.red:P.text}},patient.anamnese?.smoking||"Não informado"),
+            patient.anamnese?.pregnancy&&patient.anamnese.pregnancy!=="Não"&&h("div",{style:{fontSize:12,color:P.yellow,marginTop:4}},"⚠️ "+patient.anamnese.pregnancy)
+          ),
+          // Medicações
+          h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"💊 Medicações"),
+            h("div",{style:{fontSize:13,color:P.text}},patient.anamnese?.medications||"Nenhuma")
+          ),
+          // Contraindicações
+          h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${patient.anamnese?.contraindications&&patient.anamnese.contraindications!=="Nenhuma"?"rgba(192,112,112,.4)":P.border}`}},
+            h("div",{style:{fontSize:10,color:patient.anamnese?.contraindications&&patient.anamnese.contraindications!=="Nenhuma"?P.red:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"⚠️ Contraindicações"),
+            h("div",{style:{fontSize:13,color:P.text}},patient.anamnese?.contraindications||"Nenhuma")
+          ),
+          // Último procedimento
+          h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"📅 Último Procedimento"),
+            (patient.sessions||[]).length>0
+              ?h("div",null,
+                h("div",{style:{fontSize:14,color:P.accent3}},patient.sessions[0]?.procedure),
+                h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},patient.sessions[0]?.date+" · "+fmtCurr(patient.sessions[0]?.value||0))
+              )
+              :h("div",{style:{fontSize:13,color:P.text3}},"Sem sessões registradas")
+          ),
+          // Próximo retorno
+          h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"📅 Próximo Retorno"),
+            h("div",{style:{fontSize:14,color:"#7aaed4",fontWeight:500}},patient.nextReturn||"—")
+          ),
+          // Pacotes ativos
+          h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"📦 Pacotes Ativos"),
+            (patient.sessions_packages||[]).filter(p=>p.done<p.total).length>0
+              ?h("div",{style:{display:"flex",flexDirection:"column",gap:4}},
+                (patient.sessions_packages||[]).filter(p=>p.done<p.total).map(p=>h("div",{key:p.id,style:{fontSize:12,color:P.text}},p.name+" ("+p.done+"/"+p.total+")"))
+              )
+              :h("div",{style:{fontSize:13,color:P.text3}},"Nenhum pacote ativo")
+          ),
+          // Saldo em aberto
+          h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid rgba(196,169,106,.3)`}},
+            h("div",{style:{fontSize:10,color:P.yellow,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"💰 Saldo em Aberto"),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:(patient.sessions||[]).filter(s=>!s.paid).reduce((a,s)=>a+s.value,0)>0?P.yellow:P.green}},
+              fmtCurr((patient.sessions||[]).filter(s=>!s.paid).reduce((a,s)=>a+s.value,0))
+            ),
+            h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},(patient.sessions||[]).filter(s=>!s.paid).length+" sessão(ões) pendente(s)")
+          )
+        )
+      ),
+      // Alertas importantes
+      (patient.anamnese?.importantAlerts||[]).length>0&&h(Card,{style:{border:"1px solid rgba(192,112,112,.3)"}},
+        h("div",{style:{fontSize:12,color:P.red,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10,fontWeight:600}},"⚠ Alertas Importantes"),
+        h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},(patient.anamnese.importantAlerts||[]).map((a,i)=>h(AlertBadge,{key:i,text:a})))
+      )
+    ),
+    // ─── ORÇAMENTOS TAB ──────────────────────────────────────────────────────────
+    tab==="orcamentos"&&h("div",null,
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}},
+        h("div",null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Orçamentos"),
+          h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},(patient.orcamentos||[]).length+" orçamento(s) no histórico")
+        ),
+        h(Btn,{onClick:()=>{setEditOrc(null);setOrcForm(blankOrc);setShowOrc(true);}},"＋ Novo Orçamento")
+      ),
+      (patient.orcamentos||[]).length===0&&h(Card,{style:{textAlign:"center",padding:40}},
+        h("div",{style:{fontSize:32,marginBottom:12}},"💼"),
+        h("div",{style:{color:P.text3,fontSize:14}},"Nenhum orçamento criado."),
+        h(Btn,{style:{marginTop:16},onClick:()=>{setEditOrc(null);setOrcForm(blankOrc);setShowOrc(true);}},"Criar Primeiro Orçamento")
+      ),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:12}},
+        (patient.orcamentos||[]).map(orc=>{
+          const sCfg={aprovado:{color:P.green,bg:"rgba(122,173,138,.12)",label:"🟢 Aprovado"},espera:{color:P.yellow,bg:"rgba(196,169,106,.12)",label:"🟡 Em Espera"},recusado:{color:P.red,bg:"rgba(192,112,112,.12)",label:"🔴 Recusado"},expirado:{color:P.text3,bg:"rgba(107,77,74,.1)",label:"⚪ Expirado"}};
+          const sc=sCfg[orc.status]||sCfg.espera;
+          return h(Card,{key:orc.id,style:{border:`1px solid ${orc.status==="aprovado"?"rgba(122,173,138,.35)":orc.status==="recusado"?"rgba(192,112,112,.25)":P.border}`}},
+            h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}},
+              h("div",{style:{flex:1}},
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:4}},orc.title),
+                h("div",{style:{fontSize:11,color:P.text3}},"Criado em "+orc.created+(orc.expiry?" · Expira em "+orc.expiry:"")),
+                orc.convertedAt&&h("div",{style:{fontSize:11,color:P.green,marginTop:2}},"✓ Convertido em tratamento em "+orc.convertedAt)
+              ),
+              h("span",{style:{fontSize:11,padding:"4px 10px",borderRadius:12,color:sc.color,background:sc.bg,border:`1px solid ${sc.color}33`,flexShrink:0}},sc.label)
+            ),
+            // Procedimentos planejados
+            (orc.items||[]).length>0&&h("div",{style:{marginBottom:12}},
+              h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"Procedimentos"),
+              h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+                (orc.items||[]).map((item,i)=>h("div",{key:i,style:{display:"flex",alignItems:"center",gap:5,fontSize:12,padding:"4px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text}},
+                  h("span",{style:{color:P.green}},"☑"),item
+                ))
+              )
+            ),
+            h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}},
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:P.green}},fmtCurr(orc.value)),
+              h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+                orc.status!=="aprovado"&&orc.status!=="recusado"&&h(Btn,{variant:"ghost",onClick:()=>updateOrcStatus(orc.id,"aprovado"),style:{fontSize:11,padding:"5px 10px",color:P.green,border:`1px solid ${P.green}44`}},"🟢 Aprovar"),
+                orc.status!=="recusado"&&h(Btn,{variant:"ghost",onClick:()=>updateOrcStatus(orc.id,"recusado"),style:{fontSize:11,padding:"5px 10px",color:P.red,border:`1px solid ${P.red}44`}},"🔴 Recusar"),
+                orc.status==="aprovado"&&!orc.convertedAt&&h(Btn,{onClick:()=>converterEmTratamento(orc),style:{fontSize:11,padding:"5px 12px",background:`linear-gradient(135deg,${P.green},#5aad7a)`}},"⚡ Converter em Tratamento"),
+                h(Btn,{variant:"ghost",onClick:()=>{setEditOrc(orc);setOrcForm({...orc,value:String(orc.value),items:[...orc.items]});setShowOrc(true);},style:{fontSize:11,padding:"5px 10px"}},"✎"),
+                h(Btn,{variant:"danger",onClick:()=>deleteOrcamento(orc.id),style:{fontSize:11,padding:"5px 10px"}},"🗑")
+              )
+            ),
+            orc.obs&&h("div",{style:{marginTop:10,padding:"8px 12px",background:P.bg3,borderRadius:8,fontSize:12,color:P.text3,borderLeft:`2px solid ${P.border}`}},'"'+orc.obs+'"')
+          );
+        })
+      ),
+      // Modal Orçamento
+      h(Modal,{open:showOrc,onClose:()=>{setShowOrc(false);setEditOrc(null);},title:editOrc?"✎ Editar Orçamento":"💼 Novo Orçamento",width:520},
+        h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
+          h(Field,{label:"Título do Orçamento"},h(Inp,{value:orcForm.title,onChange:v=>setOrcForm(p=>({...p,title:v})),placeholder:"Ex: Planejamento Facial Completo"})),
+          h(Field,{label:"Valor Total (R$)"},h(Inp,{value:orcForm.value,onChange:v=>setOrcForm(p=>({...p,value:v})),placeholder:"0,00"})),
+          h(Field,{label:"Validade"},h(Inp,{value:orcForm.expiry,onChange:v=>setOrcForm(p=>({...p,expiry:v})),placeholder:"Ex: 31/12/2026"})),
+          h(Field,{label:"Status"},
+            h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+              [{k:"espera",l:"🟡 Em Espera"},{k:"aprovado",l:"🟢 Aprovado"},{k:"recusado",l:"🔴 Recusado"},{k:"expirado",l:"⚪ Expirado"}].map(s=>
+                h("button",{key:s.k,onClick:()=>setOrcForm(p=>({...p,status:s.k})),style:{padding:"5px 12px",borderRadius:8,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:orcForm.status===s.k?P.rose:"transparent",border:`1px solid ${orcForm.status===s.k?P.rose:P.border}`,color:orcForm.status===s.k?P.accent3:P.text2}},s.l)
+              )
+            )
+          ),
+          h(Field,{label:"Procedimentos Planejados"},
+            h("div",null,
+              h("div",{style:{display:"flex",gap:8,marginBottom:8}},
+                h("select",{value:orcItemInput,onChange:e=>setOrcItemInput(e.target.value),style:{...IS,flex:1}},
+                  h("option",{value:""},"Selecionar procedimento..."),
+                  procedures.map(p=>h("option",{key:p,value:p},p))
+                ),
+                h(Btn,{onClick:()=>{if(orcItemInput&&!orcForm.items.includes(orcItemInput)){setOrcForm(p=>({...p,items:[...p.items,orcItemInput]}));setOrcItemInput("");}},style:{flexShrink:0,padding:"9px 14px"}},"＋")
+              ),
+              h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+                (orcForm.items||[]).map((item,i)=>h("div",{key:i,style:{display:"flex",alignItems:"center",gap:5,fontSize:12,padding:"4px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text}},
+                  h("span",{style:{color:P.green}},"☑"),item,
+                  h("button",{onClick:()=>setOrcForm(p=>({...p,items:p.items.filter((_,j)=>j!==i)})),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:12,marginLeft:2}},"×")
+                ))
+              )
+            )
+          ),
+          h(Field,{label:"Observações"},h(TA,{value:orcForm.obs,onChange:v=>setOrcForm(p=>({...p,obs:v})),placeholder:'Ex: "Paciente pretende iniciar após férias."',rows:2}))
+        ),
+        h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},
+          h(Btn,{variant:"ghost",onClick:()=>{setShowOrc(false);setEditOrc(null);}},"Cancelar"),
+          h(Btn,{onClick:saveOrcamento},editOrc?"Salvar":"Criar Orçamento")
+        )
+      )
+    ),
     // ─── PRONTUÁRIO TAB
     tab==="prontuario"&&h("div",null,
       (patient.sessions||[]).length===0&&h(Card,{style:{textAlign:"center",padding:40}},h("div",{style:{fontSize:32,marginBottom:12}},"📋"),h("div",{style:{color:P.text3,fontSize:14}},"Nenhuma sessão."),h(Btn,{style:{marginTop:16},onClick:()=>setShowNewS(true)},"Registrar Primeira Sessão")),
@@ -1301,6 +1478,30 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
         h(Field,{label:"Data",half:true},h(Inp,{type:"date",value:sForm.date,onChange:sfv("date")})),
         h(Field,{label:"Procedimento",half:true},h(Sel,{value:sForm.procedure,onChange:sfvProcedure,options:procedures})),
         h(Field,{label:"Produto"},h(Sel,{value:sForm.product,onChange:sfv("product"),options:products})),
+        // Campos de lote e quantidade (para abatimento automático do estoque)
+        h("div",{style:{width:"100%",padding:"10px 14px",background:"rgba(122,173,138,.06)",borderRadius:8,border:"1px solid rgba(122,173,138,.25)",marginTop:-4}},
+          h("div",{style:{fontSize:10,color:P.green,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,fontWeight:600}},"📦 Controle de Lote (opcional — abate do estoque automaticamente)"),
+          h("div",{style:{display:"flex",gap:12,flexWrap:"wrap"}},
+            h("div",{style:{flex:1,minWidth:160}},
+              h("label",{style:{display:"block",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Número do Lote"),
+              (()=>{
+                const prodEstoque=(products||[]).find&&typeof sForm.product==="string"?null:null;
+                const lotesDisponiveis=(()=>{try{return(typeof products==="object"&&Array.isArray(products)?products:[]).find(p=>p.name===sForm.product)?.lotes?.filter(l=>l.qtdAtual>0)||[];}catch{return[];}})();
+                return lotesDisponiveis.length>0
+                  ?h("select",{value:sForm.lote,onChange:e=>sfv("lote")(e.target.value),style:{...IS}},
+                    h("option",{value:""},"Selecionar lote..."),
+                    lotesDisponiveis.map(l=>h("option",{key:l.lote,value:l.lote},`${l.lote} — saldo: ${l.qtdAtual} — val: ${l.validade}`))
+                  )
+                  :h(Inp,{value:sForm.lote,onChange:sfv("lote"),placeholder:"Ex: AB12345"});
+              })()
+            ),
+            h("div",{style:{flex:1,minWidth:120}},
+              h("label",{style:{display:"block",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Qtd. Utilizada"),
+              h(Inp,{value:sForm.qtdUsada,onChange:sfv("qtdUsada"),placeholder:"Ex: 40 (U, ml...)"})
+            )
+          ),
+          sForm.qtdUsada&&Number(sForm.qtdUsada)>0&&h("div",{style:{marginTop:8,fontSize:11,color:P.green}},"✓ Ao salvar, o estoque de ",h("strong",null,sForm.product)," será abatido em ",h("strong",null,sForm.qtdUsada+" un"))
+        ),
         h(Field,{label:"Dose",half:true},h(Inp,{value:sForm.dose,onChange:sfv("dose"),placeholder:"Ex: 40U, 1ml"})),
         h(Field,{label:"Região",half:true},h(Inp,{value:sForm.region,onChange:sfv("region"),placeholder:"Ex: Glabela + Testa"})),
         h(Field,{label:"Local",half:true},h(Sel,{value:sForm.location,onChange:sfv("location"),options:locations})),
@@ -1376,12 +1577,16 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
     )
   );
 }
-// ─── ESTOQUE ──────────────────────────────────────────────────────────────────
+// ─── ESTOQUE COM CONTROLE DE LOTE ─────────────────────────────────────────────
 function Estoque({products,setProducts}){
   const[filter,setFilter]=useState("all");
   const[showNew,setShowNew]=useState(false);
   const[editItem,setEditItem]=useState(null);
-  const blank={name:"",cat:"Toxina Botulínica",qty:"",min:"",unit:"un",expiry:"",cost:"",emoji:"💉"};
+  const[showLotes,setShowLotes]=useState(null); // id do produto para ver lotes
+  const[showEntrada,setShowEntrada]=useState(null); // id do produto para nova entrada de lote
+  const blankLote={lote:"",validade:"",qtdEntrada:""};
+  const[loteForm,setLoteForm]=useState(blankLote);
+  const blank={name:"",cat:"Toxina Botulínica",qty:"",min:"",unit:"un",expiry:"",cost:"",emoji:"💉",lotes:[]};
   const[form,setForm]=useState(blank);
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const h=createElement;
@@ -1392,45 +1597,164 @@ function Estoque({products,setProducts}){
   function save(){
     const qty=Number(form.qty),min=Number(form.min);
     if(editItem)setProducts(prev=>prev.map(i=>i.id===editItem.id?{...i,...form,qty,min,cost:Number(form.cost),status:calc(qty,min)}:i));
-    else setProducts(prev=>[...prev,{id:Date.now(),...form,qty,min,cost:Number(form.cost),status:calc(qty,min)}]);
+    else setProducts(prev=>[...prev,{id:Date.now(),...form,qty,min,cost:Number(form.cost),status:calc(qty,min),lotes:[]}]);
     setShowNew(false);setEditItem(null);setForm(blank);
   }
   function del(id){if(window.confirm("Excluir produto?"))setProducts(prev=>prev.filter(i=>i.id!==id));}
   function adj(id,d){setProducts(prev=>prev.map(i=>{if(i.id!==id)return i;const qty=Math.max(0,i.qty+d);return{...i,qty,status:calc(qty,i.min)};}));}
   function openEdit(item){setEditItem(item);setForm({...item,qty:String(item.qty),min:String(item.min),cost:String(item.cost)});setShowNew(true);}
+  function addLote(prodId){
+    if(!loteForm.lote||!loteForm.qtdEntrada)return;
+    const qtd=Number(loteForm.qtdEntrada)||0;
+    setProducts(prev=>prev.map(i=>{
+      if(i.id!==prodId)return i;
+      const novoLote={id:Date.now(),lote:loteForm.lote,validade:loteForm.validade,qtdInicial:qtd,qtdAtual:qtd,entrada:new Date().toLocaleDateString("pt-BR")};
+      const lotes=[...(i.lotes||[]),novoLote];
+      const novaQty=i.qty+qtd;
+      return{...i,lotes,qty:novaQty,status:calc(novaQty,i.min),expiry:loteForm.validade||i.expiry};
+    }));
+    setLoteForm(blankLote);setShowEntrada(null);
+  }
+  function delLote(prodId,loteId){
+    if(!window.confirm("Remover este lote do registro?"))return;
+    setProducts(prev=>prev.map(i=>{
+      if(i.id!==prodId)return i;
+      const lote=( i.lotes||[]).find(l=>l.id===loteId);
+      if(!lote)return i;
+      const lotes=(i.lotes||[]).filter(l=>l.id!==loteId);
+      const novaQty=Math.max(0,i.qty-lote.qtdAtual);
+      return{...i,lotes,qty:novaQty,status:calc(novaQty,i.min)};
+    }));
+  }
   const critical=products.filter(i=>i.status==="critical").length;
   const totalVal=products.reduce((a,i)=>a+i.qty*i.cost,0);
+  // Verifica validades próximas (≤60 dias)
+  const hoje=new Date();
+  function parseValidade(v){if(!v)return null;const[m,y]=v.split("/");return new Date(y,Number(m)-1,1);}
+  const proxVenc=products.flatMap(p=>(p.lotes||[]).filter(l=>l.qtdAtual>0).map(l=>{const d=parseValidade(l.validade);const dias=d?Math.floor((d-hoje)/(1000*60*60*24)):null;return{...l,prodName:p.name,prodId:p.id,dias};})).filter(l=>l.dias!==null&&l.dias<=60).sort((a,b)=>a.dias-b.dias);
+
+  const prodSelecionado=showLotes?products.find(p=>p.id===showLotes):null;
+  const prodEntrada=showEntrada?products.find(p=>p.id===showEntrada):null;
+
   return h("div",null,
-    h(SectionHeader,{title:"Estoque",sub:`${products.length} produtos · ${critical} críticos`,action:h(Btn,{onClick:()=>{setEditItem(null);setForm(blank);setShowNew(true);}},"＋ Entrada")}),
+    h(SectionHeader,{title:"Estoque",sub:`${products.length} produtos · ${critical} críticos`,action:h(Btn,{onClick:()=>{setEditItem(null);setForm(blank);setShowNew(true);}},"＋ Novo Produto")}),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
       [{l:"Nível Crítico",v:critical,c:P.red},{l:"Produtos",v:products.length,c:P.accent},{l:"Valor em Estoque",v:fmtCurr(totalVal),c:P.green}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
     ),
+    // Alertas de vencimento próximo
+    proxVenc.length>0&&h(Card,{style:{marginBottom:16,border:"1px solid rgba(196,169,106,.35)",background:"rgba(196,169,106,.04)"}},
+      h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:10}},
+        h("span",{style:{fontSize:18}},"⏰"),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.yellow}},"Lotes com Vencimento Próximo (≤60 dias)")
+      ),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+        proxVenc.map(l=>h("div",{key:l.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:P.bg3,borderRadius:8,border:`1px solid ${l.dias<=15?"rgba(192,112,112,.4)":"rgba(196,169,106,.3)"}`}},
+          h("div",null,
+            h("span",{style:{fontSize:13,color:P.text}},[l.prodName]),
+            h("span",{style:{fontSize:11,color:P.text3,marginLeft:8}},"Lote: "+l.lote)
+          ),
+          h("div",{style:{display:"flex",alignItems:"center",gap:12}},
+            h("span",{style:{fontSize:12,color:P.text2}},l.qtdAtual+" disponível"),
+            h("span",{style:{fontSize:12,fontWeight:600,color:l.dias<=15?P.red:P.yellow}},l.dias<=0?"VENCIDO":l.dias+"d restantes"),
+            h("span",{style:{fontSize:11,color:P.text3}},"Val: "+l.validade)
+          )
+        ))
+      )
+    ),
     h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
     h(Card,null,h("table",{style:{width:"100%",borderCollapse:"collapse"}},
-      h("thead",null,h("tr",null,["Produto","Cat.","Estoque","Mín.","Validade","Custo","Status","Ações"].map(hd=>h("th",{key:hd,style:{textAlign:"left",fontSize:10,textTransform:"uppercase",letterSpacing:".1em",color:P.text3,padding:"0 8px 12px 0",borderBottom:`1px solid ${P.border}`}},hd)))),
-      h("tbody",null,visible.map(item=>{const sc=stCfg[item.status],pct=Math.min(100,(item.qty/Math.max(item.min*1.5,1))*100);return h("tr",{key:item.id},
-        h("td",{style:{padding:"11px 8px 11px 0",borderBottom:`1px solid rgba(71,35,37,.4)`}},h("span",{style:{fontSize:16,marginRight:8}},item.emoji),h("span",{style:{fontSize:13,color:P.text,fontWeight:500}},item.name)),
-        h("td",{style:{padding:"11px 8px 11px 0",fontSize:12,color:P.text3,borderBottom:`1px solid rgba(71,35,37,.4)`}},item.cat),
-        h("td",{style:{padding:"11px 8px 11px 0",borderBottom:`1px solid rgba(71,35,37,.4)`}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:sc.color,lineHeight:1}},`${item.qty} `,h("span",{style:{fontSize:10,color:P.text3,fontFamily:"'DM Sans',sans-serif"}},item.unit)),h("div",{style:{height:3,borderRadius:2,background:P.bg3,width:50,marginTop:4,overflow:"hidden"}},h("div",{style:{height:"100%",width:`${pct}%`,background:sc.color,borderRadius:2}}))),
-        h("td",{style:{padding:"11px 8px 11px 0",fontSize:12,color:P.text3,borderBottom:`1px solid rgba(71,35,37,.4)`}},`${item.min} ${item.unit}`),
-        h("td",{style:{padding:"11px 8px 11px 0",fontSize:12,color:P.text2,borderBottom:`1px solid rgba(71,35,37,.4)`}},item.expiry),
-        h("td",{style:{padding:"11px 8px 11px 0",fontSize:12,color:P.text2,borderBottom:`1px solid rgba(71,35,37,.4)`}},`R$${item.cost}`),
-        h("td",{style:{padding:"11px 8px 11px 0",borderBottom:`1px solid rgba(71,35,37,.4)`}},h("span",{style:{fontSize:11,padding:"3px 8px",borderRadius:12,color:sc.color,background:sc.bg}},sc.l)),
-        h("td",{style:{padding:"11px 0",borderBottom:`1px solid rgba(71,35,37,.4)`}},h("div",{style:{display:"flex",gap:4}},
-          h("button",{onClick:(e)=>{e.stopPropagation();adj(item.id,-1);},style:{width:26,height:26,borderRadius:5,border:`1px solid ${P.border}`,background:P.bg3,color:P.red,cursor:"pointer",fontSize:15,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}},"−"),
-          h("input",{type:"number",value:item.qty,min:0,onChange:(e)=>{const v=parseInt(e.target.value)||0;setProducts(prev=>prev.map(i=>i.id===item.id?{...i,qty:v,status:calc(v,i.min)}:i));},style:{width:38,height:26,borderRadius:5,border:`1px solid ${P.border}`,background:P.bg3,color:P.accent3,fontSize:12,textAlign:"center",outline:"none",fontFamily:"'DM Sans',sans-serif"}}),
-          h("button",{onClick:(e)=>{e.stopPropagation();adj(item.id,+1);},style:{width:26,height:26,borderRadius:5,border:`1px solid ${P.border}`,background:P.bg3,color:P.green,cursor:"pointer",fontSize:15,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}},"＋"),
-          h("button",{onClick:()=>openEdit(item),style:{width:23,height:23,borderRadius:5,border:`1px solid ${P.border}`,background:"transparent",color:P.accent,cursor:"pointer",fontSize:11}},"✎"),
-          h("button",{onClick:()=>del(item.id),style:{width:23,height:23,borderRadius:5,border:"1px solid rgba(192,112,112,.2)",background:"transparent",color:P.red,cursor:"pointer",fontSize:11}},"🗑")
-        ))
-      );}))
+      h("thead",null,h("tr",null,["Produto","Cat.","Estoque","Mín.","Lotes","Validade","Custo","Status","Ações"].map(hd=>h("th",{key:hd,style:{textAlign:"left",fontSize:10,textTransform:"uppercase",letterSpacing:".1em",color:P.text3,padding:"0 8px 12px 0",borderBottom:`1px solid ${P.border}`}},hd)))),
+      h("tbody",null,visible.map(item=>{
+        const sc=stCfg[item.status],pct=Math.min(100,(item.qty/Math.max(item.min*1.5,1))*100);
+        const lotesAtivos=(item.lotes||[]).filter(l=>l.qtdAtual>0);
+        const loteVenc=lotesAtivos.find(l=>{const d=parseValidade(l.validade);return d&&Math.floor((d-hoje)/(1000*60*60*24))<=60;});
+        return h("tr",{key:item.id},
+          h("td",{style:{padding:"11px 8px 11px 0",borderBottom:`1px solid rgba(71,35,37,.4)`}},h("span",{style:{fontSize:16,marginRight:8}},item.emoji),h("span",{style:{fontSize:13,color:P.text,fontWeight:500}},item.name)),
+          h("td",{style:{padding:"11px 8px 11px 0",fontSize:12,color:P.text3,borderBottom:`1px solid rgba(71,35,37,.4)`}},item.cat),
+          h("td",{style:{padding:"11px 8px 11px 0",borderBottom:`1px solid rgba(71,35,37,.4)`}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:sc.color,lineHeight:1}},`${item.qty} `,h("span",{style:{fontSize:10,color:P.text3,fontFamily:"'DM Sans',sans-serif"}},item.unit)),
+            h("div",{style:{height:3,borderRadius:2,background:P.bg3,width:50,marginTop:4,overflow:"hidden"}},h("div",{style:{height:"100%",width:`${pct}%`,background:sc.color,borderRadius:2}}))
+          ),
+          h("td",{style:{padding:"11px 8px 11px 0",fontSize:12,color:P.text3,borderBottom:`1px solid rgba(71,35,37,.4)`}},`${item.min} ${item.unit}`),
+          h("td",{style:{padding:"11px 8px 11px 0",borderBottom:`1px solid rgba(71,35,37,.4)`}},
+            h("button",{onClick:()=>setShowLotes(item.id),style:{fontSize:11,padding:"3px 8px",borderRadius:8,border:`1px solid ${loteVenc?"rgba(196,169,106,.5)":P.border}`,background:loteVenc?"rgba(196,169,106,.1)":"transparent",color:loteVenc?P.yellow:P.accent,cursor:"pointer"}},
+              lotesAtivos.length>0?(lotesAtivos.length+" lote"+(lotesAtivos.length>1?"s":"")):"+ Lote"
+            )
+          ),
+          h("td",{style:{padding:"11px 8px 11px 0",fontSize:12,color:P.text2,borderBottom:`1px solid rgba(71,35,37,.4)`}},item.expiry),
+          h("td",{style:{padding:"11px 8px 11px 0",fontSize:12,color:P.text2,borderBottom:`1px solid rgba(71,35,37,.4)`}},`R$${item.cost}`),
+          h("td",{style:{padding:"11px 8px 11px 0",borderBottom:`1px solid rgba(71,35,37,.4)`}},h("span",{style:{fontSize:11,padding:"3px 8px",borderRadius:12,color:sc.color,background:sc.bg}},sc.l)),
+          h("td",{style:{padding:"11px 0",borderBottom:`1px solid rgba(71,35,37,.4)`}},h("div",{style:{display:"flex",gap:4}},
+            h("button",{onClick:(e)=>{e.stopPropagation();adj(item.id,-1);},style:{width:26,height:26,borderRadius:5,border:`1px solid ${P.border}`,background:P.bg3,color:P.red,cursor:"pointer",fontSize:15,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}},"−"),
+            h("input",{type:"number",value:item.qty,min:0,onChange:(e)=>{const v=parseInt(e.target.value)||0;setProducts(prev=>prev.map(i=>i.id===item.id?{...i,qty:v,status:calc(v,i.min)}:i));},style:{width:38,height:26,borderRadius:5,border:`1px solid ${P.border}`,background:P.bg3,color:P.accent3,fontSize:12,textAlign:"center",outline:"none",fontFamily:"'DM Sans',sans-serif"}}),
+            h("button",{onClick:(e)=>{e.stopPropagation();adj(item.id,+1);},style:{width:26,height:26,borderRadius:5,border:`1px solid ${P.border}`,background:P.bg3,color:P.green,cursor:"pointer",fontSize:15,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}},"＋"),
+            h("button",{onClick:()=>{setShowEntrada(item.id);setLoteForm(blankLote);},style:{width:60,height:26,borderRadius:5,border:`1px solid rgba(122,173,138,.4)`,background:"rgba(122,173,138,.08)",color:P.green,cursor:"pointer",fontSize:10,fontWeight:600}},"+ Lote"),
+            h("button",{onClick:()=>openEdit(item),style:{width:23,height:23,borderRadius:5,border:`1px solid ${P.border}`,background:"transparent",color:P.accent,cursor:"pointer",fontSize:11}},"✎"),
+            h("button",{onClick:()=>del(item.id),style:{width:23,height:23,borderRadius:5,border:"1px solid rgba(192,112,112,.2)",background:"transparent",color:P.red,cursor:"pointer",fontSize:11}},"🗑")
+          ))
+        );
+      }))
     )),
+    // Modal: ver lotes do produto
+    h(Modal,{open:!!showLotes&&!!prodSelecionado,onClose:()=>setShowLotes(null),title:`📦 Lotes — ${prodSelecionado?.name||""}`,width:560},
+      prodSelecionado&&h("div",null,
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+          h("div",{style:{fontSize:13,color:P.text3}},`Estoque total: `+h("strong",{style:{color:P.accent3}},prodSelecionado.qty+" "+prodSelecionado.unit)),
+          h(Btn,{onClick:()=>{setShowEntrada(prodSelecionado.id);setLoteForm(blankLote);setShowLotes(null);},style:{fontSize:12,padding:"6px 14px"}},"+ Nova Entrada")
+        ),
+        (prodSelecionado.lotes||[]).length===0
+          ?h("div",{style:{textAlign:"center",padding:30,color:P.text3,fontSize:13}},"Nenhum lote registrado para este produto.")
+          :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+            (prodSelecionado.lotes||[]).map(l=>{
+              const d=parseValidade(l.validade);
+              const dias=d?Math.floor((d-hoje)/(1000*60*60*24)):null;
+              const vencClass=dias===null?null:dias<=0?P.red:dias<=15?P.red:dias<=60?P.yellow:P.green;
+              return h("div",{key:l.id,style:{padding:"12px 16px",background:P.bg3,borderRadius:10,border:`1px solid ${vencClass&&dias<=60?"rgba(196,169,106,.4)":P.border}`}},
+                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}},
+                  h("div",null,
+                    h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},"Lote: "+l.lote),
+                    h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Entrada: "+l.entrada)
+                  ),
+                  h("button",{onClick:()=>delLote(prodSelecionado.id,l.id),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:14}},"🗑")
+                ),
+                h("div",{style:{display:"flex",gap:20,flexWrap:"wrap"}},
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:2}},"Validade"),h("div",{style:{fontSize:14,color:vencClass||P.text2,fontWeight:600}},l.validade||"—",(dias!==null&&dias<=60)&&h("span",{style:{fontSize:11,marginLeft:6}},dias<=0?"VENCIDO":"vence em "+dias+"d"))),
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:2}},"Qtd. Inicial"),h("div",{style:{fontSize:14,color:P.text2}},l.qtdInicial+" "+prodSelecionado.unit)),
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:2}},"Saldo Atual"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:l.qtdAtual>0?P.green:P.red}},l.qtdAtual+" ",h("span",{style:{fontSize:12,fontFamily:"'DM Sans',sans-serif",color:P.text3}},prodSelecionado.unit))),
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:2}},"Consumido"),h("div",{style:{fontSize:14,color:P.accent}},(l.qtdInicial-l.qtdAtual)+" "+prodSelecionado.unit))
+                ),
+                // Barra de consumo
+                h("div",{style:{marginTop:10,height:4,borderRadius:2,background:P.bg,overflow:"hidden"}},
+                  h("div",{style:{height:"100%",width:`${Math.round((l.qtdAtual/Math.max(l.qtdInicial,1))*100)}%`,background:l.qtdAtual>0?P.green:P.red,borderRadius:2}})
+                )
+              );
+            })
+          )
+      )
+    ),
+    // Modal: nova entrada de lote
+    h(Modal,{open:!!showEntrada&&!!prodEntrada,onClose:()=>setShowEntrada(null),title:`📥 Nova Entrada — ${prodEntrada?.name||""}`,width:420},
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
+        h(Field,{label:"Número do Lote"},h(Inp,{value:loteForm.lote,onChange:v=>setLoteForm(p=>({...p,lote:v})),placeholder:"Ex: AB12345"})),
+        h(Field,{label:"Validade (MM/AAAA)"},h(Inp,{value:loteForm.validade,onChange:v=>setLoteForm(p=>({...p,validade:v})),placeholder:"12/2027"})),
+        h(Field,{label:`Quantidade Recebida (${prodEntrada?.unit||"un"})`},h(Inp,{value:loteForm.qtdEntrada,onChange:v=>setLoteForm(p=>({...p,qtdEntrada:v})),placeholder:"Ex: 100"}))
+      ),
+      prodEntrada&&h("div",{style:{marginTop:10,padding:"10px 14px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`,fontSize:13,color:P.text3}},
+        "Estoque atual: ",h("strong",{style:{color:P.accent3}},prodEntrada.qty+" "+prodEntrada.unit),
+        loteForm.qtdEntrada&&h("span",null," → Novo total: ",h("strong",{style:{color:P.green}},(prodEntrada.qty+Number(loteForm.qtdEntrada||0))+" "+prodEntrada.unit))
+      ),
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},
+        h(Btn,{variant:"ghost",onClick:()=>setShowEntrada(null)},"Cancelar"),
+        h(Btn,{onClick:()=>addLote(showEntrada)},"Registrar Entrada")
+      )
+    ),
+    // Modal: cadastro/edição de produto
     h(Modal,{open:showNew,onClose:()=>{setShowNew(false);setEditItem(null);},title:editItem?"✎ Editar Produto":"✦ Novo Produto",width:480},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Nome"},h(Inp,{value:form.name,onChange:fv("name"),placeholder:"Ex: Botox Allergan 100U"})),
         h(Field,{label:"Emoji",half:true},h(Inp,{value:form.emoji,onChange:fv("emoji"),placeholder:"💉"})),
         h(Field,{label:"Categoria",half:true},h(Sel,{value:form.cat,onChange:fv("cat"),options:cats})),
-        h(Field,{label:"Unidade",half:true},h(Sel,{value:form.unit,onChange:fv("unit"),options:["un","sir","fr","amp","cx","pct","ml"]})),
+        h(Field,{label:"Unidade",half:true},h(Sel,{value:form.unit,onChange:fv("unit"),options:["un","sir","fr","amp","cx","pct","ml","U"]})),
         h(Field,{label:"Qtd. Atual",half:true},h(Inp,{value:form.qty,onChange:fv("qty"),placeholder:"0"})),
         h(Field,{label:"Qtd. Mínima",half:true},h(Inp,{value:form.min,onChange:fv("min"),placeholder:"5"})),
         h(Field,{label:"Validade",half:true},h(Inp,{value:form.expiry,onChange:fv("expiry"),placeholder:"MM/AAAA"})),
@@ -1503,8 +1827,8 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Entradas"),
           h(Btn,{onClick:()=>{setEditInc(null);setIncForm(blankInc);setShowNewInc(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Entrada Manual")
         ),
-        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}},h("div",{style:{fontSize:11,color:P.text3}},"Sessões de pacientes ("+allS.length+" total · "+allS.filter(s=>s.paid).length+" pagas)"),h("div",{style:{fontSize:10,color:P.text3}},fmtCurr(sessionsRec)+" recebidos")),
-        allS.sort((a,b)=>{try{const pa=a.date.split("/"),pb=b.date.split("/");return new Date(pb[2]+"-"+pb[1]+"-"+pb[0])-new Date(pa[2]+"-"+pa[1]+"-"+pa[0]);}catch(e){return 0;}}).map((s,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:8}},"Sessões de pacientes:"),
+        allS.slice(0,5).map((s,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
           h("div",null,h("div",{style:{fontSize:13,color:P.text}},`${s.pname} — ${s.procedure}`),h("div",{style:{fontSize:11,color:P.text3}},`${s.date} · ${s.payMethod}${s.payMethod==="Cartão Crédito"&&s.parcelas>1?" · "+s.parcelas+"x de "+fmtCurr(s.value/s.parcelas):""}`)  ),
           h("div",{style:{display:"flex",alignItems:"center",gap:8}},
             h("div",{style:{textAlign:"right"}},
@@ -2158,7 +2482,7 @@ function AppInner({ session, onLogout }) {
             page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,locations:locationNames}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
-            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),returnRules}),
+            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,returnRules}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
