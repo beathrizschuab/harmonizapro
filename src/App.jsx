@@ -113,11 +113,21 @@ const initials=n=>n.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
 const fmtCurr=v=>"R$"+Number(v).toLocaleString("pt-BR",{minimumFractionDigits:0});
 const parseDMY=s=>{if(!s)return null;const[d,m,y]=s.split("/");return new Date(`${y}-${m}-${d}`);};
 const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
+// Faz parse de uma data no formato "YYYY-MM-DD" (vinda de <input type="date">) sem sofrer
+// o deslocamento de fuso horário que `new Date("YYYY-MM-DD")` causa (interpreta como UTC meia-noite,
+// o que em horários como o do Brasil -3h faz o dia "voltar" 1 dia ao ler getDate()/getMonth() local).
+const parseISODate=isoStr=>{
+  if(!isoStr)return null;
+  const parts=isoStr.split("-");
+  if(parts.length!==3)return null;
+  const[y,m,d]=parts.map(Number);
+  if(!y||!m||!d)return null;
+  return new Date(y,m-1,d); // cria a data já no horário local, sem conversão UTC
+};
 // Calcula idade exata a partir da data de nascimento (string "YYYY-MM-DD"), considerando se o aniversário do ano já passou
 const calcAge=birthDateStr=>{
-  if(!birthDateStr)return null;
-  const bd=new Date(birthDateStr);
-  if(isNaN(bd))return null;
+  const bd=parseISODate(birthDateStr);
+  if(!bd||isNaN(bd))return null;
   const today=new Date();
   let age=today.getFullYear()-bd.getFullYear();
   const aindaNaoFezAniversario=(today.getMonth()<bd.getMonth())||(today.getMonth()===bd.getMonth()&&today.getDate()<bd.getDate());
@@ -659,7 +669,7 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,mini=fals
 function Dashboard({patients,agenda,onNav,onSelectPatient,settings,returnRules}){
   const today=new Date();
   const todayStr=today.toISOString().slice(0,10);
-  const todayBirthdays=patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate);return bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();});
+  const todayBirthdays=patients.filter(p=>{if(!p.birthDate)return false;const bd=parseISODate(p.birthDate);return bd&&bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();});
   const allS=patients.flatMap(p=>p.sessions||[]);
   const totalRec=allS.filter(s=>s.paid).reduce((a,s)=>a+s.value,0);
   const totalPend=allS.filter(s=>!s.paid).reduce((a,s)=>a+s.value,0);
@@ -679,7 +689,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,settings,returnRules})
       ),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:10}},
         todayBirthdays.map(p=>{
-          const age=new Date().getFullYear()-new Date(p.birthDate).getFullYear();
+          const age=calcAge(p.birthDate);
           const phone=p.phone?p.phone.replace(/\D/g,""):"";
           const waMsg=encodeURIComponent(`Olá ${p.name.split(" ")[0]}! 🎂 Feliz aniversário! Que seu dia seja incrível! 🌸`);
           return h("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:12,flex:"1 1 auto",minWidth:220}},
@@ -2112,7 +2122,7 @@ function AniversariantesDoMes({patients,onSelectPatient,onNav}){
   const today=new Date();
   const curM=today.getMonth(),curD=today.getDate();
   const safePats=Array.isArray(patients)?patients:[];
-  const bdays=safePats.filter(p=>{if(!p||!p.birthDate)return false;try{const bd=new Date(p.birthDate);return!isNaN(bd)&&bd.getMonth()===curM;}catch{return false;}}).map(p=>{const bd=new Date(p.birthDate);const age=today.getFullYear()-bd.getFullYear();const day=bd.getDate();return{...p,_bday:day,_age:age,_isToday:day===curD,_isPast:day<curD};}).sort((a,b)=>a._bday-b._bday);
+  const bdays=safePats.filter(p=>{if(!p||!p.birthDate)return false;const bd=parseISODate(p.birthDate);return bd&&!isNaN(bd)&&bd.getMonth()===curM;}).map(p=>{const bd=parseISODate(p.birthDate);const age=calcAge(p.birthDate);const day=bd.getDate();return{...p,_bday:day,_age:age,_isToday:day===curD,_isPast:day<curD};}).sort((a,b)=>a._bday-b._bday);
   if(!bdays.length)return null;
   return h(Card,{style:{marginBottom:22,border:`1px solid rgba(196,169,106,.3)`,background:"rgba(196,169,106,.04)"}},
     h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:14}},
@@ -2154,8 +2164,8 @@ function Aniversariantes({patients,onSelectPatient,onNav}){
   // Para cada paciente com data de nascimento, calcula quantos dias faltam para o próximo aniversário
   const withBdayInfo=useMemo(()=>{
     return safePats.filter(p=>p&&p.birthDate).map(p=>{
-      const bd=new Date(p.birthDate);
-      if(isNaN(bd))return null;
+      const bd=parseISODate(p.birthDate);
+      if(!bd||isNaN(bd))return null;
       const age=calcAge(p.birthDate);
       const month=bd.getMonth(),day=bd.getDate();
       // próximo aniversário (este ano ou no próximo, se já passou)
@@ -2722,7 +2732,7 @@ function AppInner({ session, onLogout }) {
   const nav=[
     {k:"dashboard",l:"Dashboard",icon:"✦"},
     {k:"retornos",l:"Retornos",icon:"⏰",badge:(()=>{const today=new Date();return patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length||null;})(),badgeColor:P.red},
-    {k:"aniversariantes",l:"Aniversariantes",icon:"🎂",badge:(()=>{const today=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate);return!isNaN(bd)&&bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();}).length||null;})(),badgeColor:P.yellow},
+    {k:"aniversariantes",l:"Aniversariantes",icon:"🎂",badge:(()=>{const today=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=parseISODate(p.birthDate);return bd&&!isNaN(bd)&&bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();}).length||null;})(),badgeColor:P.yellow},
     {k:"agenda",l:"Agenda",icon:"📅",badge:todayApptCount||null},
     {k:"pacientes",l:"Pacientes",icon:"👤"},
     {k:"prontuario",l:"Prontuários",icon:"📋"},
