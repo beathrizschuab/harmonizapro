@@ -113,6 +113,17 @@ const initials=n=>n.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
 const fmtCurr=v=>"R$"+Number(v).toLocaleString("pt-BR",{minimumFractionDigits:0});
 const parseDMY=s=>{if(!s)return null;const[d,m,y]=s.split("/");return new Date(`${y}-${m}-${d}`);};
 const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
+// Calcula idade exata a partir da data de nascimento (string "YYYY-MM-DD"), considerando se o aniversário do ano já passou
+const calcAge=birthDateStr=>{
+  if(!birthDateStr)return null;
+  const bd=new Date(birthDateStr);
+  if(isNaN(bd))return null;
+  const today=new Date();
+  let age=today.getFullYear()-bd.getFullYear();
+  const aindaNaoFezAniversario=(today.getMonth()<bd.getMonth())||(today.getMonth()===bd.getMonth()&&today.getDate()<bd.getDate());
+  if(aindaNaoFezAniversario)age--;
+  return age>=0?age:null;
+};
 const todayISO=()=>new Date().toISOString().slice(0,10);
 
 // ─── HELPERS DE ESTOQUE POR LOTE ────────────────────────────────────────────
@@ -145,7 +156,9 @@ function debitarLote(setProducts, productName, loteId, qtdUsada) {
 function useSupaTable(key, initFallback = []) {
   const [data, setDataRaw] = useState(initFallback);
   const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState(null);
   const uid = useRef(null);
+  const hasLocalWrite = useRef(false); // true assim que o usuário salva algo, mesmo antes do load inicial terminar
 
   useEffect(() => {
     let cancelled = false;
@@ -154,7 +167,9 @@ function useSupaTable(key, initFallback = []) {
       uid.current = user.id;
       supabase.from("app_data").select("value").eq("user_id", user.id).eq("key", key).maybeSingle().then(({ data: row, error }) => {
         if (!cancelled) {
-          if (!error && row && row.value) {
+          // Se o usuário já salvou algo (ex: cadastrou/editou paciente) enquanto este select
+          // ainda estava em voo, NÃO sobrescrevemos o estado local com o valor antigo do banco.
+          if (!error && row && row.value && !hasLocalWrite.current) {
             try { setDataRaw(JSON.parse(row.value)); } catch { setDataRaw(initFallback); }
           }
           setLoading(false);
@@ -165,22 +180,33 @@ function useSupaTable(key, initFallback = []) {
   }, [key]);
 
   const setData = useCallback((valOrFn) => {
+    hasLocalWrite.current = true;
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
       (async () => {
-        if (!uid.current) return;
-        await supabase.from("app_data").upsert({
+        if (!uid.current) {
+          console.error(`[${key}] Não foi possível salvar: usuário não autenticado ainda.`);
+          setSaveError(`Não foi possível salvar "${key}": sessão não carregada. Recarregue a página e tente de novo.`);
+          return;
+        }
+        const { error } = await supabase.from("app_data").upsert({
           user_id: uid.current,
           key,
           value: JSON.stringify(next),
           updated_at: new Date().toISOString(),
         }, { onConflict: "user_id,key" });
+        if (error) {
+          console.error(`[${key}] Erro ao salvar no Supabase:`, error);
+          setSaveError(`Erro ao salvar "${key}": ${error.message || "verifique sua conexão ou as permissões da tabela."}`);
+        } else {
+          setSaveError(null);
+        }
       })();
       return next;
     });
   }, [key]);
 
-  return [data, setData, loading];
+  return [data, setData, loading, saveError];
 }
 
 // useSettings: usa o mesmo mecanismo JSON
@@ -974,7 +1000,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
     return ms&&mf;
   });
   function addPatient(){
-    const np={id:Date.now(),...form,age:Number(form.age),profilePhoto:profPhoto,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
+    const np={id:Date.now(),...form,age:(calcAge(form.birthDate)??Number(form.age))||"",profilePhoto:profPhoto,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
       complaints:form.complaints.split(",").map(s=>s.trim()).filter(Boolean),tags:[],
       anamnese:{healthHistory:form.healthHistory,medications:form.medications,smoking:form.smoking,pregnancy:form.pregnancy,previousProcedures:form.previousProcedures,skinType:form.skinType,fitzpatrick:form.fitzpatrick,allergiesDetail:form.allergiesDetail,contraindications:form.contraindications,musicStyle:form.musicStyle,importantAlerts:form.allergies&&form.allergies!=="Nenhuma"?[form.allergies]:[]}};
     setPatients(prev=>[...prev,np]);setShowNew(false);setForm(blank);setProfPhoto(null);
@@ -1005,7 +1031,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
       h("div",{style:{fontSize:11,textTransform:"uppercase",letterSpacing:".12em",color:P.accent,borderBottom:`1px solid ${P.border}`,paddingBottom:8,marginBottom:14}},"Dados Pessoais"),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Nome Completo"},h(Inp,{value:form.name,onChange:fv("name"),placeholder:"Nome da paciente"})),
-        h(Field,{label:"Idade",third:true},h(Inp,{value:form.age,onChange:fv("age"),placeholder:"32"})),
+        h(Field,{label:"Idade (calculada)",third:true},h("div",{style:{...IS,display:"flex",alignItems:"center",background:P.bg2,color:P.text2,cursor:"default"}},form.birthDate?`${calcAge(form.birthDate)} anos`:"—")),
         h(Field,{label:"Data Nasc.",third:true},h(Inp,{type:"date",value:form.birthDate,onChange:fv("birthDate")})),
         h(Field,{label:"Tipo Sang.",third:true},h(Sel,{value:form.bloodType,onChange:fv("bloodType"),options:BLOOD_TYPES})),
         h(Field,{label:"Telefone",half:true},h(Inp,{value:form.phone,onChange:fv("phone"),placeholder:"(11) 99999-9999"})),
@@ -1096,7 +1122,7 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
     });
   }
   function savePat(){
-    upd(p=>({...p,...patForm,age:Number(patForm.age),complaints:patForm.complaints.split(",").map(s=>s.trim()).filter(Boolean),
+    upd(p=>({...p,...patForm,age:(calcAge(patForm.birthDate)??Number(patForm.age))||"",complaints:patForm.complaints.split(",").map(s=>s.trim()).filter(Boolean),
       anamnese:{...p.anamnese,healthHistory:patForm.healthHistory,medications:patForm.medications,smoking:patForm.smoking,pregnancy:patForm.pregnancy,previousProcedures:patForm.previousProcedures,skinType:patForm.skinType,fitzpatrick:patForm.fitzpatrick,allergiesDetail:patForm.allergiesDetail,contraindications:patForm.contraindications,musicStyle:patForm.musicStyle,importantAlerts:patForm.allergies&&patForm.allergies!=="Nenhuma"?[patForm.allergies]:[]}}));
     setEditPat(false);
   }
@@ -1619,7 +1645,7 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
     editPat&&h(Modal,{open:true,onClose:()=>setEditPat(false),title:"✎ Editar Dados da Paciente",width:620},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Nome"},h(Inp,{value:patForm.name,onChange:pfv("name")})),
-        h(Field,{label:"Idade",third:true},h(Inp,{value:patForm.age,onChange:pfv("age")})),
+        h(Field,{label:"Idade (calculada)",third:true},h("div",{style:{...IS,display:"flex",alignItems:"center",background:P.bg2,color:P.text2,cursor:"default"}},patForm.birthDate?`${calcAge(patForm.birthDate)} anos`:"—")),
         h(Field,{label:"Data Nasc.",third:true},h(Inp,{type:"date",value:patForm.birthDate,onChange:pfv("birthDate")})),
         h(Field,{label:"Status",third:true},h(Sel,{value:patForm.status,onChange:pfv("status"),options:Object.keys(PAT_STATUS_CFG)})),
         h(Field,{label:"Telefone",half:true},h(Inp,{value:patForm.phone,onChange:pfv("phone")})),
@@ -2115,6 +2141,108 @@ function AniversariantesDoMes({patients,onSelectPatient,onNav}){
     )
   );
 }
+// ─── ANIVERSARIANTES (PÁGINA COMPLETA) ───────────────────────────────────────
+function Aniversariantes({patients,onSelectPatient,onNav}){
+  const h=createElement;
+  const today=new Date();
+  const curM=today.getMonth(),curD=today.getDate();
+  const safePats=Array.isArray(patients)?patients:[];
+  const[modo,setModo]=useState("mes"); // mes | periodo
+  const[mesFiltro,setMesFiltro]=useState(curM); // 0-11
+  const[periodo,setPeriodo]=useState(30); // 30 | 60 | 90 dias
+
+  // Para cada paciente com data de nascimento, calcula quantos dias faltam para o próximo aniversário
+  const withBdayInfo=useMemo(()=>{
+    return safePats.filter(p=>p&&p.birthDate).map(p=>{
+      const bd=new Date(p.birthDate);
+      if(isNaN(bd))return null;
+      const age=calcAge(p.birthDate);
+      const month=bd.getMonth(),day=bd.getDate();
+      // próximo aniversário (este ano ou no próximo, se já passou)
+      let next=new Date(today.getFullYear(),month,day);
+      if(next<new Date(today.getFullYear(),curM,curD))next=new Date(today.getFullYear()+1,month,day);
+      const diasFaltam=daysBetween(new Date(today.getFullYear(),curM,curD),next);
+      const isToday=month===curM&&day===curD;
+      const isPast=month===curM&&day<curD;
+      return{...p,_bMonth:month,_bDay:day,_age:age,_diasFaltam:diasFaltam,_isToday:isToday,_isPast:isPast};
+    }).filter(Boolean);
+  },[safePats,curM,curD,today.getFullYear()]);
+
+  const porMes=useMemo(()=>withBdayInfo.filter(p=>p._bMonth===mesFiltro).sort((a,b)=>a._bDay-b._bDay),[withBdayInfo,mesFiltro]);
+  const porPeriodo=useMemo(()=>withBdayInfo.filter(p=>p._diasFaltam<=periodo).sort((a,b)=>a._diasFaltam-b._diasFaltam),[withBdayInfo,periodo]);
+  const lista=modo==="mes"?porMes:porPeriodo;
+
+  // Contagem por mês, para os botões de atalho
+  const countsByMonth=useMemo(()=>{
+    const c=Array(12).fill(0);
+    withBdayInfo.forEach(p=>{c[p._bMonth]++;});
+    return c;
+  },[withBdayInfo]);
+
+  return h("div",null,
+    h(SectionHeader,{title:"Aniversariantes",sub:`${withBdayInfo.length} de ${safePats.length} pacientes com data de nascimento cadastrada`}),
+    // Resumo rápido
+    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
+      [{l:"Hoje",v:withBdayInfo.filter(p=>p._isToday).length,c:P.yellow,icon:"🎉"},
+       {l:"Próx. 7 dias",v:withBdayInfo.filter(p=>p._diasFaltam<=7).length,c:"#7aaed4",icon:"🗓"},
+       {l:"Próx. 30 dias",v:withBdayInfo.filter(p=>p._diasFaltam<=30).length,c:P.accent,icon:"📅"},
+       {l:`Em ${MONTH_NAMES[curM]}`,v:countsByMonth[curM],c:P.green,icon:"🎂"}
+      ].map(k=>h(Card,{key:k.l},
+        h("div",{style:{fontSize:22,marginBottom:6}},k.icon),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c,lineHeight:1}},k.v),
+        h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.l)
+      ))
+    ),
+    // Alternância de modo de filtro
+    h("div",{style:{display:"flex",gap:6,marginBottom:14}},
+      [{k:"mes",l:"📅 Por Mês"},{k:"periodo",l:"⏳ Por Período"}].map(m=>
+        h("button",{key:m.k,onClick:()=>setModo(m.k),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:modo===m.k?P.rose:"transparent",border:`1px solid ${modo===m.k?P.rose:P.border}`,color:modo===m.k?P.accent3:P.text2}},m.l)
+      )
+    ),
+    // Filtro específico do modo escolhido
+    modo==="mes"
+      ?h("div",{style:{display:"flex",gap:6,marginBottom:18,flexWrap:"wrap"}},
+          MONTH_NAMES.map((m,i)=>h("button",{key:m,onClick:()=>setMesFiltro(i),style:{padding:"6px 13px",borderRadius:8,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:mesFiltro===i?P.rose:P.bg3,border:`1px solid ${mesFiltro===i?P.rose:P.border}`,color:mesFiltro===i?P.accent3:P.text2,display:"flex",alignItems:"center",gap:6}},
+            m,countsByMonth[i]>0&&h("span",{style:{background:mesFiltro===i?"rgba(0,0,0,.2)":P.card2,color:mesFiltro===i?P.accent3:P.text3,fontSize:10,padding:"1px 6px",borderRadius:10}},countsByMonth[i])
+          ))
+        )
+      :h("div",{style:{display:"flex",gap:6,marginBottom:18}},
+          [{v:30,l:"Próximos 30 dias"},{v:60,l:"Próximos 60 dias"},{v:90,l:"Próximos 90 dias"}].map(pOpt=>
+            h("button",{key:pOpt.v,onClick:()=>setPeriodo(pOpt.v),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:periodo===pOpt.v?P.rose:"transparent",border:`1px solid ${periodo===pOpt.v?P.rose:P.border}`,color:periodo===pOpt.v?P.accent3:P.text2}},pOpt.l)
+          )
+        ),
+    // Lista de aniversariantes
+    lista.length===0
+      ?h(Card,{style:{textAlign:"center",padding:40}},h("div",{style:{fontSize:32,marginBottom:12}},"🎂"),h("div",{style:{color:P.text3,fontSize:14}},modo==="mes"?`Nenhuma aniversariante em ${MONTH_NAMES[mesFiltro]}.`:"Nenhuma aniversariante neste período."))
+      :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+          lista.map(p=>{
+            const phone=(p.phone||"").replace(/\D/g,"");
+            const waMsg=encodeURIComponent("Olá "+p.name.split(" ")[0]+"! 🎂 Feliz aniversário! Que seu dia seja incrível! 🌸");
+            const dataFormatada=String(p._bDay).padStart(2,"0")+"/"+String(p._bMonth+1).padStart(2,"0");
+            return h(Card,{key:p.id,style:{border:p._isToday?`1px solid rgba(196,169,106,.4)`:`1px solid ${P.border}`,background:p._isToday?"rgba(196,169,106,.06)":P.card}},
+              h("div",{style:{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}},
+                h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:200,cursor:"pointer"}},
+                  h("div",{style:{fontSize:20,minWidth:30,textAlign:"center"}},p._isToday?"🎉":p._isPast&&modo==="mes"?"✓":"🎂"),
+                  h(Avatar,{name:p.name,size:42,src:p.profilePhoto}),
+                  h("div",null,
+                    h("div",{style:{fontSize:14,color:p._isToday?P.yellow:P.text,fontWeight:p._isToday?600:500}},p.name+(p._isToday?" · Hoje!":"")),
+                    h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`${dataFormatada} · Fará ${p._age+1} anos`)
+                  )
+                ),
+                h("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
+                  modo==="periodo"&&h("div",{style:{textAlign:"center",minWidth:70}},
+                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:p._isToday?P.yellow:P.accent,lineHeight:1}},p._diasFaltam===0?"Hoje":`${p._diasFaltam}d`),
+                    h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},"faltam")
+                  ),
+                  phone&&h("a",{href:"https://wa.me/55"+phone+"?text="+waMsg,target:"_blank",rel:"noreferrer",style:{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",background:"rgba(106,196,130,.13)",border:"1px solid rgba(106,196,130,.3)",borderRadius:8,color:"#7aad8a",fontSize:12,fontWeight:600,textDecoration:"none",flexShrink:0}},"💬 WhatsApp"),
+                  h("button",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,fontSize:12,cursor:"pointer"}},"Ver Prontuário")
+                )
+              )
+            );
+          })
+        )
+  );
+}
 // ─── PAGAMENTOS CARD (extraído para evitar IIFE no build) ────────────────────
 function PagamentosCard({allS}){
   const h=createElement;
@@ -2559,11 +2687,11 @@ function App(){
 }
 
 function AppInner({ session, onLogout }) {
-  const[patients,setPatients,loadingPatients]=useSupaTable("patients",INIT_PATIENTS);
-  const[agenda,setAgenda,loadingAgenda]=useSupaTable("agenda",INIT_AGENDA);
-  const[expenses,setExpenses,loadingExpenses]=useSupaTable("expenses",INIT_EXPENSES);
-  const[incomes,setIncomes,loadingIncomes]=useSupaTable("incomes",[]);
-  const[products,setProducts,loadingProducts]=useSupaTable("products",[
+  const[patients,setPatients,loadingPatients,errPatients]=useSupaTable("patients",INIT_PATIENTS);
+  const[agenda,setAgenda,loadingAgenda,errAgenda]=useSupaTable("agenda",INIT_AGENDA);
+  const[expenses,setExpenses,loadingExpenses,errExpenses]=useSupaTable("expenses",INIT_EXPENSES);
+  const[incomes,setIncomes,loadingIncomes,errIncomes]=useSupaTable("incomes",[]);
+  const[products,setProducts,loadingProducts,errProducts]=useSupaTable("products",[
     {id:"p1",name:"Botox Allergan 100U",cat:"Toxina Botulínica",qty:2,min:5,unit:"un",expiry:"12/2026",cost:800,emoji:"💉",status:"critical"},
     {id:"p2",name:"Juvederm Ultra 1ml",cat:"Ácido Hialurônico",qty:5,min:8,unit:"sir",expiry:"08/2026",cost:450,emoji:"✨",status:"low"},
     {id:"p3",name:"Sculptra 367mg",cat:"Bioestimulador",qty:7,min:4,unit:"fr",expiry:"09/2026",cost:950,emoji:"🧪",status:"ok"},
@@ -2571,12 +2699,13 @@ function AppInner({ session, onLogout }) {
     {id:"p5",name:"Profhilo 2ml",cat:"Skinbooster",qty:4,min:3,unit:"sir",expiry:"11/2026",cost:520,emoji:"💧",status:"ok"},
   ]);
   const[settingsData,setSettings,loadingSettings]=useSettings({doctorName:"Dra. Sofia",doctorTitle:"Médica Responsável",clinicName:"HarmonizaPro"});
-  const[procedures,setProcedures,loadingProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
-  const[locations,setLocations,loadingLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
-  const[returnRules,setReturnRules,loadingRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
+  const[procedures,setProcedures,loadingProcedures,errProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
+  const[locations,setLocations,loadingLocations,errLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
+  const[returnRules,setReturnRules,loadingRules,errRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
   // Todos os useState ANTES de qualquer return condicional (regra dos hooks)
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
+  const saveError=errPatients||errAgenda||errExpenses||errIncomes||errProducts||errProcedures||errLocations||errRules||null;
 
   // Aguarda todos os dados carregarem antes de renderizar a UI
   const isLoading = loadingPatients||loadingAgenda||loadingExpenses||loadingIncomes||loadingProducts||loadingSettings||loadingProcedures||loadingLocations||loadingRules;
@@ -2593,6 +2722,7 @@ function AppInner({ session, onLogout }) {
   const nav=[
     {k:"dashboard",l:"Dashboard",icon:"✦"},
     {k:"retornos",l:"Retornos",icon:"⏰",badge:(()=>{const today=new Date();return patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length||null;})(),badgeColor:P.red},
+    {k:"aniversariantes",l:"Aniversariantes",icon:"🎂",badge:(()=>{const today=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate);return!isNaN(bd)&&bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();}).length||null;})(),badgeColor:P.yellow},
     {k:"agenda",l:"Agenda",icon:"📅",badge:todayApptCount||null},
     {k:"pacientes",l:"Pacientes",icon:"👤"},
     {k:"prontuario",l:"Prontuários",icon:"📋"},
@@ -2605,7 +2735,7 @@ function AppInner({ session, onLogout }) {
   function handleNav(k){setPage(k);if(k!=="prontuario")setSelectedPatient(null);}
   function handleSelectPatient(p){setSelectedPatient(p);setPage("prontuario");}
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",retornos:"Retornos Pendentes",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",relatorios:"Relatórios",config:"Configurações"};
+  const pageTitles={dashboard:"Dashboard",retornos:"Retornos Pendentes",aniversariantes:"Aniversariantes",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",relatorios:"Relatórios",config:"Configurações"};
   const settings = settingsData;
   return h(Fragment,null,
     h("style",null,`@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{background:${P.bg};color:${P.text};font-family:'DM Sans',sans-serif;}::-webkit-scrollbar{width:4px;height:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:${P.border};border-radius:2px;}input,select,textarea{font-family:'DM Sans',sans-serif;color:${P.text};}select option{background:${P.bg2};}`),
@@ -2638,10 +2768,15 @@ function AppInner({ session, onLogout }) {
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text,flexShrink:0}},pageTitles[page]),
           h(GlobalSearch,{patients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav})
         ),
+        saveError&&h("div",{style:{padding:"10px 24px",background:"rgba(192,112,112,.13)",borderBottom:`1px solid rgba(192,112,112,.3)`,color:P.red,fontSize:12.5,display:"flex",alignItems:"center",gap:8,flexShrink:0}},
+          h("span",null,"⚠"),
+          h("span",null,saveError+" — os dados podem não estar salvos. Não recarregue a página até resolver.")
+        ),
         h("div",{style:{flex:1,overflowY:"auto",padding:24}},
           h(ErrorBoundary,{key:page},
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,settings,returnRules}),
             page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav}),
+            page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,locations:locationNames}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
