@@ -398,6 +398,31 @@ function MediaGallery({items,onAdd,onRemove,label,docMode=false}){
     const readers=files.map(f=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,type:f.type,url:e.target.result,date:new Date().toLocaleDateString("pt-BR")});r.readAsDataURL(f);}));
     Promise.all(readers).then(items=>onAdd(items));
   }
+  function openFile(item){
+    try{
+      // Converte Data URL (base64) em Blob URL — mais confiável para abrir em nova aba/baixar
+      const arr=item.url.split(",");
+      const mimeMatch=arr[0].match(/:(.*?);/);
+      const mime=mimeMatch?mimeMatch[1]:(item.type||"application/octet-stream");
+      const bstr=atob(arr[1]);
+      let n=bstr.length;
+      const u8=new Uint8Array(n);
+      while(n--){u8[n]=bstr.charCodeAt(n);}
+      const blob=new Blob([u8],{type:mime});
+      const blobUrl=URL.createObjectURL(blob);
+      const win=window.open(blobUrl,"_blank");
+      if(!win){
+        // Pop-up bloqueado pelo navegador: oferece download direto como alternativa
+        const a=document.createElement("a");
+        a.href=blobUrl;a.download=item.name||"arquivo";
+        document.body.appendChild(a);a.click();document.body.removeChild(a);
+      }
+      setTimeout(()=>URL.revokeObjectURL(blobUrl),60000);
+    }catch(err){
+      console.error("Erro ao abrir arquivo:",err);
+      alert("Não foi possível abrir o arquivo. Tente baixá-lo novamente.");
+    }
+  }
   return h("div",null,
     h("div",{style:{marginBottom:12}},h(UploadZone,{onFiles:addFiles,accept:docMode?"image/*,.pdf,.doc,.docx":"image/*",label})),
     items.length===0?h("div",{style:{textAlign:"center",padding:20,color:P.text3,fontSize:13}},"Nenhum arquivo.")
@@ -411,7 +436,7 @@ function MediaGallery({items,onAdd,onRemove,label,docMode=false}){
       ))
     ),
     preview&&h("div",{onClick:()=>setPreview(null),style:{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out"}},
-      preview.type?.startsWith("image")?h("img",{src:preview.url,alt:preview.name,style:{maxWidth:"90vw",maxHeight:"90vh",borderRadius:8,objectFit:"contain"}}):h("div",{style:{color:P.text,textAlign:"center"}},h("div",{style:{fontSize:48,marginBottom:12}},"📄"),h("div",null,preview.name),h("a",{href:preview.url,target:"_blank",rel:"noreferrer",style:{color:P.accent,fontSize:14,marginTop:8,display:"block"}},"Abrir ↗"))
+      preview.type?.startsWith("image")?h("img",{src:preview.url,alt:preview.name,onClick:e=>e.stopPropagation(),style:{maxWidth:"90vw",maxHeight:"90vh",borderRadius:8,objectFit:"contain"}}):h("div",{onClick:e=>e.stopPropagation(),style:{color:P.text,textAlign:"center"}},h("div",{style:{fontSize:48,marginBottom:12}},"📄"),h("div",null,preview.name),h("button",{onClick:()=>openFile(preview),style:{color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,padding:"8px 16px",fontSize:14,marginTop:12,cursor:"pointer"}},"Abrir / Baixar ↗"))
     )
   );
 }
