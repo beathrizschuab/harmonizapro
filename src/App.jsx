@@ -3799,20 +3799,6 @@ function AppInner({ session, onLogout }) {
   const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
   const h=createElement;
 
-  // Aguarda dados essenciais carregarem do Supabase antes de renderizar.
-  // Isso evita que o app inicie com dados do localStorage de outro dispositivo
-  // ou com os dados de demonstração embutidos no código.
-  if (loadingPatients || loadingAgenda || patients === null || agenda === null) {
-    return h("div", {
-      style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: P.bg, gap: 16 }
-    },
-      h("div", { style: { fontFamily: "'Cormorant Garamond',serif", fontSize: 28, color: P.accent3, letterSpacing: ".04em" } }, "HarmonizaPro"),
-      h("div", { style: { width: 32, height: 32, border: `3px solid ${P.border}`, borderTopColor: P.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite" } }),
-      h("div", { style: { fontSize: 13, color: P.text3 } }, "Sincronizando dados..."),
-      h("style", null, "@keyframes spin { to { transform: rotate(360deg); } }")
-    );
-  }
-
   const todayStr=new Date().toISOString().slice(0,10);
   const todayApptCount=agenda.filter(a=>a.date===todayStr).length;
   const criticalStock=products.filter(p=>p.status==="critical").length;
@@ -3832,6 +3818,20 @@ function AppInner({ session, onLogout }) {
   const[sidebarOpen,setSidebarOpen]=useState(isDesktop);
   // collapsed (só ícones) — apenas desktop/tablet
   const[sidebarCollapsed,setSidebarCollapsed]=useState(false);
+
+  // Aguarda dados essenciais carregarem do Supabase antes de renderizar.
+  // Isso evita que o app inicie com dados do localStorage de outro dispositivo
+  // ou com os dados de demonstração embutidos no código.
+  if (loadingPatients || loadingAgenda || patients === null || agenda === null) {
+    return h("div", {
+      style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: P.bg, gap: 16 }
+    },
+      h("div", { style: { fontFamily: "'Cormorant Garamond',serif", fontSize: 28, color: P.accent3, letterSpacing: ".04em" } }, "HarmonizaPro"),
+      h("div", { style: { width: 32, height: 32, border: `3px solid ${P.border}`, borderTopColor: P.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite" } }),
+      h("div", { style: { fontSize: 13, color: P.text3 } }, "Sincronizando dados..."),
+      h("style", null, "@keyframes spin { to { transform: rotate(360deg); } }")
+    );
+  }
 
   // Fechar sidebar ao navegar no mobile
   function handleNav(k){
