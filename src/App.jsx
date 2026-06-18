@@ -141,8 +141,30 @@ function debitarLote(setProducts, productName, loteId, qtdUsada) {
 
 
 // ─── SUPABASE DATA HOOKS ─────────────────────────────────────────────────────
-// localStorage é a fonte primária. Supabase sincroniza em background.
-// initFallback só é usado se NÃO houver nada no localStorage.
+// Remove campos pesados (fotos base64) antes de salvar no localStorage
+// para evitar QuotaExceededError. Fotos ficam só em memória e no Supabase.
+function stripHeavyFields(data) {
+  if (!Array.isArray(data)) return data;
+  return data.map(item => {
+    if (!item || typeof item !== "object") return item;
+    const stripped = { ...item };
+    // Remove fotos de perfil (base64 grande)
+    if (stripped.profilePhoto && typeof stripped.profilePhoto === "string" && stripped.profilePhoto.startsWith("data:")) {
+      stripped.profilePhoto = null;
+    }
+    // Remove fotos das sessões (array de base64)
+    if (Array.isArray(stripped.sessions)) {
+      stripped.sessions = stripped.sessions.map(s => ({
+        ...s,
+        photos: Array.isArray(s.photos) ? s.photos.map(p =>
+          (typeof p === "string" && p.startsWith("data:")) ? null : p
+        ).filter(Boolean) : s.photos
+      }));
+    }
+    return stripped;
+  });
+}
+
 function useSupaTable(key, initFallback = []) {
   const lsKey = "hapro_" + key;
 
@@ -151,7 +173,6 @@ function useSupaTable(key, initFallback = []) {
       const s = localStorage.getItem(lsKey);
       if (s) {
         const parsed = JSON.parse(s);
-        // Só usa localStorage se tiver dados reais (não vazio)
         const hasData = Array.isArray(parsed) ? parsed.length > 0 : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
         if (hasData) return parsed;
       }
@@ -175,7 +196,8 @@ function useSupaTable(key, initFallback = []) {
             const hasData = Array.isArray(parsed) ? parsed.length > 0 : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
             if (hasData) {
               setDataRaw(parsed);
-              try { localStorage.setItem(lsKey, JSON.stringify(parsed)); } catch {}
+              // Salva versão sem fotos no localStorage
+              try { localStorage.setItem(lsKey, JSON.stringify(stripHeavyFields(parsed))); } catch {}
             }
           } catch {}
         }).catch(() => {});
@@ -187,10 +209,20 @@ function useSupaTable(key, initFallback = []) {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
 
-      // Salva no localStorage IMEDIATAMENTE — persiste ao recarregar
-      try { localStorage.setItem(lsKey, JSON.stringify(next)); } catch (e) { console.error("localStorage error:", e); }
+      // Salva no localStorage sem fotos (evita QuotaExceededError)
+      try {
+        const slim = stripHeavyFields(next);
+        localStorage.setItem(lsKey, JSON.stringify(slim));
+      } catch (e) {
+        // Se ainda estourar, limpa chaves antigas e tenta de novo
+        try {
+          const keys = Object.keys(localStorage).filter(k => k.startsWith("hapro_"));
+          keys.forEach(k => { if (k !== lsKey) localStorage.removeItem(k); });
+          localStorage.setItem(lsKey, JSON.stringify(stripHeavyFields(next)));
+        } catch {}
+      }
 
-      // Supabase em background (sem updated_at que causava erro 500)
+      // Supabase em background com dados completos (inclusive fotos)
       (async () => {
         let userId = uid.current;
         if (!userId) {
