@@ -2619,12 +2619,11 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
     }
   }
 
-  function addNewProc(){
-    const name=newProcForm.name.trim();
+  function addNewProc(formData){
+    const name=(formData.name||"").trim();
     if(!name)return;
-    const obj={id:"proc_"+Date.now(),name,categoria:newProcForm.categoria,descricao:newProcForm.descricao,revisionDays:Number(newProcForm.revisionDays)||0,maintenanceDays:Number(newProcForm.maintenanceDays)||0,sessoesPadrao:Number(newProcForm.sessoesPadrao)||1};
+    const obj={id:"proc_"+Date.now(),name,categoria:formData.categoria||"Outros",descricao:formData.descricao||"",revisionDays:Number(formData.revisionDays)||0,maintenanceDays:Number(formData.maintenanceDays)||0,sessoesPadrao:Number(formData.sessoesPadrao)||1};
     saveProc(obj);
-    setNewProcForm({name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1"});
   }
 
   function addLoc(){const t=newLoc.trim();if(t&&!locations.find(x=>getName(x)===t)){setLocations(prev=>[...prev,{id:"loc_"+Date.now(),name:t}]);setNewLoc("");}}
