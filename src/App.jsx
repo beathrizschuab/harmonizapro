@@ -192,12 +192,8 @@ async function supaRead(key) {
       .select("value")
       .eq("key", key)
       .eq("user_id", _supaUserId)
-      .single();
-    if (error) {
-      // PGRST116 = row not found — normal na primeira vez
-      if (error.code !== "PGRST116") setSupaOk(false);
-      return null;
-    }
+      .maybeSingle();
+    if (error) { setSupaOk(false); return null; }
     setSupaOk(true);
     return data?.value ?? null;
   } catch { setSupaOk(false); return null; }
@@ -3747,6 +3743,29 @@ function AppInner({ session, onLogout }) {
   // Todos os useState ANTES de qualquer return condicional (regra dos hooks)
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
+
+  // ── Migração inicial: sobe dados do localStorage para o Supabase ──────────
+  useEffect(()=>{
+    const migKey="hapro2_migrated_v1_"+(session?.user?.id||"");
+    if(localStorage.getItem(migKey))return;
+    const keys=["patients","agenda","expenses","incomes","products","settings","procedures","locations","return_rules","proc_cats","skincare_config"];
+    const waitAndMigrate=(attempts=0)=>{
+      if(!_supaUserId){ if(attempts<15)setTimeout(()=>waitAndMigrate(attempts+1),400); return; }
+      Promise.all(keys.map(async k=>{
+        const raw=localStorage.getItem("hapro2_"+k);
+        if(!raw)return;
+        try{
+          const parsed=JSON.parse(raw);
+          const hasData=Array.isArray(parsed)?parsed.length>0:(parsed&&typeof parsed==="object"&&Object.keys(parsed).length>0);
+          if(!hasData)return;
+          const remote=await supaRead(k);
+          const remoteEmpty=remote===null||(Array.isArray(remote)&&remote.length===0);
+          if(remoteEmpty)await supaWrite(k,parsed);
+        }catch{}
+      })).then(()=>localStorage.setItem(migKey,"1"));
+    };
+    waitAndMigrate();
+  },[]);
 
   // Dados: cache local imediato + sincronização Supabase em background
   const procedureNames=Array.isArray(procedures)?procedures.map(p=>typeof p==="string"?p:(p.name||p)).filter(Boolean):INIT_PROCEDURES;
