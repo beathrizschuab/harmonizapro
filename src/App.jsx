@@ -1161,15 +1161,15 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
 // ─── PATIENT DETAIL ───────────────────────────────────────────────────────────
 
 // ─── SKINCARE TAB COMPONENT ──────────────────────────────────────────────────
-function SkincareTab({patient,upd}){
+function SkincareTab({patient,upd,skincareConfig}){
   const h=createElement;
   const sk=patient.skincare||{produtos:[],recomendacoes:"",adesao:"boa"};
   const [showSkForm,setShowSkForm]=useState(false);
   const [skForm,setSkForm]=useState({nome:"",frequencia:"Diário",periodo:"Manhã e Noite",obs:""});
   const [recText,setRecText]=useState(sk.recomendacoes||"");
-  const FREQ=["Diário","Noturno","2x por semana","Semanal","Mensal"];
+  const FREQ=(skincareConfig&&skincareConfig.frequencias)||["Diário","Noturno","2x por semana","Semanal","Mensal","Conforme necessário"];
   const PERIODOS=["Manhã","Noite","Manhã e Noite","Conforme necessário"];
-  const PRODS_SUGERIDOS=["Vitamina C","Retinol","Ácido Glicólico","Ácido Hialurônico","Protetor Solar FPS 50+","Niacinamida","Peptídeos","Bakuchiol","AHA/BHA","Ceramidas","Água Micelar","Hidratante Facial"];
+  const PRODS_SUGERIDOS=(skincareConfig&&skincareConfig.produtos)||["Vitamina C","Retinol","Ácido Glicólico","Ácido Hialurônico","Protetor Solar FPS 50+","Niacinamida","Peptídeos","Bakuchiol","AHA/BHA","Ceramidas","Água Micelar","Hidratante Facial"];
   const adesaoCor={ótima:P.green,boa:"#7aaed4",regular:P.yellow,baixa:P.red};
   function addProduto(){
     if(!skForm.nome)return;
@@ -1306,7 +1306,7 @@ function IndicacoesTab({patient,patients,onSelectPatient,fmtCurr}){
   );
 }
 
-function PatientDetail({patient,patients,setPatients,onBack,procedures,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient}){
+function PatientDetail({patient,patients,setPatients,onBack,procedures,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig}){
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
   const[editSess,setEditSess]=useState(null);
@@ -1773,7 +1773,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,locations
       ))
     ),
     // ─── SKINCARE TAB
-    tab==="skincare"&&h(SkincareTab,{patient,upd}),
+    tab==="skincare"&&h(SkincareTab,{patient,upd,skincareConfig}),
         // ─── INDICAÇÕES TAB
     tab==="indicacoes"&&h(IndicacoesTab,{patient,patients,onSelectPatient,fmtCurr}),
         // ─── MODALS
@@ -2526,8 +2526,16 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
 }
 
 // ─── CONFIGURAÇÕES ────────────────────────────────────────────────────────────
-function Configuracoes({procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules}){
+function Configuracoes({procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig}){
   const[newProc,setNewProc]=useState("");
+  const[newSkProd,setNewSkProd]=useState("");
+  const[newSkFreq,setNewSkFreq]=useState("");
+  const skProds=(skincareConfig&&skincareConfig.produtos)||[];
+  const skFreqs=(skincareConfig&&skincareConfig.frequencias)||[];
+  function addSkProd(){const t=newSkProd.trim();if(t&&!skProds.includes(t)){setSkincareConfig(s=>({...(s||{}),produtos:[...skProds,t],frequencias:skFreqs}));setNewSkProd("");}}
+  function delSkProd(p){setSkincareConfig(s=>({...(s||{}),produtos:skProds.filter(x=>x!==p),frequencias:skFreqs}));}
+  function addSkFreq(){const t=newSkFreq.trim();if(t&&!skFreqs.includes(t)){setSkincareConfig(s=>({...(s||{}),produtos:skProds,frequencias:[...skFreqs,t]}));setNewSkFreq("");}}
+  function delSkFreq(f){setSkincareConfig(s=>({...(s||{}),produtos:skProds,frequencias:skFreqs.filter(x=>x!==f)}));}
   const[newLoc,setNewLoc]=useState("");
   const[editProc,setEditProc]=useState(null);
   const[editProcVal,setEditProcVal]=useState("");
@@ -2585,6 +2593,40 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
               h("div",{style:{display:"flex",gap:4}},h("button",{onClick:()=>{setEditProc(proc);setEditProcVal(proc);},style:{background:"none",border:"none",color:P.accent,cursor:"pointer",fontSize:13}},"✎"),h("button",{onClick:()=>delProc(proc),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15}},"×"))
             )
         );}))
+      ),
+      // ── SKINCARE ──────────────────────────────────────────────────────────────
+      h(Card,{style:{gridColumn:"1/-1"}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"🧴 Skincare — Produtos & Frequências"),
+        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
+          // Produtos
+          h("div",null,
+            h("div",{style:{fontSize:13,color:P.text2,fontWeight:600,marginBottom:10}},"Produtos Cadastrados"),
+            h("div",{style:{display:"flex",gap:8,marginBottom:10}},
+              h(Inp,{value:newSkProd,onChange:setNewSkProd,placeholder:"Ex: Ácido Mandélico",style:{flex:1}}),
+              h(Btn,{onClick:addSkProd,style:{flexShrink:0,padding:"9px 14px"}},"＋")
+            ),
+            h("div",{style:{display:"flex",flexDirection:"column",gap:5}},
+              skProds.map(p=>h("div",{key:p,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
+                h("span",{style:{fontSize:12,color:P.text}},"🧴 "+p),
+                h("button",{onClick:()=>delSkProd(p),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:14}},"×")
+              ))
+            )
+          ),
+          // Frequências
+          h("div",null,
+            h("div",{style:{fontSize:13,color:P.text2,fontWeight:600,marginBottom:10}},"Frequências de Uso"),
+            h("div",{style:{display:"flex",gap:8,marginBottom:10}},
+              h(Inp,{value:newSkFreq,onChange:setNewSkFreq,placeholder:"Ex: 3x por semana",style:{flex:1}}),
+              h(Btn,{onClick:addSkFreq,style:{flexShrink:0,padding:"9px 14px"}},"＋")
+            ),
+            h("div",{style:{display:"flex",flexDirection:"column",gap:5}},
+              skFreqs.map(f=>h("div",{key:f,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
+                h("span",{style:{fontSize:12,color:P.text}},"⏱ "+f),
+                h("button",{onClick:()=>delSkFreq(f),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:14}},"×")
+              ))
+            )
+          )
+        )
       ),
       // ── PRAZOS DE RETORNO ──────────────────────────────────────────────────
       h(Card,{style:{gridColumn:"1/-1"}},
@@ -2859,6 +2901,10 @@ function AppInner({ session, onLogout }) {
   const[procedures,setProcedures,loadingProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
   const[locations,setLocations,loadingLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
   const[returnRules,setReturnRules,loadingRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
+  const[skincareConfig,setSkincareConfig]=useSupaTable("skincare_config",{
+    produtos:["Vitamina C","Retinol","Ácido Glicólico","Ácido Hialurônico","Protetor Solar FPS 50+","Niacinamida","Peptídeos","Bakuchiol","AHA/BHA","Ceramidas","Água Micelar","Hidratante Facial"],
+    frequencias:["Diário","Noturno","2x por semana","Semanal","Mensal","Conforme necessário"]
+  });
   // Todos os useState ANTES de qualquer return condicional (regra dos hooks)
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
@@ -2927,12 +2973,12 @@ function AppInner({ session, onLogout }) {
             page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,locations:locationNames}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
-            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient}),
+            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="relatorios"&&h(Relatorios,{patients, incomes, expenses, onSelectPatient: handleSelectPatient, onNav: handleNav}),
-            page==="config"&&h(Configuracoes,{procedures:procedureNames,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules})
+            page==="config"&&h(Configuracoes,{procedures:procedureNames,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig})
           )
         )
       )
