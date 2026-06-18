@@ -175,8 +175,14 @@ function stripPhotos(data) {
 //     using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 let _supaUserId = null;
-supabase.auth.getSession().then(({data:{session}})=>{ if(session) _supaUserId=session.user.id; });
-supabase.auth.onAuthStateChange((_,s)=>{ _supaUserId = s?.user?.id||null; });
+supabase.auth.getSession().then(({data:{session}})=>{
+  if(session) { _supaUserId=session.user.id; console.log("[auth] getSession() definiu _supaUserId =", _supaUserId); }
+  else console.warn("[auth] getSession() SEM sessão ativa");
+});
+supabase.auth.onAuthStateChange((event,s)=>{
+  _supaUserId = s?.user?.id||null;
+  console.log("[auth] onAuthStateChange event=", event, "_supaUserId =", _supaUserId);
+});
 
 // Estado global de conectividade com Supabase
 let _supaOk = null; // null=desconhecido, true=ok, false=erro
@@ -185,7 +191,10 @@ function setSupaOk(v){ _supaOk=v; _supaListeners.forEach(fn=>fn(v)); }
 function useSupaStatus(){ const[s,set]=useState(_supaOk); useEffect(()=>{ set(_supaOk); _supaListeners.add(set); return()=>_supaListeners.delete(set); },[]); return s; }
 
 async function supaRead(key) {
-  if (!_supaUserId) return null;
+  if (!_supaUserId) {
+    console.warn("[supaRead] BLOQUEADO: sem _supaUserId. key=", key);
+    return null;
+  }
   try {
     const { data, error } = await supabase
       .from("app_data")
@@ -193,14 +202,26 @@ async function supaRead(key) {
       .eq("key", key)
       .eq("user_id", _supaUserId)
       .maybeSingle();
-    if (error) { setSupaOk(false); return null; }
+    if (error) {
+      console.error("[supaRead] ERRO key=", key, error);
+      setSupaOk(false);
+      return null;
+    }
+    console.log("[supaRead] OK key=", key, "user=", _supaUserId, "tem dado:", data?.value != null);
     setSupaOk(true);
     return data?.value ?? null;
-  } catch { setSupaOk(false); return null; }
+  } catch (e) {
+    console.error("[supaRead] EXCEPTION key=", key, e);
+    setSupaOk(false);
+    return null;
+  }
 }
 
 async function supaWrite(key, value) {
-  if (!_supaUserId) return;
+  if (!_supaUserId) {
+    console.warn("[supaWrite] BLOQUEADO: sem _supaUserId. key=", key);
+    return;
+  }
   try {
     const { error } = await supabase
       .from("app_data")
@@ -208,9 +229,17 @@ async function supaWrite(key, value) {
         { key, user_id: _supaUserId, value: stripPhotos(value), updated_at: new Date().toISOString() },
         { onConflict: "key,user_id" }
       );
-    if (error) { setSupaOk(false); }
-    else { setSupaOk(true); }
-  } catch { setSupaOk(false); }
+    if (error) {
+      console.error("[supaWrite] ERRO ao gravar key=", key, error);
+      setSupaOk(false);
+    } else {
+      console.log("[supaWrite] OK key=", key, "user=", _supaUserId);
+      setSupaOk(true);
+    }
+  } catch (e) {
+    console.error("[supaWrite] EXCEPTION key=", key, e);
+    setSupaOk(false);
+  }
 }
 
 function useSupaTable(key, initFallback = []) {
