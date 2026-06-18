@@ -55,7 +55,6 @@ const ZONE_DEFS={
 const INIT_PROCEDURES=["Toxina Botulínica","Preenchimento Labial","Preenchimento Malar","Preenchimento Mandíbula","Preenchimento Têmpora","Preenchimento Jowls","Preenchimento Marionete","Preenchimento Olheira","Preenchimento Bigode Chinês","Preenchimento Queixo","Preenchimento Facial","Bioestimulador de Colágeno","Fio de PDO","Microagulhamento","Nano Hidrox","PDRN","Profhilo","Peeling Químico","Exossomos","Skinbooster","Avaliação Inicial","Harmonização Completa","Consultoria","Revisão / Retoque"];
 const INIT_PRODUCTS=["Botox Allergan 100U","Dysport 500U","Xeomin 100U","Juvederm Ultra 1ml","Juvederm Volbella 1ml","Restylane 1ml","Sculptra 367mg","Radiesse 1,5ml","Profhilo 2ml","Ellansé M 1ml","Silhouette Soft 8 cones","Aptos Thread","Belotero 1ml"];
 const INIT_LOCATIONS=["Barra Olímpica","Nova América"];
-const PATIENT_SOURCES=["Indicação","Campanha Promocional","Redes Sociais","Google/Site","Outro"];
 // Prazos padrão de retorno por procedimento (em dias)
 const INIT_RETURN_RULES=[
   {id:1,procedure:"Toxina Botulínica",revisionDays:14,maintenanceDays:120,label:"Revisão 14d · Manutenção 4m"},
@@ -77,19 +76,19 @@ const INIT_RETURN_RULES=[
   {id:17,procedure:"Revisão / Retoque",revisionDays:0,maintenanceDays:90,label:""},
 ];
 const INIT_PATIENTS=[
-  {id:1,name:"Ana Beatriz Martins",age:32,birthDate:"1993-05-28",phone:"(11) 99234-5678",email:"ana@email.com",cpf:"123.456.789-00",bloodType:"O+",allergies:"Nenhuma",since:"03/11/2025",status:"vip",tags:["VIP","Alta frequência"],profilePhoto:null,lastVisit:"28/05/2026",nextReturn:"28/08/2026",complaints:["Linhas de expressão","Volume labial"],source:"Indicação",
+  {id:1,name:"Ana Beatriz Martins",age:32,birthDate:"1993-05-28",phone:"(11) 99234-5678",email:"ana@email.com",cpf:"123.456.789-00",bloodType:"O+",allergies:"Nenhuma",since:"03/11/2025",status:"vip",tags:["VIP","Alta frequência"],profilePhoto:null,lastVisit:"28/05/2026",nextReturn:"28/08/2026",complaints:["Linhas de expressão","Volume labial"],
    sessions:[{id:1,date:"28/05/2026",procedure:"Toxina Botulínica",doctor:"Dra. Sofia",product:"Botox Allergan 100U",dose:"40U",region:"Glabela + Testa",location:"Barra Olímpica",value:850,paid:true,finStatus:"Pago",payMethod:"Pix",notes:"40U total. Glabela (20U), frontal (12U), pé de galinha D/E.",evolution:"Retorno em 14 dias.",faceMap:{type:"botox",points:{glabela_c:20,frontal_c:12,peGalinha_d:8,peGalinha_e:6}},photos:[],docs:[],intercorrencias:[],returnReminderDays:90}],
    sessions_packages:[],intercorrencias:[],planejamento:[],
    anamnese:{healthHistory:"Sem doenças crônicas",medications:"Anticoncepcional",smoking:"Não",pregnancy:"Não",previousProcedures:"Nenhum",skinType:"Mista",fitzpatrick:"III",allergiesDetail:"Sem alergias conhecidas.",contraindications:"Nenhuma",musicStyle:"Pop",importantAlerts:[]}},
-  {id:2,name:"Camila R. Souza",age:28,birthDate:"1997-06-15",phone:"(11) 98876-1234",email:"camila@email.com",cpf:"987.654.321-00",bloodType:"A+",allergies:"Dipirona",since:"10/01/2026",status:"active",tags:["Recorrente"],profilePhoto:null,lastVisit:"28/05/2026",nextReturn:"28/08/2026",complaints:["Volume labial"],source:"Redes Sociais",
+  {id:2,name:"Camila R. Souza",age:28,birthDate:"1997-06-15",phone:"(11) 98876-1234",email:"camila@email.com",cpf:"987.654.321-00",bloodType:"A+",allergies:"Dipirona",since:"10/01/2026",status:"active",tags:["Recorrente"],profilePhoto:null,lastVisit:"28/05/2026",nextReturn:"28/08/2026",complaints:["Volume labial"],
    sessions:[{id:1,date:"28/05/2026",procedure:"Preenchimento Labial",doctor:"Dra. Sofia",product:"Juvederm Volbella 1ml",dose:"1ml",region:"Lábio superior",location:"Barra Olímpica",value:1200,paid:true,finStatus:"Pago",payMethod:"Cartão",notes:"Técnica linear. Resultado harmonioso.",evolution:"",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:180}],
    sessions_packages:[],intercorrencias:[],planejamento:[],
    anamnese:{healthHistory:"Rinite alérgica",medications:"Loratadina ocasional",smoking:"Não",pregnancy:"Não",previousProcedures:"Preenchimento (2024)",skinType:"Seca",fitzpatrick:"II",allergiesDetail:"Alergia à dipirona — reação cutânea. Usar paracetamol.",contraindications:"Dipirona contraindicada",musicStyle:"Sertanejo",importantAlerts:["Alergia à Dipirona"]}},
-  {id:3,name:"Fernanda Lopes",age:35,birthDate:"1990-09-03",phone:"(11) 97654-3210",email:"fernanda@email.com",cpf:"111.222.333-44",bloodType:"B+",allergies:"Nenhuma",since:"12/03/2026",status:"treatment",tags:["Em Tratamento"],profilePhoto:null,lastVisit:"12/05/2026",nextReturn:"28/05/2026",complaints:["Flacidez","Sulcos"],source:"Campanha Promocional",
+  {id:3,name:"Fernanda Lopes",age:35,birthDate:"1990-09-03",phone:"(11) 97654-3210",email:"fernanda@email.com",cpf:"111.222.333-44",bloodType:"B+",allergies:"Nenhuma",since:"12/03/2026",status:"treatment",tags:["Em Tratamento"],profilePhoto:null,lastVisit:"12/05/2026",nextReturn:"28/05/2026",complaints:["Flacidez","Sulcos"],
    sessions:[{id:1,date:"12/05/2026",procedure:"Bioestimulador de Colágeno",doctor:"Dra. Sofia",product:"Sculptra 367mg",dose:"2 frascos",region:"Região malar",location:"Nova América",value:2400,paid:false,finStatus:"Pendente",payMethod:"Pendente",notes:"Primeira sessão de Sculptra.",evolution:"Aguardar 4-6 semanas.",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:60}],
    sessions_packages:[{id:1,name:"Sculptra 3 sessões",total:3,done:1,value:7200,active:true,expiry:"12/2026"}],intercorrencias:[],planejamento:[{id:1,title:"Protocolo Bioestimulação",steps:["Sculptra sessão 1 ✓","Sculptra sessão 2","Sculptra sessão 3","Manutenção 6 meses"],notes:"Plano aprovado em 12/03/2026",done:false}],
    anamnese:{healthHistory:"Hipotireoidismo controlado",medications:"Levotiroxina 50mcg",smoking:"Ex-fumante",pregnancy:"Não",previousProcedures:"Botox (2023)",skinType:"Normal",fitzpatrick:"III",allergiesDetail:"Sem alergias.",contraindications:"Nenhuma",musicStyle:"MPB",importantAlerts:["Hipotireoidismo"]}},
-  {id:4,name:"Juliana Pereira",age:41,birthDate:"1985-05-28",phone:"(11) 96543-2109",email:"juliana@email.com",cpf:"555.666.777-88",bloodType:"AB+",allergies:"Penicilina",since:"03/05/2026",status:"return",tags:["Retorno Pendente"],profilePhoto:null,lastVisit:"03/05/2026",nextReturn:"28/05/2026",complaints:["Linhas severas","Papada"],source:"Google/Site",
+  {id:4,name:"Juliana Pereira",age:41,birthDate:"1985-05-28",phone:"(11) 96543-2109",email:"juliana@email.com",cpf:"555.666.777-88",bloodType:"AB+",allergies:"Penicilina",since:"03/05/2026",status:"return",tags:["Retorno Pendente"],profilePhoto:null,lastVisit:"03/05/2026",nextReturn:"28/05/2026",complaints:["Linhas severas","Papada"],
    sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
    anamnese:{healthHistory:"Diabetes tipo 2 controlada",medications:"Metformina 850mg",smoking:"Não",pregnancy:"Não",previousProcedures:"Nenhum",skinType:"Oleosa",fitzpatrick:"IV",allergiesDetail:"Alergia à penicilina — confirmada por teste.",contraindications:"Penicilínicos contraindicados",musicStyle:"Eletrônico",importantAlerts:["Penicilina","Diabetes"]}},
 ];
@@ -114,27 +113,6 @@ const initials=n=>n.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
 const fmtCurr=v=>"R$"+Number(v).toLocaleString("pt-BR",{minimumFractionDigits:0});
 const parseDMY=s=>{if(!s)return null;const[d,m,y]=s.split("/");return new Date(`${y}-${m}-${d}`);};
 const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
-// Faz parse de uma data no formato "YYYY-MM-DD" (vinda de <input type="date">) sem sofrer
-// o deslocamento de fuso horário que `new Date("YYYY-MM-DD")` causa (interpreta como UTC meia-noite,
-// o que em horários como o do Brasil -3h faz o dia "voltar" 1 dia ao ler getDate()/getMonth() local).
-const parseISODate=isoStr=>{
-  if(!isoStr)return null;
-  const parts=isoStr.split("-");
-  if(parts.length!==3)return null;
-  const[y,m,d]=parts.map(Number);
-  if(!y||!m||!d)return null;
-  return new Date(y,m-1,d); // cria a data já no horário local, sem conversão UTC
-};
-// Calcula idade exata a partir da data de nascimento (string "YYYY-MM-DD"), considerando se o aniversário do ano já passou
-const calcAge=birthDateStr=>{
-  const bd=parseISODate(birthDateStr);
-  if(!bd||isNaN(bd))return null;
-  const today=new Date();
-  let age=today.getFullYear()-bd.getFullYear();
-  const aindaNaoFezAniversario=(today.getMonth()<bd.getMonth())||(today.getMonth()===bd.getMonth()&&today.getDate()<bd.getDate());
-  if(aindaNaoFezAniversario)age--;
-  return age>=0?age:null;
-};
 const todayISO=()=>new Date().toISOString().slice(0,10);
 
 // ─── HELPERS DE ESTOQUE POR LOTE ────────────────────────────────────────────
@@ -162,62 +140,61 @@ function debitarLote(setProducts, productName, loteId, qtdUsada) {
 }
 
 
-// ─── SUPABASE DATA HOOKS ─────────────────────────────────────────────────────
-// Salva tudo numa única tabela "app_data" com campo JSON — sem problema de colunas
-function useSupaTable(key, initFallback = []) {
-  const [data, setDataRaw] = useState(initFallback);
-  const [loading, setLoading] = useState(true);
-  const [saveError, setSaveError] = useState(null);
-  const uid = useRef(null);
-  const hasLocalWrite = useRef(false); // true assim que o usuário salva algo, mesmo antes do load inicial terminar
+// ─── DATA HOOKS — localStorage only ─────────────────────────────────────────
+// Remove fotos base64 antes de salvar para não estourar a cota do localStorage
+function stripPhotos(data) {
+  if (!Array.isArray(data)) return data;
+  return data.map(item => {
+    if (!item || typeof item !== "object") return item;
+    const out = { ...item };
+    if (typeof out.profilePhoto === "string" && out.profilePhoto.startsWith("data:"))
+      out.profilePhoto = null;
+    if (Array.isArray(out.sessions))
+      out.sessions = out.sessions.map(s => ({
+        ...s,
+        photos: Array.isArray(s.photos)
+          ? s.photos.filter(p => !(typeof p === "string" && p.startsWith("data:")))
+          : (s.photos || [])
+      }));
+    return out;
+  });
+}
 
-  useEffect(() => {
-    let cancelled = false;
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user || cancelled) { if(!cancelled) setLoading(false); return; }
-      uid.current = user.id;
-      supabase.from("app_data").select("value").eq("user_id", user.id).eq("key", key).maybeSingle().then(({ data: row, error }) => {
-        if (!cancelled) {
-          // Se o usuário já salvou algo (ex: cadastrou/editou paciente) enquanto este select
-          // ainda estava em voo, NÃO sobrescrevemos o estado local com o valor antigo do banco.
-          if (!error && row && row.value && !hasLocalWrite.current) {
-            try { setDataRaw(JSON.parse(row.value)); } catch { setDataRaw(initFallback); }
-          }
-          setLoading(false);
-        }
-      }).catch(() => { if(!cancelled) setLoading(false); });
-    }).catch(() => { if(!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [key]);
+function useSupaTable(key, initFallback = []) {
+  const lsKey = "hapro2_" + key;
+
+  const [data, setDataRaw] = useState(() => {
+    try {
+      const raw = localStorage.getItem(lsKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const ok = Array.isArray(parsed) ? parsed.length > 0
+          : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
+        if (ok) return parsed;
+      }
+    } catch {}
+    return initFallback;
+  });
 
   const setData = useCallback((valOrFn) => {
-    hasLocalWrite.current = true;
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
-      (async () => {
-        if (!uid.current) {
-          console.error(`[${key}] Não foi possível salvar: usuário não autenticado ainda.`);
-          setSaveError(`Não foi possível salvar "${key}": sessão não carregada. Recarregue a página e tente de novo.`);
-          return;
-        }
-        const { error } = await supabase.from("app_data").upsert({
-          user_id: uid.current,
-          key,
-          value: JSON.stringify(next),
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id,key" });
-        if (error) {
-          console.error(`[${key}] Erro ao salvar no Supabase:`, error);
-          setSaveError(`Erro ao salvar "${key}": ${error.message || "verifique sua conexão ou as permissões da tabela."}`);
-        } else {
-          setSaveError(null);
-        }
-      })();
+      try {
+        localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
+      } catch {
+        // Quota cheia: limpa outras chaves hapro e tenta de novo
+        try {
+          Object.keys(localStorage)
+            .filter(k => k.startsWith("hapro2_") && k !== lsKey)
+            .forEach(k => localStorage.removeItem(k));
+          localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
+        } catch {}
+      }
       return next;
     });
-  }, [key]);
+  }, [lsKey]);
 
-  return [data, setData, loading, saveError];
+  return [data, setData, false];
 }
 
 // useSettings: usa o mesmo mecanismo JSON
@@ -666,11 +643,101 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,mini=fals
         )
   );
 }
+// ─── ANIVERSARIANTES ─────────────────────────────────────────────────────────
+function Aniversariantes({patients,onSelectPatient,onNav}){
+  const h=createElement;
+  const today=new Date();
+  const[filterMonth,setFilterMonth]=useState(today.getMonth());
+  function parseBirth(bd){if(!bd)return null;const d=new Date(bd+"T12:00");return isNaN(d)?null:d;}
+  function calcAge(bd){const d=parseBirth(bd);if(!d)return null;let a=today.getFullYear()-d.getFullYear();const m=today.getMonth()-d.getMonth();if(m<0||(m===0&&today.getDate()<d.getDate()))a--;return a;}
+  function daysUntil(bd){const d=parseBirth(bd);if(!d)return null;const n=new Date(today.getFullYear(),d.getMonth(),d.getDate());if(n<today)n.setFullYear(today.getFullYear()+1);return Math.ceil((n-today)/(1000*60*60*24));}
+  function isToday(bd){const d=parseBirth(bd);if(!d)return false;return d.getMonth()===today.getMonth()&&d.getDate()===today.getDate();}
+  const withBday=useMemo(()=>patients.filter(p=>p.birthDate).map(p=>{const d=parseBirth(p.birthDate);return{...p,_age:calcAge(p.birthDate),_days:daysUntil(p.birthDate),_isToday:isToday(p.birthDate),_month:d?d.getMonth():0,_day:d?d.getDate():0};}).sort((a,b)=>a._days-b._days),[patients]);
+  const todayList=withBday.filter(p=>p._isToday);
+  const weekList=withBday.filter(p=>!p._isToday&&p._days<=7);
+  const byMonth=withBday.filter(p=>p._month===filterMonth);
+  const noBday=patients.filter(p=>!p.birthDate);
+  function card(p,highlight){
+    const phone=(p.phone||"").replace(/\D/g,"");
+    const bd=parseBirth(p.birthDate);
+    const bdFmt=bd?String(bd.getDate()).padStart(2,"0")+"/"+String(bd.getMonth()+1).padStart(2,"0")+"/"+bd.getFullYear():"";
+    const waMsg=encodeURIComponent("Olá "+p.name.split(" ")[0]+"! 🎂✨ Feliz aniversário! Que este novo ano seja repleto de saúde e beleza. 🌸");
+    return h(Card,{key:p.id,style:{background:highlight?"linear-gradient(135deg,rgba(196,169,106,.16),rgba(196,169,106,.06))":P.card,border:"1px solid "+(highlight?"rgba(196,169,106,.5)":P.border),marginBottom:8,padding:"14px 18px"}},
+      h("div",{style:{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}},
+        h("div",{style:{position:"relative",flexShrink:0}},
+          h(Avatar,{name:p.name,size:46,src:p.profilePhoto,idx:patients.indexOf(p)}),
+          highlight&&h("div",{style:{position:"absolute",top:-4,right:-4,fontSize:16}},"🎂")
+        ),
+        h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{flex:1,minWidth:180,cursor:"pointer"}},
+          h("div",{style:{fontSize:14.5,color:P.text,fontWeight:600}},p.name),
+          h("div",{style:{display:"flex",alignItems:"baseline",gap:8,marginTop:4,flexWrap:"wrap"}},
+            h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:P.gold,lineHeight:1}},p._age!==null?p._age:"?"),
+            p._age!==null&&h("span",{style:{fontSize:12,color:P.text3}},"anos"),
+            bdFmt&&h("span",{style:{fontSize:12,color:P.text3}},"· 🎂 "+bdFmt),
+            p.status==="vip"&&h("span",{style:{fontSize:10,color:P.gold,background:"rgba(196,169,106,.15)",padding:"2px 7px",borderRadius:10,fontWeight:600,marginLeft:4}},"VIP ✦")
+          ),
+          p._isToday?h("div",{style:{fontSize:12,color:P.yellow,fontWeight:600,marginTop:3}},"🎉 Hoje é o aniversário dela!")
+            :p._days<=7?h("div",{style:{fontSize:12,color:"#c4a96a",marginTop:3}},"Em "+p._days+" dia"+(p._days>1?"s":""))
+            :h("div",{style:{fontSize:12,color:P.text3,marginTop:3}},"Em "+p._days+" dias")
+        ),
+        h("div",{style:{display:"flex",gap:8,alignItems:"center",flexShrink:0}},
+          h(StatusBadge,{status:p.status}),
+          phone&&h("a",{href:"https://wa.me/55"+phone+"?text="+waMsg,target:"_blank",rel:"noreferrer",style:{display:"flex",alignItems:"center",gap:5,padding:"7px 13px",background:"rgba(106,196,130,.13)",border:"1px solid rgba(106,196,130,.3)",borderRadius:8,color:"#7aad8a",fontSize:12,fontWeight:600,textDecoration:"none"}},"💬 Parabenizar")
+        )
+      )
+    );
+  }
+  return h("div",null,
+    h(SectionHeader,{title:"Aniversariantes",sub:"Idades calculadas automaticamente pela data de nascimento"}),
+    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
+      [{icon:"🎂",label:"Hoje",value:todayList.length,color:P.yellow},{icon:"🗓️",label:"Esta semana",value:weekList.length,color:"#7aaed4"},{icon:"📅",label:"Este mês",value:withBday.filter(p=>p._month===today.getMonth()).length,color:P.green},{icon:"📊",label:"Com data cadastrada",value:withBday.length,color:P.accent}]
+      .map(k=>h(Card,{key:k.label,style:{textAlign:"center"}},h("div",{style:{fontSize:24,marginBottom:6}},k.icon),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:36,color:k.color,lineHeight:1}},k.value),h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.label)))
+    ),
+    todayList.length>0&&h("div",{style:{marginBottom:24}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.yellow,marginBottom:12}},"🎂 Aniversariantes de Hoje"),
+      todayList.map(p=>card(p,true))
+    ),
+    weekList.length>0&&h("div",{style:{marginBottom:24}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:"#7aaed4",marginBottom:12}},"🗓️ Próximos 7 dias"),
+      weekList.map(p=>card(p,false))
+    ),
+    h("div",{style:{marginBottom:16}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text,marginBottom:12}},"📅 Ver por mês"),
+      h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}},
+        MONTH_NAMES.map((m,i)=>{
+          const cnt=withBday.filter(p=>p._month===i).length;
+          const isCur=i===today.getMonth();
+          return h("button",{key:i,onClick:()=>setFilterMonth(i),style:{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filterMonth===i?P.rose:"transparent",border:"1px solid "+(filterMonth===i?P.rose:isCur?"rgba(196,169,106,.4)":P.border),color:filterMonth===i?P.accent3:isCur?P.yellow:P.text2}},
+            m,cnt>0&&h("span",{style:{marginLeft:5,fontSize:10,fontWeight:700,color:filterMonth===i?P.accent3:P.gold,background:filterMonth===i?"rgba(255,255,255,.15)":"rgba(196,169,106,.15)",padding:"1px 5px",borderRadius:10}},cnt)
+          );
+        })
+      ),
+      byMonth.length===0
+        ?h(Card,{style:{textAlign:"center",padding:32}},h("div",{style:{fontSize:28,marginBottom:8}},"🎈"),h("div",{style:{color:P.text3,fontSize:13}},"Nenhuma paciente com aniversário em "+MONTH_NAMES[filterMonth]+"."))
+        :h("div",null,
+            h("div",{style:{fontSize:12,color:P.text3,marginBottom:12}},byMonth.length+" aniversariante"+(byMonth.length>1?"s":"")+" em "+MONTH_NAMES[filterMonth]),
+            byMonth.sort((a,b)=>a._day-b._day).map(p=>card(p,p._isToday))
+          )
+    ),
+    noBday.length>0&&h("div",{style:{marginTop:8}},
+      h("div",{style:{fontSize:13,color:P.text3,marginBottom:10,display:"flex",alignItems:"center",gap:6}},
+        h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(192,112,112,.12)",color:P.red,fontWeight:600}},noBday.length),
+        " paciente"+(noBday.length>1?"s sem":" sem")+" data de nascimento cadastrada"
+      ),
+      h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+        noBday.map(p=>h("div",{key:p.id,onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",background:P.card,border:"1px solid "+P.border,borderRadius:20,cursor:"pointer",fontSize:12,color:P.text2},onMouseEnter:e=>e.currentTarget.style.borderColor=P.accent,onMouseLeave:e=>e.currentTarget.style.borderColor=P.border},
+          h(Avatar,{name:p.name,size:20,src:p.profilePhoto,idx:patients.indexOf(p)}),
+          p.name.split(" ").slice(0,2).join(" ")
+        ))
+      )
+    )
+  );
+}
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 function Dashboard({patients,agenda,onNav,onSelectPatient,settings,returnRules}){
   const today=new Date();
   const todayStr=today.toISOString().slice(0,10);
-  const todayBirthdays=patients.filter(p=>{if(!p.birthDate)return false;const bd=parseISODate(p.birthDate);return bd&&bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();});
+  const todayBirthdays=patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();});
   const allS=patients.flatMap(p=>p.sessions||[]);
   const totalRec=allS.filter(s=>s.paid).reduce((a,s)=>a+s.value,0);
   const totalPend=allS.filter(s=>!s.paid).reduce((a,s)=>a+s.value,0);
@@ -690,7 +757,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,settings,returnRules})
       ),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:10}},
         todayBirthdays.map(p=>{
-          const age=calcAge(p.birthDate);
+          const bd_=new Date(p.birthDate+"T12:00");let age=new Date().getFullYear()-bd_.getFullYear();const m_=new Date().getMonth()-bd_.getMonth();if(m_<0||(m_===0&&new Date().getDate()<bd_.getDate()))age--;
           const phone=p.phone?p.phone.replace(/\D/g,""):"";
           const waMsg=encodeURIComponent(`Olá ${p.name.split(" ")[0]}! 🎂 Feliz aniversário! Que seu dia seja incrível! 🌸`);
           return h("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:12,flex:"1 1 auto",minWidth:220}},
@@ -990,8 +1057,10 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   const[search,setSearch]=useState("");
   const[filter,setFilter]=useState("all");
   const[showNew,setShowNew]=useState(false);
-  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active",source:"Indicação"};
+  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active"};
   const[form,setForm]=useState(blank);
+  function calcAgeFromBirth(dateStr){if(!dateStr)return"";const bd=new Date(dateStr+"T12:00");if(isNaN(bd))return"";const t=new Date();let age=t.getFullYear()-bd.getFullYear();const m=t.getMonth()-bd.getMonth();if(m<0||(m===0&&t.getDate()<bd.getDate()))age--;return age>=0?String(age):"";}
+  function fvBirth(v){setForm(p=>({...p,birthDate:v,age:calcAgeFromBirth(v)}));}
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const[profPhoto,setProfPhoto]=useState(null);
   const today=new Date();
@@ -1011,7 +1080,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
     return ms&&mf;
   });
   function addPatient(){
-    const np={id:Date.now(),...form,age:(calcAge(form.birthDate)??Number(form.age))||"",profilePhoto:profPhoto,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
+    const np={id:Date.now(),...form,age:Number(form.age),profilePhoto:profPhoto,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
       complaints:form.complaints.split(",").map(s=>s.trim()).filter(Boolean),tags:[],
       anamnese:{healthHistory:form.healthHistory,medications:form.medications,smoking:form.smoking,pregnancy:form.pregnancy,previousProcedures:form.previousProcedures,skinType:form.skinType,fitzpatrick:form.fitzpatrick,allergiesDetail:form.allergiesDetail,contraindications:form.contraindications,musicStyle:form.musicStyle,importantAlerts:form.allergies&&form.allergies!=="Nenhuma"?[form.allergies]:[]}};
     setPatients(prev=>[...prev,np]);setShowNew(false);setForm(blank);setProfPhoto(null);
@@ -1023,16 +1092,34 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},filtersBtns.map(fi=>h("button",{key:fi.k,onClick:()=>setFilter(fi.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filter===fi.k?P.rose:"transparent",border:`1px solid ${filter===fi.k?P.rose:P.border}`,color:filter===fi.k?P.accent3:P.text2}},fi.l)))
     ),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}},
-      visible.map((p,i)=>h("div",{key:p.id,onClick:()=>onSelect(p),style:{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:10,cursor:"pointer",transition:"all .18s"},onMouseEnter:e=>{e.currentTarget.style.borderColor=P.accent;e.currentTarget.style.transform="translateX(3px)";},onMouseLeave:e=>{e.currentTarget.style.borderColor=P.border;e.currentTarget.style.transform="";}},
-        h(Avatar,{name:p.name,size:46,idx:i,src:p.profilePhoto}),
-        h("div",{style:{flex:1,minWidth:0}},
-          h("div",{style:{fontSize:14,color:P.text,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},p.name),
-          h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`${p.age} anos · ${(p.sessions||[]).length} sessões`),
-          p._days>180?h("div",{style:{fontSize:11,color:P.red,marginTop:2}},`⚠ Inativa há ${p._days} dias`):p._days>90?h("div",{style:{fontSize:11,color:P.yellow,marginTop:2}},`↩ Sem retorno há ${p._days} dias`):null,
-          p.allergies&&p.allergies!=="Nenhuma"&&h("div",{style:{fontSize:11,color:P.red,marginTop:2}},`⚠ ${p.allergies}`)
-        ),
-        h(StatusBadge,{status:p._autoStatus||p.status})
-      ))
+      visible.map((p,i)=>{
+        const bd_p=p.birthDate?new Date(p.birthDate+"T12:00"):null;
+        let calcAge=p.age;if(bd_p&&!isNaN(bd_p)){let a=new Date().getFullYear()-bd_p.getFullYear();const m=new Date().getMonth()-bd_p.getMonth();if(m<0||(m===0&&new Date().getDate()<bd_p.getDate()))a--;calcAge=a;}
+        const lastSess=(p.sessions||[]).length>0?[...(p.sessions||[])].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0]:null;
+        return h("div",{key:p.id,onClick:()=>onSelect(p),style:{display:"flex",alignItems:"flex-start",gap:14,padding:"14px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:10,cursor:"pointer",transition:"all .18s"},onMouseEnter:e=>{e.currentTarget.style.borderColor=P.accent;e.currentTarget.style.transform="translateX(3px)";},onMouseLeave:e=>{e.currentTarget.style.borderColor=P.border;e.currentTarget.style.transform="";}},
+          h(Avatar,{name:p.name,size:46,idx:i,src:p.profilePhoto}),
+          h("div",{style:{flex:1,minWidth:0}},
+            h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:2}},
+              h("div",{style:{fontSize:14,color:P.text,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},p.name),
+              h(StatusBadge,{status:p._autoStatus||p.status})
+            ),
+            h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:3}},
+              h("span",{style:{fontSize:12,color:P.text3}},(calcAge||p.age)+" anos"),
+              bd_p&&!isNaN(bd_p)&&h("span",{style:{fontSize:12,color:P.text3}},"· 🎂 "+String(bd_p.getDate()).padStart(2,"0")+"/"+String(bd_p.getMonth()+1).padStart(2,"0")),
+              p.phone&&h("span",{style:{fontSize:12,color:P.text3}},"· "+p.phone)
+            ),
+            h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:3}},
+              h("span",{style:{fontSize:11.5,color:P.text2}},(p.sessions||[]).length+" sessão"+((p.sessions||[]).length!==1?"ões":"")),
+              lastSess&&h("span",{style:{fontSize:11.5,color:P.text3}},"· "+lastSess.procedure),
+              p.anamnese?.skinType&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"1px 6px",borderRadius:8}},p.anamnese.skinType)
+            ),
+            p._days>180?h("div",{style:{fontSize:11,color:P.red,marginTop:2}},`⚠ Inativa há ${p._days} dias`)
+              :p._days>90?h("div",{style:{fontSize:11,color:P.yellow,marginTop:2}},`↩ Sem retorno há ${p._days} dias`)
+              :lastSess?h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},"Última visita: "+lastSess.date):null,
+            p.allergies&&p.allergies!=="Nenhuma"&&h("div",{style:{fontSize:11,color:P.red,marginTop:2}},`⚠ Alergia: ${p.allergies}`)
+          )
+        );
+      })
     ),
     h(Modal,{open:showNew,onClose:()=>setShowNew(false),title:"✦ Novo Paciente",width:620},
       h("div",{style:{display:"flex",alignItems:"center",gap:16,marginBottom:20,padding:14,background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
@@ -1042,14 +1129,13 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
       h("div",{style:{fontSize:11,textTransform:"uppercase",letterSpacing:".12em",color:P.accent,borderBottom:`1px solid ${P.border}`,paddingBottom:8,marginBottom:14}},"Dados Pessoais"),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Nome Completo"},h(Inp,{value:form.name,onChange:fv("name"),placeholder:"Nome da paciente"})),
-        h(Field,{label:"Idade (calculada)",third:true},h("div",{style:{...IS,display:"flex",alignItems:"center",background:P.bg2,color:P.text2,cursor:"default"}},form.birthDate?`${calcAge(form.birthDate)} anos`:"—")),
-        h(Field,{label:"Data Nasc.",third:true},h(Inp,{type:"date",value:form.birthDate,onChange:fv("birthDate")})),
+        h(Field,{label:"Idade",third:true},h(Inp,{value:form.age,onChange:fv("age"),placeholder:"32"})),
+        h(Field,{label:"Data Nasc.",third:true},h(Inp,{type:"date",value:form.birthDate,onChange:fvBirth})),
         h(Field,{label:"Tipo Sang.",third:true},h(Sel,{value:form.bloodType,onChange:fv("bloodType"),options:BLOOD_TYPES})),
         h(Field,{label:"Telefone",half:true},h(Inp,{value:form.phone,onChange:fv("phone"),placeholder:"(11) 99999-9999"})),
         h(Field,{label:"E-mail",half:true},h(Inp,{value:form.email,onChange:fv("email"),placeholder:"email@email.com"})),
         h(Field,{label:"CPF"},h(Inp,{value:form.cpf,onChange:fv("cpf"),placeholder:"000.000.000-00"})),
         h(Field,{label:"Status"},h(Sel,{value:form.status,onChange:fv("status"),options:Object.keys(PAT_STATUS_CFG)})),
-        h(Field,{label:"Como Chegou Até Nós"},h(Sel,{value:form.source,onChange:fv("source"),options:PATIENT_SOURCES})),
         h(Field,{label:"Alergias Conhecidas"},h(Inp,{value:form.allergies,onChange:fv("allergies"),placeholder:"Ex: Dipirona, Penicilina"})),
         h(Field,{label:"Detalhes das Alergias"},h(TA,{value:form.allergiesDetail,onChange:fv("allergiesDetail"),placeholder:"Tipo de reação...",rows:2})),
         h(Field,{label:"Contraindicações"},h(Inp,{value:form.contraindications,onChange:fv("contraindications"),placeholder:"Substâncias contraindicadas"})),
@@ -1134,7 +1220,7 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
     });
   }
   function savePat(){
-    upd(p=>({...p,...patForm,age:(calcAge(patForm.birthDate)??Number(patForm.age))||"",complaints:patForm.complaints.split(",").map(s=>s.trim()).filter(Boolean),
+    upd(p=>({...p,...patForm,age:Number(patForm.age),complaints:patForm.complaints.split(",").map(s=>s.trim()).filter(Boolean),
       anamnese:{...p.anamnese,healthHistory:patForm.healthHistory,medications:patForm.medications,smoking:patForm.smoking,pregnancy:patForm.pregnancy,previousProcedures:patForm.previousProcedures,skinType:patForm.skinType,fitzpatrick:patForm.fitzpatrick,allergiesDetail:patForm.allergiesDetail,contraindications:patForm.contraindications,musicStyle:patForm.musicStyle,importantAlerts:patForm.allergies&&patForm.allergies!=="Nenhuma"?[patForm.allergies]:[]}}));
     setEditPat(false);
   }
@@ -1249,18 +1335,12 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
     h(TabBar,{tabs,active:tab,onChange:setTab}),
     // ─── FICHA RÁPIDA TAB ────────────────────────────────────────────────────────
     tab==="fichaRapida"&&(()=>{
-      const sortedSessions=[...(patient.sessions||[])].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)));
-      const lastSess=sortedSessions[0]||null;
-      const nextReturnInfo=(()=>{
-        if(!lastSess||!Number(lastSess.returnReminderDays))return null;
-        const sessDate=parseDMY(lastSess.date);if(!sessDate)return null;
-        const retDate=new Date(sessDate);retDate.setDate(retDate.getDate()+Number(lastSess.returnReminderDays));
-        const diasRestantes=Math.ceil((retDate-new Date())/(1000*60*60*24));
-        return{date:retDate.toLocaleDateString("pt-BR"),dias:diasRestantes,procedure:lastSess.procedure};
-      })();
-      const activePkgs=(patient.sessions_packages||[]).filter(pkg=>pkg.active!==false&&pkg.done<pkg.total);
-      const activeVouchers=(patient.vouchers||[]).filter(v=>!v.used&&(!v.expiry||parseDMY(v.expiry)>=new Date()));
-      const pendingBalance=(patient.sessions||[]).filter(s=>!s.paid).reduce((a,s)=>a+s.value,0);
+      const _sorted=[...(patient.sessions||[])].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)));
+      const _last=_sorted[0]||null;
+      const _ret=(()=>{if(!_last||!Number(_last.returnReminderDays))return null;const sd=parseDMY(_last.date);if(!sd)return null;const rd=new Date(sd);rd.setDate(rd.getDate()+Number(_last.returnReminderDays));const dias=Math.ceil((rd-new Date())/(1000*60*60*24));return{date:rd.toLocaleDateString("pt-BR"),dias,procedure:_last.procedure};})();
+      const _pkgs=(patient.sessions_packages||[]).filter(pkg=>pkg.active!==false&&pkg.done<pkg.total);
+      const _vouchers=(patient.vouchers||[]).filter(v=>!v.used&&(!v.expiry||parseDMY(v.expiry)>=new Date()));
+      const _pending=(patient.sessions||[]).filter(s=>!s.paid).reduce((a,s)=>a+s.value,0);
       return h("div",null,
         h(Card,{style:{marginBottom:14,border:"1px solid rgba(192,112,112,.35)",background:"rgba(192,112,112,.04)"}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:14}},"⚡ Ficha Rápida"),
@@ -1269,75 +1349,31 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"🚭 Tabagismo"),h("div",{style:{fontSize:14,color:patient.anamnese?.smoking==="Sim"?P.red:P.text}},patient.anamnese?.smoking||"Não informado"),patient.anamnese?.pregnancy&&patient.anamnese.pregnancy!=="Não"&&h("div",{style:{fontSize:12,color:P.yellow,marginTop:4}},"⚠️ "+patient.anamnese.pregnancy)),
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"💊 Medicações"),h("div",{style:{fontSize:13,color:P.text}},patient.anamnese?.medications||"Nenhuma")),
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${patient.anamnese?.contraindications&&patient.anamnese.contraindications!=="Nenhuma"?"rgba(192,112,112,.4)":P.border}`}},h("div",{style:{fontSize:10,color:patient.anamnese?.contraindications&&patient.anamnese.contraindications!=="Nenhuma"?P.red:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"⚠️ Contraindicações"),h("div",{style:{fontSize:13,color:P.text}},patient.anamnese?.contraindications||"Nenhuma")),
-            h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"📅 Último Procedimento"),lastSess?h("div",null,h("div",{style:{fontSize:14,color:P.accent3}},lastSess.procedure),h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},lastSess.date+" · "+fmtCurr(lastSess.value||0))):h("div",{style:{fontSize:13,color:P.text3}},"Sem sessões")),
-            h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:"1px solid rgba(196,169,106,.3)"}},h("div",{style:{fontSize:10,color:P.yellow,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"💰 Saldo em Aberto"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:pendingBalance>0?P.yellow:P.green}},fmtCurr(pendingBalance)),h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},(patient.sessions||[]).filter(s=>!s.paid).length+" sessão(ões) pendente(s)"))
+            h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"📅 Último Procedimento"),_last?h("div",null,h("div",{style:{fontSize:14,color:P.accent3}},_last.procedure),h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},_last.date+" · "+fmtCurr(_last.value||0))):h("div",{style:{fontSize:13,color:P.text3}},"Sem sessões")),
+            h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:"1px solid rgba(196,169,106,.3)"}},h("div",{style:{fontSize:10,color:P.yellow,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"💰 Saldo em Aberto"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:_pending>0?P.yellow:P.green}},fmtCurr(_pending)),h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},(patient.sessions||[]).filter(s=>!s.paid).length+" sessão(ões) pendente(s)"))
           )
         ),
-        h(Card,{style:{marginBottom:14,border:`1px solid ${nextReturnInfo?(nextReturnInfo.dias<0?"rgba(192,112,112,.4)":nextReturnInfo.dias<=7?"rgba(196,169,106,.4)":"rgba(122,174,212,.3)"):P.border}`,background:nextReturnInfo?(nextReturnInfo.dias<0?"rgba(192,112,112,.05)":nextReturnInfo.dias<=7?"rgba(196,169,106,.05)":"rgba(122,174,212,.04)"):"transparent"}},
-          h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:nextReturnInfo?14:0}},
-            h("span",{style:{fontSize:20}},"⏰"),
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Próximo Retorno")
-          ),
-          nextReturnInfo?h("div",{style:{display:"flex",alignItems:"center",gap:24,flexWrap:"wrap"}},
-            h("div",null,
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:40,color:nextReturnInfo.dias<0?P.red:nextReturnInfo.dias<=7?P.yellow:"#7aaed4",lineHeight:1}},nextReturnInfo.dias<0?`+${Math.abs(nextReturnInfo.dias)}d`:`${nextReturnInfo.dias}d`),
-              h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},nextReturnInfo.dias<0?"de atraso":nextReturnInfo.dias===0?"Hoje":"para o retorno")
-            ),
-            h("div",null,
-              h("div",{style:{fontSize:12,color:P.text3}},"Previsto para"),
-              h("div",{style:{fontSize:16,color:P.text,fontWeight:600,marginTop:2}},nextReturnInfo.date),
-              h("div",{style:{fontSize:13,color:P.accent,marginTop:4}},nextReturnInfo.procedure)
-            ),
-            nextReturnInfo.dias<0&&h("div",{style:{padding:"8px 14px",background:"rgba(192,112,112,.1)",border:"1px solid rgba(192,112,112,.25)",borderRadius:8,fontSize:12,color:P.red,fontWeight:500}},"⚠ Retorno em atraso — entre em contato!")
+        h(Card,{style:{marginBottom:14,border:`1px solid ${_ret?(_ret.dias<0?"rgba(192,112,112,.4)":_ret.dias<=7?"rgba(196,169,106,.4)":"rgba(122,174,212,.3)"):P.border}`}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:_ret?14:0}},h("span",{style:{fontSize:20}},"⏰"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Próximo Retorno")),
+          _ret?h("div",{style:{display:"flex",alignItems:"center",gap:24,flexWrap:"wrap"}},
+            h("div",null,h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:40,color:_ret.dias<0?P.red:_ret.dias<=7?P.yellow:"#7aaed4",lineHeight:1}},_ret.dias<0?"+"+Math.abs(_ret.dias)+"d":_ret.dias+"d"),h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},_ret.dias<0?"de atraso":_ret.dias===0?"Hoje":"para o retorno")),
+            h("div",null,h("div",{style:{fontSize:12,color:P.text3}},"Previsto para"),h("div",{style:{fontSize:16,color:P.text,fontWeight:600,marginTop:2}},_ret.date),h("div",{style:{fontSize:13,color:P.accent,marginTop:4}},_ret.procedure)),
+            _ret.dias<0&&h("div",{style:{padding:"8px 14px",background:"rgba(192,112,112,.1)",border:"1px solid rgba(192,112,112,.25)",borderRadius:8,fontSize:12,color:P.red,fontWeight:500}},"⚠ Retorno em atraso — entre em contato!")
           ):h("div",{style:{fontSize:13,color:P.text3}},"Nenhum retorno configurado.")
         ),
-        h(Card,{style:{marginBottom:14,border:`1px solid ${activePkgs.length>0?"rgba(157,119,97,.35)":P.border}`}},
-          h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:activePkgs.length>0?14:0}},
-            h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-              h("span",{style:{fontSize:20}},"📦"),
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Pacotes Ativos"),
-              activePkgs.length>0&&h("span",{style:{fontSize:11,fontWeight:700,color:P.accent3,background:P.rose,padding:"2px 8px",borderRadius:20}},activePkgs.length)
-            ),
+        h(Card,{style:{marginBottom:14,border:`1px solid ${_pkgs.length>0?"rgba(157,119,97,.35)":P.border}`}},
+          h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:_pkgs.length>0?14:0}},
+            h("div",{style:{display:"flex",alignItems:"center",gap:10}},h("span",{style:{fontSize:20}},"📦"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Pacotes Ativos"),_pkgs.length>0&&h("span",{style:{fontSize:11,fontWeight:700,color:P.accent3,background:P.rose,padding:"2px 8px",borderRadius:20}},_pkgs.length)),
             h("button",{onClick:()=>setTab("pacotes"),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid rgba(157,119,97,.3)`,borderRadius:8,padding:"4px 12px",cursor:"pointer"}},"Ver todos →")
           ),
-          activePkgs.length===0
-            ?h("div",{style:{fontSize:13,color:P.text3}},"Nenhum pacote ativo.")
-            :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-              activePkgs.map(pkg=>{
-                const pct=Math.round((pkg.done/pkg.total)*100);
-                return h("div",{key:pkg.id,style:{padding:"12px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
-                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}},
-                    h("div",null,h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},pkg.name),h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},pkg.procedure)),
-                    h("div",{style:{textAlign:"right"}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent}},`${pkg.done}/${pkg.total}`),h("div",{style:{fontSize:10,color:P.text3}},"sessões"))
-                  ),
-                  h("div",{style:{height:5,borderRadius:3,background:P.border,overflow:"hidden"}},h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:3}})),
-                  h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:5}},
-                    h("span",{style:{fontSize:10,color:P.text3}},`${pkg.total-pkg.done} restante(s)`),
-                    pkg.price>0&&h("span",{style:{fontSize:10,color:P.accent}},fmtCurr(pkg.price))
-                  )
-                );
-              })
-            )
+          _pkgs.length===0?h("div",{style:{fontSize:13,color:P.text3}},"Nenhum pacote ativo.")
+          :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},_pkgs.map(pkg=>{const pct=Math.round((pkg.done/pkg.total)*100);return h("div",{key:pkg.id,style:{padding:"12px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}},h("div",null,h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},pkg.name),h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},pkg.procedure)),h("div",{style:{textAlign:"right"}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent}},pkg.done+"/"+pkg.total),h("div",{style:{fontSize:10,color:P.text3}},"sessões"))),h("div",{style:{height:5,borderRadius:3,background:P.border,overflow:"hidden"}},h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:3}})),h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:5}},h("span",{style:{fontSize:10,color:P.text3}},(pkg.total-pkg.done)+" restante(s)"),pkg.price>0&&h("span",{style:{fontSize:10,color:P.accent}},fmtCurr(pkg.price))));})
+          )
         ),
-        h(Card,{style:{border:`1px solid ${activeVouchers.length>0?"rgba(155,122,173,.4)":P.border}`}},
-          h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:activeVouchers.length>0?14:0}},
-            h("span",{style:{fontSize:20}},"🎟️"),
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Vouchers Ativos"),
-            activeVouchers.length>0&&h("span",{style:{fontSize:11,fontWeight:700,color:"#fff",background:"#9b7aad",padding:"2px 8px",borderRadius:20}},activeVouchers.length)
-          ),
-          activeVouchers.length===0
-            ?h("div",{style:{fontSize:13,color:P.text3}},"Nenhum voucher ativo.")
-            :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-              activeVouchers.map((v,i)=>h("div",{key:i,style:{padding:"12px 14px",background:"rgba(155,122,173,.07)",borderRadius:10,border:"1px solid rgba(155,122,173,.25)"}},
-                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-                  h("div",null,h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},v.code||v.name||"Voucher"),v.desc&&h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},v.desc)),
-                  h("div",{style:{textAlign:"right"}},
-                    v.value&&h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:"#9b7aad"}},typeof v.value==="number"?fmtCurr(v.value):v.value),
-                    v.expiry&&h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},"Válido até "+v.expiry)
-                  )
-                )
-              ))
-            )
+        h(Card,{style:{border:`1px solid ${_vouchers.length>0?"rgba(155,122,173,.4)":P.border}`}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:_vouchers.length>0?14:0}},h("span",{style:{fontSize:20}},"🎟️"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Vouchers Ativos"),_vouchers.length>0&&h("span",{style:{fontSize:11,fontWeight:700,color:"#fff",background:"#9b7aad",padding:"2px 8px",borderRadius:20}},_vouchers.length)),
+          _vouchers.length===0?h("div",{style:{fontSize:13,color:P.text3}},"Nenhum voucher ativo.")
+          :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},_vouchers.map((v,i)=>h("div",{key:i,style:{padding:"12px 14px",background:"rgba(155,122,173,.07)",borderRadius:10,border:"1px solid rgba(155,122,173,.25)"}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},h("div",null,h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},v.code||v.name||"Voucher"),v.desc&&h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},v.desc)),h("div",{style:{textAlign:"right"}},v.value&&h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:"#9b7aad"}},typeof v.value==="number"?fmtCurr(v.value):v.value),v.expiry&&h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},"Válido até "+v.expiry))))))
         )
       );
     })(),
@@ -1657,10 +1693,9 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
     editPat&&h(Modal,{open:true,onClose:()=>setEditPat(false),title:"✎ Editar Dados da Paciente",width:620},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Nome"},h(Inp,{value:patForm.name,onChange:pfv("name")})),
-        h(Field,{label:"Idade (calculada)",third:true},h("div",{style:{...IS,display:"flex",alignItems:"center",background:P.bg2,color:P.text2,cursor:"default"}},patForm.birthDate?`${calcAge(patForm.birthDate)} anos`:"—")),
+        h(Field,{label:"Idade",third:true},h(Inp,{value:patForm.age,onChange:pfv("age")})),
         h(Field,{label:"Data Nasc.",third:true},h(Inp,{type:"date",value:patForm.birthDate,onChange:pfv("birthDate")})),
         h(Field,{label:"Status",third:true},h(Sel,{value:patForm.status,onChange:pfv("status"),options:Object.keys(PAT_STATUS_CFG)})),
-        h(Field,{label:"Como Chegou Até Nós",third:true},h(Sel,{value:patForm.source||"Outro",onChange:pfv("source"),options:PATIENT_SOURCES})),
         h(Field,{label:"Telefone",half:true},h(Inp,{value:patForm.phone,onChange:pfv("phone")})),
         h(Field,{label:"E-mail",half:true},h(Inp,{value:patForm.email,onChange:pfv("email")})),
         h(Field,{label:"Alergias"},h(Inp,{value:patForm.allergies,onChange:pfv("allergies")})),
@@ -2125,7 +2160,7 @@ function AniversariantesDoMes({patients,onSelectPatient,onNav}){
   const today=new Date();
   const curM=today.getMonth(),curD=today.getDate();
   const safePats=Array.isArray(patients)?patients:[];
-  const bdays=safePats.filter(p=>{if(!p||!p.birthDate)return false;const bd=parseISODate(p.birthDate);return bd&&!isNaN(bd)&&bd.getMonth()===curM;}).map(p=>{const bd=parseISODate(p.birthDate);const age=calcAge(p.birthDate);const day=bd.getDate();return{...p,_bday:day,_age:age,_isToday:day===curD,_isPast:day<curD};}).sort((a,b)=>a._bday-b._bday);
+  const bdays=safePats.filter(p=>{if(!p||!p.birthDate)return false;try{const bd=new Date(p.birthDate);return!isNaN(bd)&&bd.getMonth()===curM;}catch{return false;}}).map(p=>{const bd=new Date(p.birthDate);const age=today.getFullYear()-bd.getFullYear();const day=bd.getDate();return{...p,_bday:day,_age:age,_isToday:day===curD,_isPast:day<curD};}).sort((a,b)=>a._bday-b._bday);
   if(!bdays.length)return null;
   return h(Card,{style:{marginBottom:22,border:`1px solid rgba(196,169,106,.3)`,background:"rgba(196,169,106,.04)"}},
     h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:14}},
@@ -2152,108 +2187,6 @@ function AniversariantesDoMes({patients,onSelectPatient,onNav}){
         );
       })
     )
-  );
-}
-// ─── ANIVERSARIANTES (PÁGINA COMPLETA) ───────────────────────────────────────
-function Aniversariantes({patients,onSelectPatient,onNav}){
-  const h=createElement;
-  const today=new Date();
-  const curM=today.getMonth(),curD=today.getDate();
-  const safePats=Array.isArray(patients)?patients:[];
-  const[modo,setModo]=useState("mes"); // mes | periodo
-  const[mesFiltro,setMesFiltro]=useState(curM); // 0-11
-  const[periodo,setPeriodo]=useState(30); // 30 | 60 | 90 dias
-
-  // Para cada paciente com data de nascimento, calcula quantos dias faltam para o próximo aniversário
-  const withBdayInfo=useMemo(()=>{
-    return safePats.filter(p=>p&&p.birthDate).map(p=>{
-      const bd=parseISODate(p.birthDate);
-      if(!bd||isNaN(bd))return null;
-      const age=calcAge(p.birthDate);
-      const month=bd.getMonth(),day=bd.getDate();
-      // próximo aniversário (este ano ou no próximo, se já passou)
-      let next=new Date(today.getFullYear(),month,day);
-      if(next<new Date(today.getFullYear(),curM,curD))next=new Date(today.getFullYear()+1,month,day);
-      const diasFaltam=daysBetween(new Date(today.getFullYear(),curM,curD),next);
-      const isToday=month===curM&&day===curD;
-      const isPast=month===curM&&day<curD;
-      return{...p,_bMonth:month,_bDay:day,_age:age,_diasFaltam:diasFaltam,_isToday:isToday,_isPast:isPast};
-    }).filter(Boolean);
-  },[safePats,curM,curD,today.getFullYear()]);
-
-  const porMes=useMemo(()=>withBdayInfo.filter(p=>p._bMonth===mesFiltro).sort((a,b)=>a._bDay-b._bDay),[withBdayInfo,mesFiltro]);
-  const porPeriodo=useMemo(()=>withBdayInfo.filter(p=>p._diasFaltam<=periodo).sort((a,b)=>a._diasFaltam-b._diasFaltam),[withBdayInfo,periodo]);
-  const lista=modo==="mes"?porMes:porPeriodo;
-
-  // Contagem por mês, para os botões de atalho
-  const countsByMonth=useMemo(()=>{
-    const c=Array(12).fill(0);
-    withBdayInfo.forEach(p=>{c[p._bMonth]++;});
-    return c;
-  },[withBdayInfo]);
-
-  return h("div",null,
-    h(SectionHeader,{title:"Aniversariantes",sub:`${withBdayInfo.length} de ${safePats.length} pacientes com data de nascimento cadastrada`}),
-    // Resumo rápido
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
-      [{l:"Hoje",v:withBdayInfo.filter(p=>p._isToday).length,c:P.yellow,icon:"🎉"},
-       {l:"Próx. 7 dias",v:withBdayInfo.filter(p=>p._diasFaltam<=7).length,c:"#7aaed4",icon:"🗓"},
-       {l:"Próx. 30 dias",v:withBdayInfo.filter(p=>p._diasFaltam<=30).length,c:P.accent,icon:"📅"},
-       {l:`Em ${MONTH_NAMES[curM]}`,v:countsByMonth[curM],c:P.green,icon:"🎂"}
-      ].map(k=>h(Card,{key:k.l},
-        h("div",{style:{fontSize:22,marginBottom:6}},k.icon),
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c,lineHeight:1}},k.v),
-        h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.l)
-      ))
-    ),
-    // Alternância de modo de filtro
-    h("div",{style:{display:"flex",gap:6,marginBottom:14}},
-      [{k:"mes",l:"📅 Por Mês"},{k:"periodo",l:"⏳ Por Período"}].map(m=>
-        h("button",{key:m.k,onClick:()=>setModo(m.k),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:modo===m.k?P.rose:"transparent",border:`1px solid ${modo===m.k?P.rose:P.border}`,color:modo===m.k?P.accent3:P.text2}},m.l)
-      )
-    ),
-    // Filtro específico do modo escolhido
-    modo==="mes"
-      ?h("div",{style:{display:"flex",gap:6,marginBottom:18,flexWrap:"wrap"}},
-          MONTH_NAMES.map((m,i)=>h("button",{key:m,onClick:()=>setMesFiltro(i),style:{padding:"6px 13px",borderRadius:8,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:mesFiltro===i?P.rose:P.bg3,border:`1px solid ${mesFiltro===i?P.rose:P.border}`,color:mesFiltro===i?P.accent3:P.text2,display:"flex",alignItems:"center",gap:6}},
-            m,countsByMonth[i]>0&&h("span",{style:{background:mesFiltro===i?"rgba(0,0,0,.2)":P.card2,color:mesFiltro===i?P.accent3:P.text3,fontSize:10,padding:"1px 6px",borderRadius:10}},countsByMonth[i])
-          ))
-        )
-      :h("div",{style:{display:"flex",gap:6,marginBottom:18}},
-          [{v:30,l:"Próximos 30 dias"},{v:60,l:"Próximos 60 dias"},{v:90,l:"Próximos 90 dias"}].map(pOpt=>
-            h("button",{key:pOpt.v,onClick:()=>setPeriodo(pOpt.v),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:periodo===pOpt.v?P.rose:"transparent",border:`1px solid ${periodo===pOpt.v?P.rose:P.border}`,color:periodo===pOpt.v?P.accent3:P.text2}},pOpt.l)
-          )
-        ),
-    // Lista de aniversariantes
-    lista.length===0
-      ?h(Card,{style:{textAlign:"center",padding:40}},h("div",{style:{fontSize:32,marginBottom:12}},"🎂"),h("div",{style:{color:P.text3,fontSize:14}},modo==="mes"?`Nenhuma aniversariante em ${MONTH_NAMES[mesFiltro]}.`:"Nenhuma aniversariante neste período."))
-      :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-          lista.map(p=>{
-            const phone=(p.phone||"").replace(/\D/g,"");
-            const waMsg=encodeURIComponent("Olá "+p.name.split(" ")[0]+"! 🎂 Feliz aniversário! Que seu dia seja incrível! 🌸");
-            const dataFormatada=String(p._bDay).padStart(2,"0")+"/"+String(p._bMonth+1).padStart(2,"0");
-            return h(Card,{key:p.id,style:{border:p._isToday?`1px solid rgba(196,169,106,.4)`:`1px solid ${P.border}`,background:p._isToday?"rgba(196,169,106,.06)":P.card}},
-              h("div",{style:{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}},
-                h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:200,cursor:"pointer"}},
-                  h("div",{style:{fontSize:20,minWidth:30,textAlign:"center"}},p._isToday?"🎉":p._isPast&&modo==="mes"?"✓":"🎂"),
-                  h(Avatar,{name:p.name,size:42,src:p.profilePhoto}),
-                  h("div",null,
-                    h("div",{style:{fontSize:14,color:p._isToday?P.yellow:P.text,fontWeight:p._isToday?600:500}},p.name+(p._isToday?" · Hoje!":"")),
-                    h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`${dataFormatada} · Fará ${p._age+1} anos`)
-                  )
-                ),
-                h("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
-                  modo==="periodo"&&h("div",{style:{textAlign:"center",minWidth:70}},
-                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:p._isToday?P.yellow:P.accent,lineHeight:1}},p._diasFaltam===0?"Hoje":`${p._diasFaltam}d`),
-                    h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},"faltam")
-                  ),
-                  phone&&h("a",{href:"https://wa.me/55"+phone+"?text="+waMsg,target:"_blank",rel:"noreferrer",style:{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",background:"rgba(106,196,130,.13)",border:"1px solid rgba(106,196,130,.3)",borderRadius:8,color:"#7aad8a",fontSize:12,fontWeight:600,textDecoration:"none",flexShrink:0}},"💬 WhatsApp"),
-                  h("button",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,fontSize:12,cursor:"pointer"}},"Ver Prontuário")
-                )
-              )
-            );
-          })
-        )
   );
 }
 // ─── PAGAMENTOS CARD (extraído para evitar IIFE no build) ────────────────────
@@ -2321,82 +2254,12 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const combos={};
   safePats.forEach(p=>{const ss=(Array.isArray(p.sessions)?p.sessions:[]).filter(Boolean);ss.forEach((a,i)=>ss.slice(i+1).forEach(b=>{try{const da=parseDMY2(a.date)||new Date(0),db=parseDMY2(b.date)||new Date(0);if(Math.abs(da-db)<7*864e5){const key=[a.procedure||"?",b.procedure||"?"].sort().join(" + ");combos[key]=(combos[key]||0)+1;}}catch{};}));});
   const comboList=Object.entries(combos).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  // ─── ORIGEM DO FATURAMENTO ────────────────────────────────────────────────
-  // Para cada paciente, identifica a data da primeira sessão paga de toda a história dela.
-  // Se a sessão do mês corrente for essa primeira sessão, ela conta como "Nova"; senão, "Recorrente".
-  const firstPaidSessionByPid={};
-  safePats.forEach(p=>{
-    const paidSessions=(Array.isArray(p.sessions)?p.sessions:[]).filter(s=>s&&s.paid);
-    if(paidSessions.length===0)return;
-    const sorted=[...paidSessions].sort((a,b)=>(parseDMY2(a.date)||new Date(8.64e15))-(parseDMY2(b.date)||new Date(8.64e15)));
-    firstPaidSessionByPid[p.id]=sorted[0]; // referência (mesmo objeto) da sessão mais antiga
-  });
-  const monthRevenueSessions=monthSessions.filter(s=>s.paid);
-  const origemMap={"Nova Paciente":0,"Recorrente":0,"Indicação":0,"Campanha Promocional":0};
-  let origemTotal=0;
-  monthRevenueSessions.forEach(s=>{
-    const pat=safePats.find(p=>p.id===s.pid);
-    const isNova=firstPaidSessionByPid[s.pid]===s;
-    const val=Number(s.value)||0;
-    origemTotal+=val;
-    if(isNova)origemMap["Nova Paciente"]+=val;
-    else origemMap["Recorrente"]+=val;
-    // Indicação/Campanha são contadas à parte (sobre o total), refletindo de onde a paciente veio originalmente
-    const src=pat&&pat.source;
-    if(src==="Indicação")origemMap["Indicação"]+=val;
-    else if(src==="Campanha Promocional")origemMap["Campanha Promocional"]+=val;
-  });
-  const origemList=[
-    {l:"Novas Pacientes",v:origemMap["Nova Paciente"],c:P.green,icon:"🌱",desc:"1ª sessão paga na clínica"},
-    {l:"Pacientes Recorrentes",v:origemMap["Recorrente"],c:"#7aaed4",icon:"🔁",desc:"Já tinham sessão paga anterior"},
-  ];
-  const canalList=[
-    {l:"Por Indicação",v:origemMap["Indicação"],c:P.gold,icon:"🤝"},
-    {l:"Por Campanha Promocional",v:origemMap["Campanha Promocional"],c:P.rose,icon:"📣"},
-  ];
   function prevMonth(){if(selMonth===0){setSelMonth(11);setSelYear(y=>y-1);}else setSelMonth(m=>m-1);}
   function nextMonth(){if(selMonth===11){setSelMonth(0);setSelYear(y=>y+1);}else setSelMonth(m=>m+1);}
   const maxBarVal=procList.length===0?1:chartMode==="receita"?procList.reduce((a,[,d])=>d.total>a?d.total:a,1):procList.reduce((a,[,d])=>d.count>a?d.count:a,1);
   return h("div",null,
     h(SectionHeader,{title:"Relatórios",sub:"Análise completa da clínica"}),
-    h(Card,{style:{marginBottom:22}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text,marginBottom:4}},"Origem do Faturamento"),
-      h("div",{style:{fontSize:13,color:P.text3,marginBottom:18}},`De onde veio a receita paga em ${MONTH_NAMES[selMonth]} ${selYear}`),
-      origemTotal===0
-        ?h("div",{style:{textAlign:"center",padding:20,color:P.text3,fontSize:13}},"Nenhuma receita paga registrada neste mês ainda.")
-        :h("div",null,
-            h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}},"Perfil da Receita"),
-            h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14,marginBottom:22}},
-              origemList.map(o=>{
-                const pct=origemTotal>0?Math.round((o.v/origemTotal)*100):0;
-                return h("div",{key:o.l,style:{padding:16,background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
-                  h("div",{style:{fontSize:20,marginBottom:8}},o.icon),
-                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:o.c,lineHeight:1}},fmtCurr(o.v)),
-                  h("div",{style:{fontSize:12,color:P.text2,marginTop:6,fontWeight:500}},o.l),
-                  h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},`${pct}% da receita do mês · ${o.desc}`),
-                  h("div",{style:{height:4,background:P.border,borderRadius:2,marginTop:10,overflow:"hidden"}},
-                    h("div",{style:{height:"100%",width:`${pct}%`,background:o.c,borderRadius:2}})
-                  )
-                );
-              })
-            ),
-            h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}},"Canal de Aquisição (dentre o total acima)"),
-            h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14}},
-              canalList.map(o=>{
-                const pct=origemTotal>0?Math.round((o.v/origemTotal)*100):0;
-                return h("div",{key:o.l,style:{padding:16,background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
-                  h("div",{style:{fontSize:20,marginBottom:8}},o.icon),
-                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:o.c,lineHeight:1}},fmtCurr(o.v)),
-                  h("div",{style:{fontSize:12,color:P.text2,marginTop:6,fontWeight:500}},o.l),
-                  h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},`${pct}% da receita do mês veio de pacientes com essa origem cadastrada`),
-                  h("div",{style:{height:4,background:P.border,borderRadius:2,marginTop:10,overflow:"hidden"}},
-                    h("div",{style:{height:"100%",width:`${pct}%`,background:o.c,borderRadius:2}})
-                  )
-                );
-              })
-            )
-          )
-    ),
+    h(AniversariantesDoMes,{patients:safePats,onSelectPatient,onNav}),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
       [{l:"Total Sessões",v:allS.length,c:P.gold},{l:"Procedimentos",v:[...new Set(allS.map(s=>s.procedure))].length,c:"#7aaed4"},{l:"Fidelização",v:fidPct+"%",c:P.green},{l:"Forecast "+MONTH_NAMES[nextM].slice(0,3),v:fmtCurr(forecastRev),c:P.accent}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:k.c}},k.v)))
     ),
@@ -2750,31 +2613,42 @@ function App(){
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s); setAuthLoading(false);
+    supabase.auth.getSession().then(({ data: { session: s }, error }) => {
+      if (error || !s) {
+        // Token inválido ou expirado — limpa e vai para login
+        supabase.auth.signOut().catch(() => {});
+        setSession(null);
+      } else {
+        setSession(s);
+      }
+      setAuthLoading(false);
+    }).catch(() => { setAuthLoading(false); });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
+        setSession(s);
+      } else if (event === "SIGNED_OUT" || !s) {
+        setSession(null);
+      }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => subscription.unsubscribe();
   }, []);
 
-  // Enquanto verifica sessão
   if (authLoading) return createElement("div", {
     style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: P.bg, color: P.text3, fontSize: 14, fontFamily: "sans-serif" }
   }, "Carregando...");
 
-  // Não logada → tela de login
   if (!session) return createElement(LoginScreen, { onLogin: () => supabase.auth.getSession().then(({data:{session:s}})=>setSession(s)) });
 
-  // Logada → sistema completo
   return createElement(AppInner, { session, onLogout: () => supabase.auth.signOut() });
 }
 
 function AppInner({ session, onLogout }) {
-  const[patients,setPatients,loadingPatients,errPatients]=useSupaTable("patients",INIT_PATIENTS);
-  const[agenda,setAgenda,loadingAgenda,errAgenda]=useSupaTable("agenda",INIT_AGENDA);
-  const[expenses,setExpenses,loadingExpenses,errExpenses]=useSupaTable("expenses",INIT_EXPENSES);
-  const[incomes,setIncomes,loadingIncomes,errIncomes]=useSupaTable("incomes",[]);
-  const[products,setProducts,loadingProducts,errProducts]=useSupaTable("products",[
+  const[patients,setPatients,loadingPatients]=useSupaTable("patients",INIT_PATIENTS);
+  const[agenda,setAgenda,loadingAgenda]=useSupaTable("agenda",INIT_AGENDA);
+  const[expenses,setExpenses,loadingExpenses]=useSupaTable("expenses",INIT_EXPENSES);
+  const[incomes,setIncomes,loadingIncomes]=useSupaTable("incomes",[]);
+  const[products,setProducts,loadingProducts]=useSupaTable("products",[
     {id:"p1",name:"Botox Allergan 100U",cat:"Toxina Botulínica",qty:2,min:5,unit:"un",expiry:"12/2026",cost:800,emoji:"💉",status:"critical"},
     {id:"p2",name:"Juvederm Ultra 1ml",cat:"Ácido Hialurônico",qty:5,min:8,unit:"sir",expiry:"08/2026",cost:450,emoji:"✨",status:"low"},
     {id:"p3",name:"Sculptra 367mg",cat:"Bioestimulador",qty:7,min:4,unit:"fr",expiry:"09/2026",cost:950,emoji:"🧪",status:"ok"},
@@ -2782,20 +2656,14 @@ function AppInner({ session, onLogout }) {
     {id:"p5",name:"Profhilo 2ml",cat:"Skinbooster",qty:4,min:3,unit:"sir",expiry:"11/2026",cost:520,emoji:"💧",status:"ok"},
   ]);
   const[settingsData,setSettings,loadingSettings]=useSettings({doctorName:"Dra. Sofia",doctorTitle:"Médica Responsável",clinicName:"HarmonizaPro"});
-  const[procedures,setProcedures,loadingProcedures,errProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
-  const[locations,setLocations,loadingLocations,errLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
-  const[returnRules,setReturnRules,loadingRules,errRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
+  const[procedures,setProcedures,loadingProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
+  const[locations,setLocations,loadingLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
+  const[returnRules,setReturnRules,loadingRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
   // Todos os useState ANTES de qualquer return condicional (regra dos hooks)
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
-  const saveError=errPatients||errAgenda||errExpenses||errIncomes||errProducts||errProcedures||errLocations||errRules||null;
 
-  // Aguarda todos os dados carregarem antes de renderizar a UI
-  const isLoading = loadingPatients||loadingAgenda||loadingExpenses||loadingIncomes||loadingProducts||loadingSettings||loadingProcedures||loadingLocations||loadingRules;
-  if(isLoading) return createElement("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:P.bg,color:P.text3,fontSize:14,fontFamily:"sans-serif",flexDirection:"column",gap:12}},
-    createElement("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:P.accent3}},"HarmonizaPro"),
-    createElement("div",null,"Carregando dados...")
-  );
+  // Dados carregam do localStorage — sem tela de loading
   const procedureNames=Array.isArray(procedures)?procedures.map(p=>typeof p==="string"?p:(p.name||p)).filter(Boolean):INIT_PROCEDURES;
   const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
   const h=createElement;
@@ -2804,8 +2672,8 @@ function AppInner({ session, onLogout }) {
   const criticalStock=products.filter(p=>p.status==="critical").length;
   const nav=[
     {k:"dashboard",l:"Dashboard",icon:"✦"},
+    {k:"aniversariantes",l:"Aniversariantes",icon:"🎂",badge:(()=>{const t=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===t.getMonth()&&bd.getDate()===t.getDate();}).length||null;})(),badgeColor:P.yellow},
     {k:"retornos",l:"Retornos",icon:"⏰",badge:(()=>{const today=new Date();return patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length||null;})(),badgeColor:P.red},
-    {k:"aniversariantes",l:"Aniversariantes",icon:"🎂",badge:(()=>{const today=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=parseISODate(p.birthDate);return bd&&!isNaN(bd)&&bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();}).length||null;})(),badgeColor:P.yellow},
     {k:"agenda",l:"Agenda",icon:"📅",badge:todayApptCount||null},
     {k:"pacientes",l:"Pacientes",icon:"👤"},
     {k:"prontuario",l:"Prontuários",icon:"📋"},
@@ -2818,7 +2686,7 @@ function AppInner({ session, onLogout }) {
   function handleNav(k){setPage(k);if(k!=="prontuario")setSelectedPatient(null);}
   function handleSelectPatient(p){setSelectedPatient(p);setPage("prontuario");}
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",retornos:"Retornos Pendentes",aniversariantes:"Aniversariantes",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",relatorios:"Relatórios",config:"Configurações"};
+  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos Pendentes",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",relatorios:"Relatórios",config:"Configurações"};
   const settings = settingsData;
   return h(Fragment,null,
     h("style",null,`@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{background:${P.bg};color:${P.text};font-family:'DM Sans',sans-serif;}::-webkit-scrollbar{width:4px;height:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:${P.border};border-radius:2px;}input,select,textarea{font-family:'DM Sans',sans-serif;color:${P.text};}select option{background:${P.bg2};}`),
@@ -2851,15 +2719,11 @@ function AppInner({ session, onLogout }) {
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text,flexShrink:0}},pageTitles[page]),
           h(GlobalSearch,{patients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav})
         ),
-        saveError&&h("div",{style:{padding:"10px 24px",background:"rgba(192,112,112,.13)",borderBottom:`1px solid rgba(192,112,112,.3)`,color:P.red,fontSize:12.5,display:"flex",alignItems:"center",gap:8,flexShrink:0}},
-          h("span",null,"⚠"),
-          h("span",null,saveError+" — os dados podem não estar salvos. Não recarregue a página até resolver.")
-        ),
         h("div",{style:{flex:1,overflowY:"auto",padding:24}},
           h(ErrorBoundary,{key:page},
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,settings,returnRules}),
-            page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
+            page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,locations:locationNames}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
