@@ -448,7 +448,7 @@ function PlanAnnotator({initial,onSave,onClose}){
     if(!canvas)return;
     const ctx=canvas.getContext("2d");
     ctx.clearRect(0,0,canvas.width,canvas.height);
-    if(bImg)ctx.drawImage(bImg,0,0,canvas.width,canvas.height);
+    if(bImg){const scale=Math.min(canvas.width/bImg.naturalWidth,canvas.height/bImg.naturalHeight);const dw=bImg.naturalWidth*scale,dh=bImg.naturalHeight*scale;const dx=(canvas.width-dw)/2,dy=(canvas.height-dh)/2;ctx.drawImage(bImg,dx,dy,dw,dh);}
     // Strokes
     sStrokes.forEach(stroke=>{
       if(!stroke.points||stroke.points.length<2)return;
