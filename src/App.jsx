@@ -1057,7 +1057,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   const[search,setSearch]=useState("");
   const[filter,setFilter]=useState("all");
   const[showNew,setShowNew]=useState(false);
-  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active"};
+  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active",origem:"nova",indicadoPor:""};
   const[form,setForm]=useState(blank);
   function calcAgeFromBirth(dateStr){if(!dateStr)return"";const bd=new Date(dateStr+"T12:00");if(isNaN(bd))return"";const t=new Date();let age=t.getFullYear()-bd.getFullYear();const m=t.getMonth()-bd.getMonth();if(m<0||(m===0&&t.getDate()<bd.getDate()))age--;return age>=0?String(age):"";}
   function fvBirth(v){setForm(p=>({...p,birthDate:v,age:calcAgeFromBirth(v)}));}
@@ -1083,7 +1083,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
     const np={id:Date.now(),...form,age:Number(form.age),profilePhoto:profPhoto,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
       complaints:form.complaints.split(",").map(s=>s.trim()).filter(Boolean),tags:[],
       anamnese:{healthHistory:form.healthHistory,medications:form.medications,smoking:form.smoking,pregnancy:form.pregnancy,previousProcedures:form.previousProcedures,skinType:form.skinType,fitzpatrick:form.fitzpatrick,allergiesDetail:form.allergiesDetail,contraindications:form.contraindications,musicStyle:form.musicStyle,importantAlerts:form.allergies&&form.allergies!=="Nenhuma"?[form.allergies]:[]}};
-    setPatients(prev=>[...prev,np]);setShowNew(false);setForm(blank);setProfPhoto(null);
+    setPatients(prev=>[...prev,{...np,origem:form.origem||"nova",indicadoPor:form.indicadoPor||""}]);setShowNew(false);setForm(blank);setProfPhoto(null);
   }
   return h("div",null,
     h(SectionHeader,{title:"Pacientes",sub:`${patients.length} pacientes cadastrados`,action:h(Btn,{onClick:()=>setShowNew(true)},"＋ Novo Paciente")}),
@@ -1147,7 +1147,9 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
         h(Field,{label:"Gestante",third:true},h(Sel,{value:form.pregnancy,onChange:fv("pregnancy"),options:["Não","Gestante","Lactante"]})),
         h(Field,{label:"🎵 Estilo Musical",third:true},h(Sel,{value:form.musicStyle,onChange:fv("musicStyle"),options:MUSIC_STYLES})),
         h(Field,{label:"Principais Queixas"},h(TA,{value:form.complaints,onChange:fv("complaints"),placeholder:"Separadas por vírgula",rows:2})),
-        h(Field,{label:"Procedimentos Anteriores"},h(TA,{value:form.previousProcedures,onChange:fv("previousProcedures"),placeholder:"Histórico...",rows:2}))
+        h(Field,{label:"Procedimentos Anteriores"},h(TA,{value:form.previousProcedures,onChange:fv("previousProcedures"),placeholder:"Histórico...",rows:2})),
+        h(Field,{label:"Origem da Paciente"},h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},[{k:"nova",l:"🌟 Nova"},{k:"indicacao",l:"🤝 Indicação"},{k:"campanha",l:"📣 Campanha"},{k:"recorrente",l:"🔄 Recorrente"}].map(o=>h("button",{key:o.k,onClick:()=>setForm(p=>({...p,origem:o.k})),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:form.origem===o.k?P.rose:"transparent",border:`1px solid ${form.origem===o.k?P.rose:P.border}`,color:form.origem===o.k?P.accent3:P.text2}},o.l)))),
+        form.origem==="indicacao"&&h(Field,{label:"Indicado(a) por"},h(Inp,{value:form.indicadoPor,onChange:fv("indicadoPor"),placeholder:"Nome de quem indicou"}))
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},
         h(Btn,{variant:"ghost",onClick:()=>setShowNew(false)},"Cancelar"),
@@ -1314,7 +1316,20 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:P.text}},patient.name),
             h(StatusBadge,{status:patient.status})
           ),
-          h("div",{style:{fontSize:13,color:P.text3,marginBottom:6}},`${patient.age} anos · Tipo ${patient.bloodType} · Fitzpatrick ${patient.anamnese?.fitzpatrick} · Desde ${patient.since}`),
+          h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginBottom:6}},
+            h("span",{style:{fontSize:13,color:P.text3}},(()=>{const bd=patient.birthDate?new Date(patient.birthDate+"T12:00"):null;let age=patient.age;if(bd&&!isNaN(bd)){let a=new Date().getFullYear()-bd.getFullYear();const m=new Date().getMonth()-bd.getMonth();if(m<0||(m===0&&new Date().getDate()<bd.getDate()))a--;age=a;}return age+" anos";})()),
+            h("span",{style:{fontSize:13,color:P.text3}},"Tipo "+patient.bloodType),
+            h("span",{style:{fontSize:13,color:P.text3}},"Fitzpatrick "+patient.anamnese?.fitzpatrick),
+            patient.birthDate&&h("span",{style:{fontSize:13,color:P.text3}},"🎂 "+(()=>{const bd=new Date(patient.birthDate+"T12:00");return String(bd.getDate()).padStart(2,"0")+"/"+String(bd.getMonth()+1).padStart(2,"0")+"/"+bd.getFullYear();})()),
+            patient.since&&h("span",{style:{fontSize:13,color:P.text3}},"Desde "+patient.since)
+          ),
+          h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginBottom:6}},
+            patient.phone&&h("span",{style:{fontSize:12,color:P.text3}},"📞 "+patient.phone),
+            patient.email&&h("span",{style:{fontSize:12,color:P.text3}},"✉ "+patient.email),
+            patient.cpf&&h("span",{style:{fontSize:12,color:P.text3}},"CPF "+patient.cpf),
+            patient.origem&&h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(157,119,97,.12)",color:P.accent,border:"1px solid rgba(157,119,97,.2)"}},(()=>({nova:"🌟 Nova",indicacao:"🤝 Indicação",campanha:"📣 Campanha",recorrente:"🔄 Recorrente"})[patient.origem]||patient.origem)()),
+            patient.indicadoPor&&h("span",{style:{fontSize:12,color:P.text3}},"Ind. por: "+patient.indicadoPor)
+          ),
           patient.anamnese?.musicStyle&&h("div",{style:{fontSize:12,color:P.text3,marginBottom:6}},`🎵 ${patient.anamnese.musicStyle}`),
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},(patient.complaints||[]).map(c=>h("span",{key:c,style:{fontSize:11,padding:"3px 9px",borderRadius:20,background:`rgba(92,31,50,.12)`,color:P.accent,border:`1px solid rgba(92,31,50,.25)`}},c)))
         ),
@@ -1426,7 +1441,10 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
       (patient.sessions||[]).map(s=>h(Card,{key:s.id,style:{marginBottom:14}},
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}},
           h("div",null,
-            h("div",{style:{fontSize:10,color:P.rose2,textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:4}},`${s.date} · 📍 ${s.location||""}`),
+            h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}},
+              h("div",{style:{fontSize:13,fontWeight:700,color:P.accent3,background:"rgba(157,119,97,.12)",border:"1px solid rgba(157,119,97,.25)",borderRadius:8,padding:"3px 10px"}},"📅 "+s.date),
+              s.location&&h("div",{style:{fontSize:12,color:P.text3}},"📍 "+s.location)
+            ),
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},s.procedure),
             h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`${s.doctor} · ${s.product}${s.dose?" · "+s.dose:""}${s.loteCodigo?" · Lote "+s.loteCodigo:""}${s.qtdUsada?" · Usado: "+s.qtdUsada:""}`)
           ),
@@ -2155,37 +2173,68 @@ function DonutChart({catList,totalCat}){
   return h("svg",{width:140,height:140,viewBox:"0 0 140 140"},h("g",null,slices),h("text",{x:cx,y:cy-6,textAnchor:"middle",fill:P.accent3,fontSize:13,fontWeight:600},catList.length),h("text",{x:cx,y:cy+10,textAnchor:"middle",fill:P.text3,fontSize:9},"categorias"));
 }
 // ─── ANIVERSARIANTES DO MÊS ───────────────────────────────────────────────────
-function AniversariantesDoMes({patients,onSelectPatient,onNav}){
+function OrigemFaturamento({patients,selMonth,selYear,parseDMY2}){
   const h=createElement;
-  const today=new Date();
-  const curM=today.getMonth(),curD=today.getDate();
-  const safePats=Array.isArray(patients)?patients:[];
-  const bdays=safePats.filter(p=>{if(!p||!p.birthDate)return false;try{const bd=new Date(p.birthDate);return!isNaN(bd)&&bd.getMonth()===curM;}catch{return false;}}).map(p=>{const bd=new Date(p.birthDate);const age=today.getFullYear()-bd.getFullYear();const day=bd.getDate();return{...p,_bday:day,_age:age,_isToday:day===curD,_isPast:day<curD};}).sort((a,b)=>a._bday-b._bday);
-  if(!bdays.length)return null;
-  return h(Card,{style:{marginBottom:22,border:`1px solid rgba(196,169,106,.3)`,background:"rgba(196,169,106,.04)"}},
-    h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:14}},
-      h("span",{style:{fontSize:20}},"🎂"),
+  const safePats=Array.isArray(patients)?patients.filter(Boolean):[];
+  const allS=safePats.flatMap(p=>(Array.isArray(p.sessions)?p.sessions:[]).filter(Boolean).map(s=>({...s,value:Number(s.value)||0,origem:p.origem||"nova",indicadoPor:p.indicadoPor||"",pname:p.name,pid:p.id,since:p.since})));
+  const monthS=allS.filter(s=>{try{const d=parseDMY2(s.date);return d&&d.getMonth()===selMonth&&d.getFullYear()===selYear&&s.paid;}catch{return false;}});
+  const total=monthS.reduce((a,s)=>a+s.value,0)||1;
+
+  // Classifica sessão por origem da paciente + se é recorrente no mês
+  const patSessionsThisMonth={};
+  monthS.forEach(s=>{if(!patSessionsThisMonth[s.pid])patSessionsThisMonth[s.pid]=[];patSessionsThisMonth[s.pid].push(s);});
+
+  const groups={nova:0,recorrente:0,indicacao:0,campanha:0};
+  monthS.forEach(s=>{
+    const orig=s.origem||"nova";
+    if(orig==="indicacao")groups.indicacao+=s.value;
+    else if(orig==="campanha")groups.campanha+=s.value;
+    else if(patSessionsThisMonth[s.pid]&&allS.filter(x=>x.pid===s.pid&&x.paid).length>1)groups.recorrente+=s.value;
+    else groups.nova+=s.value;
+  });
+
+  const cats=[
+    {k:"nova",l:"Novas Pacientes",icon:"🌟",color:"#9b7aad",bg:"rgba(155,122,173,.12)"},
+    {k:"recorrente",l:"Recorrentes",icon:"🔄",color:P.green,bg:"rgba(122,173,138,.12)"},
+    {k:"indicacao",l:"Indicações",icon:"🤝",color:"#7aaed4",bg:"rgba(122,174,212,.12)"},
+    {k:"campanha",l:"Campanhas",icon:"📣",color:P.yellow,bg:"rgba(196,169,106,.12)"},
+  ];
+
+  const indicacoes=safePats.filter(p=>p.origem==="indicacao"&&p.indicadoPor);
+
+  if(monthS.length===0)return null;
+  return h(Card,{style:{marginBottom:22,border:"1px solid rgba(157,119,97,.3)"}},
+    h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:18}},
+      h("span",{style:{fontSize:20}},"📊"),
       h("div",null,
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.yellow}},"Aniversariantes de "+MONTH_NAMES[curM]),
-        h("div",{style:{fontSize:12,color:P.text3,marginTop:1}},bdays.length+" paciente"+(bdays.length>1?"s":""))
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Origem do Faturamento"),
+        h("div",{style:{fontSize:12,color:P.text3,marginTop:1}},"Distribuição por origem das pacientes")
       )
     ),
-    h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
-      bdays.map(p=>{
-        const phone=(p.phone||"").replace(/\D/g,"");
-        const waMsg=encodeURIComponent("Olá "+p.name.split(" ")[0]+"! 🎂 Feliz aniversário! Que seu dia seja incrível! 🌸");
-        return h("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:12,padding:"9px 12px",borderRadius:10,background:p._isToday?"rgba(196,169,106,.12)":P.bg3,border:"1px solid "+(p._isToday?"rgba(196,169,106,.4)":P.border)}},
-          h("div",{style:{fontSize:18,minWidth:28,textAlign:"center"}},p._isToday?"🎉":p._isPast?"✓":"🗓"),
-          h("div",{onClick:()=>{if(onSelectPatient&&onNav){onSelectPatient(p);onNav("prontuario");}},style:{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}},
-            h(Avatar,{name:p.name,size:32,src:p.profilePhoto}),
-            h("div",null,
-              h("div",{style:{fontSize:13,color:p._isToday?P.yellow:P.text,fontWeight:p._isToday?600:400}},p.name+(p._isToday?" 🎂 Hoje!":"")),
-              h("div",{style:{fontSize:11,color:P.text3}},"Dia "+p._bday+" · "+p._age+" anos")
-            )
-          ),
-          phone&&h("a",{href:"https://wa.me/55"+phone+"?text="+waMsg,target:"_blank",rel:"noreferrer",style:{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",background:"rgba(106,196,130,.13)",border:"1px solid rgba(106,196,130,.3)",borderRadius:8,color:"#7aad8a",fontSize:11,fontWeight:600,textDecoration:"none",flexShrink:0}},"💬 WhatsApp")
-        );
-      })
+    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12,marginBottom:16}},
+      cats.map(cat=>h("div",{key:cat.k,style:{padding:"14px",borderRadius:10,background:cat.bg,border:"1px solid "+cat.color+"33"}},
+        h("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:8}},
+          h("span",{style:{fontSize:18}},cat.icon),
+          h("span",{style:{fontSize:12,color:P.text2,fontWeight:500}},cat.l)
+        ),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:cat.color,lineHeight:1}},
+          "R$"+(groups[cat.k]||0).toLocaleString("pt-BR")
+        ),
+        h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},
+          Math.round(((groups[cat.k]||0)/total)*100)+"% do faturamento"
+        ),
+        h("div",{style:{height:4,borderRadius:2,background:"rgba(255,255,255,.08)",overflow:"hidden",marginTop:8}},
+          h("div",{style:{height:"100%",width:Math.round(((groups[cat.k]||0)/total)*100)+"%",background:cat.color,borderRadius:2,transition:"width .4s"}})
+        )
+      ))
+    ),
+    indicacoes.length>0&&h("div",null,
+      h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,fontWeight:600}},"🤝 Pacientes por Indicação"),
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+        indicacoes.map(p=>h("div",{key:p.id,style:{fontSize:12,padding:"4px 10px",borderRadius:20,background:"rgba(122,174,212,.1)",border:"1px solid rgba(122,174,212,.2)",color:"#7aaed4"}},
+          p.name.split(" ")[0]+" → ind. por "+p.indicadoPor
+        ))
+      )
     )
   );
 }
@@ -2259,7 +2308,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const maxBarVal=procList.length===0?1:chartMode==="receita"?procList.reduce((a,[,d])=>d.total>a?d.total:a,1):procList.reduce((a,[,d])=>d.count>a?d.count:a,1);
   return h("div",null,
     h(SectionHeader,{title:"Relatórios",sub:"Análise completa da clínica"}),
-    h(AniversariantesDoMes,{patients:safePats,onSelectPatient,onNav}),
+    h(OrigemFaturamento,{patients:safePats,selMonth,selYear,parseDMY2}),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
       [{l:"Total Sessões",v:allS.length,c:P.gold},{l:"Procedimentos",v:[...new Set(allS.map(s=>s.procedure))].length,c:"#7aaed4"},{l:"Fidelização",v:fidPct+"%",c:P.green},{l:"Forecast "+MONTH_NAMES[nextM].slice(0,3),v:fmtCurr(forecastRev),c:P.accent}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:k.c}},k.v)))
     ),
