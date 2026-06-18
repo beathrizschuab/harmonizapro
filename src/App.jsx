@@ -216,30 +216,33 @@ async function supaWrite(key, value) {
 function useSupaTable(key, initFallback = []) {
   const lsKey = "hapro2_" + key;
 
-  // Estado inicial do localStorage (carrega instantâneo)
-  const [data, setDataRaw] = useState(() => {
-    try {
-      const raw = localStorage.getItem(lsKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const ok = Array.isArray(parsed) ? parsed.length > 0
-          : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
-        if (ok) return parsed;
-      }
-    } catch {}
-    return initFallback;
-  });
-
+  // Começa com null para indicar "ainda não carregou do Supabase"
+  const [data, setDataRaw] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Ao montar: busca do Supabase e substitui se vier dado mais recente
+  // Ao montar: SEMPRE busca do Supabase primeiro.
+  // Só usa localStorage/fallback se o Supabase falhar completamente.
   useEffect(() => {
     let cancelled = false;
-    // Aguarda user_id estar disponível (máx 3s)
     const tryRead = (attempts=0) => {
       if (cancelled) return;
-      if (!_supaUserId && attempts < 10) {
+      if (!_supaUserId && attempts < 15) {
         setTimeout(()=>tryRead(attempts+1), 300);
+        return;
+      }
+      if (!_supaUserId) {
+        // Sem usuário autenticado após timeout: usa localStorage ou fallback
+        try {
+          const raw = localStorage.getItem(lsKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const ok = Array.isArray(parsed) ? parsed.length > 0
+              : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
+            if (ok) { setDataRaw(parsed); setLoading(false); return; }
+          }
+        } catch {}
+        setDataRaw(initFallback);
+        setLoading(false);
         return;
       }
       supaRead(key).then(remote => {
@@ -248,12 +251,24 @@ function useSupaTable(key, initFallback = []) {
         if (remote !== null) {
           const ok = Array.isArray(remote) ? true : (remote && typeof remote === "object");
           if (ok) {
+            // Dado vem do Supabase — fonte da verdade
             setDataRaw(remote);
             try { localStorage.setItem(lsKey, JSON.stringify(remote)); } catch {}
+            return;
           }
-        } else {
-          setLoading(false);
         }
+        // Supabase não tem dado ainda (conta nova/chave nova):
+        // usa localStorage se tiver algo, senão usa o fallback
+        try {
+          const raw = localStorage.getItem(lsKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const ok = Array.isArray(parsed) ? parsed.length > 0
+              : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
+            if (ok) { setDataRaw(parsed); return; }
+          }
+        } catch {}
+        setDataRaw(initFallback);
       });
     };
     tryRead();
@@ -3783,6 +3798,21 @@ function AppInner({ session, onLogout }) {
   },[]);
   const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
   const h=createElement;
+
+  // Aguarda dados essenciais carregarem do Supabase antes de renderizar.
+  // Isso evita que o app inicie com dados do localStorage de outro dispositivo
+  // ou com os dados de demonstração embutidos no código.
+  if (loadingPatients || loadingAgenda || patients === null || agenda === null) {
+    return h("div", {
+      style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: P.bg, gap: 16 }
+    },
+      h("div", { style: { fontFamily: "'Cormorant Garamond',serif", fontSize: 28, color: P.accent3, letterSpacing: ".04em" } }, "HarmonizaPro"),
+      h("div", { style: { width: 32, height: 32, border: `3px solid ${P.border}`, borderTopColor: P.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite" } }),
+      h("div", { style: { fontSize: 13, color: P.text3 } }, "Sincronizando dados..."),
+      h("style", null, "@keyframes spin { to { transform: rotate(360deg); } }")
+    );
+  }
+
   const todayStr=new Date().toISOString().slice(0,10);
   const todayApptCount=agenda.filter(a=>a.date===todayStr).length;
   const criticalStock=products.filter(p=>p.status==="critical").length;
