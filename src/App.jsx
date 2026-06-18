@@ -141,12 +141,11 @@ function debitarLote(setProducts, productName, loteId, qtdUsada) {
 
 
 // ─── SUPABASE DATA HOOKS ─────────────────────────────────────────────────────
-// Salva em localStorage (imediato) + Supabase (persistente).
-// localStorage garante que dados nunca se perdem por falha de rede ou RLS.
+// Dual-save: localStorage (imediato, nunca perde) + Supabase (sincronia entre devices)
 function useSupaTable(key, initFallback = []) {
   const lsKey = "app_" + key;
 
-  // Inicializa do localStorage imediatamente (sem flash de tela vazia)
+  // Carrega do localStorage imediatamente — sem tela vazia ao recarregar
   const [data, setDataRaw] = useState(() => {
     try { const s = localStorage.getItem(lsKey); if (s) return JSON.parse(s); } catch {}
     return initFallback;
@@ -167,7 +166,6 @@ function useSupaTable(key, initFallback = []) {
               try {
                 const parsed = JSON.parse(row.value);
                 setDataRaw(parsed);
-                // Sincroniza localStorage com o valor do servidor
                 try { localStorage.setItem(lsKey, JSON.stringify(parsed)); } catch {}
               } catch {}
             }
@@ -182,10 +180,10 @@ function useSupaTable(key, initFallback = []) {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
 
-      // 1. Salva no localStorage imediatamente (nunca perde dado)
+      // 1. localStorage — salva na hora, garante persistência local
       try { localStorage.setItem(lsKey, JSON.stringify(next)); } catch {}
 
-      // 2. Tenta salvar no Supabase em background
+      // 2. Supabase — sem updated_at para evitar erro 500 de coluna inexistente
       (async () => {
         let userId = uid.current;
         if (!userId) {
@@ -197,12 +195,10 @@ function useSupaTable(key, initFallback = []) {
           } catch { return; }
         }
         try {
-          await supabase.from("app_data").upsert({
-            user_id: userId,
-            key,
-            value: JSON.stringify(next),
-            updated_at: new Date().toISOString(),
-          }, { onConflict: "user_id,key" });
+          await supabase.from("app_data").upsert(
+            { user_id: userId, key, value: JSON.stringify(next) },
+            { onConflict: "user_id,key" }
+          );
         } catch {}
       })();
 
