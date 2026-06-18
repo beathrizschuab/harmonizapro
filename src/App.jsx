@@ -140,110 +140,59 @@ function debitarLote(setProducts, productName, loteId, qtdUsada) {
 }
 
 
-// ─── SUPABASE DATA HOOKS ─────────────────────────────────────────────────────
-// Remove campos pesados (fotos base64) antes de salvar no localStorage
-// para evitar QuotaExceededError. Fotos ficam só em memória e no Supabase.
-function stripHeavyFields(data) {
+// ─── DATA HOOKS — localStorage only ─────────────────────────────────────────
+// Remove fotos base64 antes de salvar para não estourar a cota do localStorage
+function stripPhotos(data) {
   if (!Array.isArray(data)) return data;
   return data.map(item => {
     if (!item || typeof item !== "object") return item;
-    const stripped = { ...item };
-    // Remove fotos de perfil (base64 grande)
-    if (stripped.profilePhoto && typeof stripped.profilePhoto === "string" && stripped.profilePhoto.startsWith("data:")) {
-      stripped.profilePhoto = null;
-    }
-    // Remove fotos das sessões (array de base64)
-    if (Array.isArray(stripped.sessions)) {
-      stripped.sessions = stripped.sessions.map(s => ({
+    const out = { ...item };
+    if (typeof out.profilePhoto === "string" && out.profilePhoto.startsWith("data:"))
+      out.profilePhoto = null;
+    if (Array.isArray(out.sessions))
+      out.sessions = out.sessions.map(s => ({
         ...s,
-        photos: Array.isArray(s.photos) ? s.photos.map(p =>
-          (typeof p === "string" && p.startsWith("data:")) ? null : p
-        ).filter(Boolean) : s.photos
+        photos: Array.isArray(s.photos)
+          ? s.photos.filter(p => !(typeof p === "string" && p.startsWith("data:")))
+          : (s.photos || [])
       }));
-    }
-    return stripped;
+    return out;
   });
 }
 
 function useSupaTable(key, initFallback = []) {
-  const lsKey = "hapro_" + key;
+  const lsKey = "hapro2_" + key;
 
   const [data, setDataRaw] = useState(() => {
     try {
-      const s = localStorage.getItem(lsKey);
-      if (s) {
-        const parsed = JSON.parse(s);
-        const hasData = Array.isArray(parsed) ? parsed.length > 0 : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
-        if (hasData) return parsed;
+      const raw = localStorage.getItem(lsKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const ok = Array.isArray(parsed) ? parsed.length > 0
+          : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
+        if (ok) return parsed;
       }
     } catch {}
     return initFallback;
   });
 
-  const uid = useRef(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user || cancelled) return;
-      uid.current = user.id;
-      supabase.from("app_data").select("value")
-        .eq("user_id", user.id).eq("key", key).maybeSingle()
-        .then(({ data: row, error }) => {
-          if (cancelled || error || !row?.value) return;
-          try {
-            const parsed = JSON.parse(row.value);
-            const hasData = Array.isArray(parsed) ? parsed.length > 0 : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
-            if (hasData) {
-              setDataRaw(parsed);
-              // Salva versão sem fotos no localStorage
-              try { localStorage.setItem(lsKey, JSON.stringify(stripHeavyFields(parsed))); } catch {}
-            }
-          } catch {}
-        }).catch(() => {});
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [key]);
-
   const setData = useCallback((valOrFn) => {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
-
-      // Salva no localStorage sem fotos (evita QuotaExceededError)
       try {
-        const slim = stripHeavyFields(next);
-        localStorage.setItem(lsKey, JSON.stringify(slim));
-      } catch (e) {
-        // Se ainda estourar, limpa chaves antigas e tenta de novo
+        localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
+      } catch {
+        // Quota cheia: limpa outras chaves hapro e tenta de novo
         try {
-          const keys = Object.keys(localStorage).filter(k => k.startsWith("hapro_"));
-          keys.forEach(k => { if (k !== lsKey) localStorage.removeItem(k); });
-          localStorage.setItem(lsKey, JSON.stringify(stripHeavyFields(next)));
+          Object.keys(localStorage)
+            .filter(k => k.startsWith("hapro2_") && k !== lsKey)
+            .forEach(k => localStorage.removeItem(k));
+          localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
         } catch {}
       }
-
-      // Supabase em background com dados completos (inclusive fotos)
-      (async () => {
-        let userId = uid.current;
-        if (!userId) {
-          try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-            uid.current = user.id;
-            userId = user.id;
-          } catch { return; }
-        }
-        try {
-          await supabase.from("app_data").upsert(
-            { user_id: userId, key, value: JSON.stringify(next) },
-            { onConflict: "user_id,key" }
-          );
-        } catch {}
-      })();
-
       return next;
     });
-  }, [key]);
+  }, [lsKey]);
 
   return [data, setData, false];
 }
@@ -2703,7 +2652,7 @@ function AppInner({ session, onLogout }) {
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
 
-  // Dados carregam do localStorage instantaneamente — sem tela de loading
+  // Dados carregam do localStorage — sem tela de loading
   const procedureNames=Array.isArray(procedures)?procedures.map(p=>typeof p==="string"?p:(p.name||p)).filter(Boolean):INIT_PROCEDURES;
   const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
   const h=createElement;
