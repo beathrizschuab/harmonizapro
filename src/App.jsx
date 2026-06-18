@@ -891,7 +891,7 @@ function PatientAutocomplete({value,onChange,patients}){
 }
 
 // ─── AGENDA ───────────────────────────────────────────────────────────────────
-function Agenda({patients,agenda,setAgenda,procedures,locations}){
+function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations}){
   const[selDate,setSelDate]=useState(todayISO());
   const[viewMonth,setViewMonth]=useState({y:2026,m:4});
   const[viewMode,setViewMode]=useState("month");
@@ -900,6 +900,11 @@ function Agenda({patients,agenda,setAgenda,procedures,locations}){
   const blank={patientName:"",date:selDate,time:"09:00",procedure:procedures[0]||"",location:locations[0]||"",duration:"1 hora",value:"",status:"Confirmado",obs:""};
   const[form,setForm]=useState(blank);
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
+  const fvProcedure=v=>{
+    const procObj=Array.isArray(proceduresFull)?proceduresFull.find(p=>(typeof p==="string"?p:(p.name||p))===v):null;
+    const defVal=procObj&&typeof procObj==="object"&&procObj.defaultValue?procObj.defaultValue:"";
+    setForm(p=>({...p,procedure:v,...(defVal&&!p.value?{value:String(defVal)}:{})}));
+  };
   const h=createElement;
   const daysInMonth=new Date(viewMonth.y,viewMonth.m+1,0).getDate();
   const firstDow=new Date(viewMonth.y,viewMonth.m,1).getDay();
@@ -1036,7 +1041,7 @@ function Agenda({patients,agenda,setAgenda,procedures,locations}){
     h(Modal,{open:showNew,onClose:()=>{setShowNew(false);setEditItem(null);},title:editItem?"✎ Editar Agendamento":"✦ Novo Agendamento",width:540},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Paciente"},h(PatientAutocomplete,{value:form.patientName,onChange:(name,pat)=>{if(pat){setForm(p=>({...p,patientName:name,procedure:pat.sessions&&pat.sessions.length>0?pat.sessions[0].procedure:p.procedure,location:pat.sessions&&pat.sessions.length>0?pat.sessions[0].location:p.location}));}else{setForm(p=>({...p,patientName:name}));}},patients})),
-        h(Field,{label:"Procedimento"},h(Sel,{value:form.procedure,onChange:fv("procedure"),options:procedures})),
+        h(Field,{label:"Procedimento"},h(Sel,{value:form.procedure,onChange:fvProcedure,options:procedures})),
         h(Field,{label:"Data",half:true},h(Inp,{type:"date",value:form.date,onChange:fv("date")})),
         h(Field,{label:"Horário",half:true},h(Inp,{type:"time",value:form.time,onChange:fv("time")})),
         h(Field,{label:"Local",half:true},h(Sel,{value:form.location,onChange:fv("location"),options:locations})),
@@ -1306,7 +1311,7 @@ function IndicacoesTab({patient,patients,onSelectPatient,fmtCurr}){
   );
 }
 
-function PatientDetail({patient,patients,setPatients,onBack,procedures,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig}){
+function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig}){
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
   const[editSess,setEditSess]=useState(null);
@@ -1327,10 +1332,12 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,locations
   const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",finStatus:"Pendente",paid:false,notes:"",evolution:"",useFaceMap:false,returnReminderDays:14,loteId:"",qtdUsada:""};
   const[sForm,setSForm]=useState(blankS);
   const sfv=k=>v=>setSForm(p=>({...p,[k]:v}));
-  // Auto-preenche prazo de retorno ao trocar procedimento
+  // Auto-preenche prazo de retorno e valor ao trocar procedimento
   const sfvProcedure=v=>{
     const rule=(returnRules||[]).find(r=>r.procedure===v);
-    setSForm(p=>({...p,procedure:v,returnReminderDays:rule?rule.revisionDays||rule.maintenanceDays:90}));
+    const procObj=Array.isArray(proceduresFull)?proceduresFull.find(p=>(typeof p==="string"?p:(p.name||p))===v):null;
+    const defVal=procObj&&typeof procObj==="object"&&procObj.defaultValue?procObj.defaultValue:"";
+    setSForm(p=>({...p,procedure:v,returnReminderDays:rule?rule.revisionDays||rule.maintenanceDays:90,...(defVal?{value:String(defVal)}:{})}));
   };
   const[patForm,setPatForm]=useState({...patient,...patient.anamnese,complaints:(patient.complaints||[]).join(", ")});
   const pfv=k=>v=>setPatForm(p=>({...p,[k]:v}));
@@ -2541,7 +2548,7 @@ const PROC_CAT_COLORS={"Toxina Botulínica":P.rose,"Preenchimento":"#7aaed4","Bi
 // ─── PROC FORM (standalone to respect React hook rules) ──────────────────────
 function ProcForm({initial,onSave,onCancel,cats}){
   const h=createElement;
-  const[form,setForm]=useState(initial||{name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1"});
+  const[form,setForm]=useState(initial||{name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1",defaultValue:""});
   useEffect(()=>{if(initial)setForm(initial);},[initial?.id]);
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const isNew=!initial?.id;
@@ -2557,6 +2564,7 @@ function ProcForm({initial,onSave,onCancel,cats}){
       h(Field,{label:"Revisão após sessão (dias)"},h(Inp,{type:"number",value:form.revisionDays||"",onChange:fv("revisionDays"),placeholder:"Ex: 14"})),
       h(Field,{label:"Manutenção (dias)"},h(Inp,{type:"number",value:form.maintenanceDays||"",onChange:fv("maintenanceDays"),placeholder:"Ex: 120"})),
       h(Field,{label:"Sessões padrão no pacote"},h(Inp,{type:"number",value:form.sessoesPadrao||"1",onChange:fv("sessoesPadrao"),placeholder:"1"})),
+      h(Field,{label:"Valor Padrão (R$)"},h(Inp,{type:"number",value:form.defaultValue||"",onChange:fv("defaultValue"),placeholder:"Ex: 850"})),
       h(Field,{label:"Descrição / Observações"},h(Inp,{value:form.descricao||"",onChange:fv("descricao"),placeholder:"Ex: Neuromodulador para relaxamento muscular"}))
     ),
     h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
@@ -2585,7 +2593,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   }
   const[editingProc,setEditingProc]=useState(null); // proc object being edited
   const[showNewProc,setShowNewProc]=useState(false);
-  const[newProcForm,setNewProcForm]=useState({name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1"});
+  const[newProcForm,setNewProcForm]=useState({name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1",defaultValue:""});
 
   const getName=x=>typeof x==="string"?x:(x&&x.name)||"";
   const getProc=x=>typeof x==="string"?{id:"p_"+x,name:x,categoria:"Outros",descricao:"",revisionDays:0,maintenanceDays:0}:(x||{});
@@ -2622,7 +2630,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   function addNewProc(formData){
     const name=(formData.name||"").trim();
     if(!name)return;
-    const obj={id:"proc_"+Date.now(),name,categoria:formData.categoria||"Outros",descricao:formData.descricao||"",revisionDays:Number(formData.revisionDays)||0,maintenanceDays:Number(formData.maintenanceDays)||0,sessoesPadrao:Number(formData.sessoesPadrao)||1};
+    const obj={id:"proc_"+Date.now(),name,categoria:formData.categoria||"Outros",descricao:formData.descricao||"",revisionDays:Number(formData.revisionDays)||0,maintenanceDays:Number(formData.maintenanceDays)||0,sessoesPadrao:Number(formData.sessoesPadrao)||1,defaultValue:Number(formData.defaultValue)||0};
     saveProc(obj);
   }
 
@@ -2674,7 +2682,8 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
                       h("span",{style:{fontSize:11,color:PROC_CAT_COLORS[proc.categoria||"Outros"]||P.accent,background:(PROC_CAT_COLORS[proc.categoria||"Outros"]||P.accent)+"18",padding:"2px 8px",borderRadius:20}},(PROC_MAP_ICONS[proc.categoria]||"🩺")+" "+(proc.categoria||"Outros")),
                       rev>0&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"⏱ Revisão: "+rev+"d"),
                       man>0&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"🔄 Manutenção: "+man+"d"),
-                      (proc.sessoesPadrao>1)&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"📦 "+proc.sessoesPadrao+" sessões")
+                      (proc.sessoesPadrao>1)&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"📦 "+proc.sessoesPadrao+" sessões"),
+                      (proc.defaultValue>0)&&h("span",{style:{fontSize:11,color:P.green,background:"rgba(122,173,138,.1)",padding:"2px 8px",borderRadius:20,border:"1px solid rgba(122,173,138,.25)"}},"💰 "+fmtCurr(proc.defaultValue))
                     )
                   ),
                   h("div",{style:{display:"flex",gap:6,flexShrink:0}},
@@ -2997,6 +3006,18 @@ function AppInner({ session, onLogout }) {
 
   // Dados carregam do localStorage — sem tela de loading
   const procedureNames=Array.isArray(procedures)?procedures.map(p=>typeof p==="string"?p:(p.name||p)).filter(Boolean):INIT_PROCEDURES;
+  // Migração silenciosa: garantir que todos os procedimentos tenham categoria
+  useEffect(()=>{
+    if(!Array.isArray(procedures))return;
+    const needsMigration=procedures.some(p=>typeof p==="string"||(typeof p==="object"&&!p.categoria));
+    if(needsMigration){
+      setProcedures(prev=>prev.map(p=>{
+        if(typeof p==="string")return{id:"proc_"+Date.now()+Math.random(),name:p,categoria:"Outros",descricao:"",revisionDays:0,maintenanceDays:0,sessoesPadrao:1,defaultValue:0};
+        if(!p.categoria)return{...p,categoria:"Outros",sessoesPadrao:p.sessoesPadrao||1,defaultValue:p.defaultValue||0};
+        return p;
+      }));
+    }
+  },[]);
   const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
   const h=createElement;
   const todayStr=new Date().toISOString().slice(0,10);
@@ -3056,10 +3077,10 @@ function AppInner({ session, onLogout }) {
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,settings,returnRules}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav}),
-            page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,locations:locationNames}),
+            page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,proceduresFull:procedures,locations:locationNames}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
-            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig}),
+            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
