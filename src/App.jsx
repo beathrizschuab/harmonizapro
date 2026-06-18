@@ -2416,7 +2416,7 @@ function PagamentosCard({allS}){
   );
 }
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
-function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav}){
+function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = []}){
   const now=new Date();
   const[selMonth,setSelMonth]=useState(now.getMonth());
   const[selYear,setSelYear]=useState(now.getFullYear());
@@ -2435,7 +2435,14 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const colors=[P.rose,P.gold,P.accent,"#7aaed4","#7aad8a","#9b7aad","#8a5c7a","#5a8a7a"];
   // donut categorias
   const catMap={};
-  monthSessions.filter(s=>s.paid).forEach(s=>{const cat=CAT_MAP_GLOBAL[s.procedure]||"Outros";catMap[cat]=(catMap[cat]||0)+(Number(s.value)||0);});
+  // Categoriza usando procedimentos cadastrados (dinâmico) ou fallback no CAT_MAP_GLOBAL
+  const procCatLookup={};
+  (procedures||[]).forEach(p=>{
+    const name=typeof p==="string"?p:(p&&p.name)||"";
+    const cat=typeof p==="object"&&p.categoria?p.categoria:CAT_MAP_GLOBAL[name]||"Outros";
+    if(name)procCatLookup[name]=cat;
+  });
+  monthSessions.filter(s=>s.paid).forEach(s=>{const cat=procCatLookup[s.procedure]||CAT_MAP_GLOBAL[s.procedure]||"Outros";catMap[cat]=(catMap[cat]||0)+(Number(s.value)||0);});
   const catList=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
   const totalCat=catList.reduce((a,[,v])=>a+v,0)||1;
   // evolução 6 meses
@@ -2526,159 +2533,214 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
 }
 
 // ─── CONFIGURAÇÕES ────────────────────────────────────────────────────────────
+// ─── CONFIGURAÇÕES ────────────────────────────────────────────────────────────
+const PROC_CATS=["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios / Lifting","Skincare Clínico","Avaliação / Consultoria","Outros"];
+const PROC_MAP_ICONS={"Toxina Botulínica":"💉","Preenchimento":"✨","Bioestimuladores":"🧬","Fios / Lifting":"🧵","Skincare Clínico":"🧴","Avaliação / Consultoria":"📋","Outros":"🩺"};
+const PROC_CAT_COLORS={"Toxina Botulínica":P.rose,"Preenchimento":"#7aaed4","Bioestimuladores":P.gold,"Fios / Lifting":"#9b7aad","Skincare Clínico":P.accent,"Avaliação / Consultoria":P.green,"Outros":P.text3};
+
 function Configuracoes({procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig}){
-  const[newProc,setNewProc]=useState("");
+  const h=createElement;
+  const[tab,setTab]=useState("procedimentos");
+  const[newLoc,setNewLoc]=useState("");
   const[newSkProd,setNewSkProd]=useState("");
   const[newSkFreq,setNewSkFreq]=useState("");
+  const[editingProc,setEditingProc]=useState(null); // proc object being edited
+  const[showNewProc,setShowNewProc]=useState(false);
+  const[newProcForm,setNewProcForm]=useState({name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1"});
+
+  const getName=x=>typeof x==="string"?x:(x&&x.name)||"";
+  const getProc=x=>typeof x==="string"?{id:"p_"+x,name:x,categoria:"Outros",descricao:"",revisionDays:0,maintenanceDays:0}:(x||{});
   const skProds=(skincareConfig&&skincareConfig.produtos)||[];
   const skFreqs=(skincareConfig&&skincareConfig.frequencias)||[];
+
+  function saveProc(procObj){
+    const exists=procedures.find(x=>getName(x)===procObj.name);
+    if(exists){
+      setProcedures(prev=>prev.map(p=>getName(p)===procObj.name?procObj:p));
+    } else {
+      setProcedures(prev=>[...prev,procObj]);
+    }
+    // Salva/atualiza regra de retorno também
+    if(procObj.revisionDays||procObj.maintenanceDays){
+      const hasRule=(returnRules||[]).find(r=>r.procedure===procObj.name);
+      if(hasRule){
+        setReturnRules(prev=>prev.map(r=>r.procedure===procObj.name?{...r,revisionDays:Number(procObj.revisionDays)||0,maintenanceDays:Number(procObj.maintenanceDays)||0}:r));
+      } else {
+        setReturnRules(prev=>[...prev,{id:Date.now(),procedure:procObj.name,revisionDays:Number(procObj.revisionDays)||0,maintenanceDays:Number(procObj.maintenanceDays)||0}]);
+      }
+    }
+    setEditingProc(null);
+    setShowNewProc(false);
+  }
+
+  function delProc(name){
+    if(window.confirm("Excluir procedimento: "+name+"?")){
+      setProcedures(prev=>prev.filter(x=>getName(x)!==name));
+      setReturnRules(prev=>prev.filter(r=>r.procedure!==name));
+    }
+  }
+
+  function addNewProc(){
+    const name=newProcForm.name.trim();
+    if(!name)return;
+    const obj={id:"proc_"+Date.now(),name,categoria:newProcForm.categoria,descricao:newProcForm.descricao,revisionDays:Number(newProcForm.revisionDays)||0,maintenanceDays:Number(newProcForm.maintenanceDays)||0,sessoesPadrao:Number(newProcForm.sessoesPadrao)||1};
+    saveProc(obj);
+    setNewProcForm({name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1"});
+  }
+
+  function addLoc(){const t=newLoc.trim();if(t&&!locations.find(x=>getName(x)===t)){setLocations(prev=>[...prev,{id:"loc_"+Date.now(),name:t}]);setNewLoc("");}}
+  function delLoc(l){if(window.confirm("Excluir: "+l))setLocations(prev=>prev.filter(x=>getName(x)!==l));}
   function addSkProd(){const t=newSkProd.trim();if(t&&!skProds.includes(t)){setSkincareConfig(s=>({...(s||{}),produtos:[...skProds,t],frequencias:skFreqs}));setNewSkProd("");}}
   function delSkProd(p){setSkincareConfig(s=>({...(s||{}),produtos:skProds.filter(x=>x!==p),frequencias:skFreqs}));}
   function addSkFreq(){const t=newSkFreq.trim();if(t&&!skFreqs.includes(t)){setSkincareConfig(s=>({...(s||{}),produtos:skProds,frequencias:[...skFreqs,t]}));setNewSkFreq("");}}
   function delSkFreq(f){setSkincareConfig(s=>({...(s||{}),produtos:skProds,frequencias:skFreqs.filter(x=>x!==f)}));}
-  const[newLoc,setNewLoc]=useState("");
-  const[editProc,setEditProc]=useState(null);
-  const[editProcVal,setEditProcVal]=useState("");
-  const[editRule,setEditRule]=useState(null); // {id, revisionDays, maintenanceDays}
-  const h=createElement;
-  const getName=x=>typeof x==="string"?x:(x&&x.name)||"";
-  function addProc(){const t=newProc.trim();if(t&&!procedures.find(x=>getName(x)===t)){setProcedures(prev=>[...prev,{id:"proc_"+Date.now(),name:t}]);setNewProc("");}}
-  function delProc(p){if(window.confirm("Excluir: "+p))setProcedures(prev=>prev.filter(x=>getName(x)!==p));}
-  function saveEditProc(){if(editProcVal.trim())setProcedures(prev=>prev.map(p=>getName(p)===editProc?{...(typeof p==="object"?p:{id:"proc_"+Date.now()}),name:editProcVal.trim()}:p));setEditProc(null);}
-  function addLoc(){const t=newLoc.trim();if(t&&!locations.find(x=>getName(x)===t)){setLocations(prev=>[...prev,{id:"loc_"+Date.now(),name:t}]);setNewLoc("");}}
-  function delLoc(l){if(window.confirm("Excluir: "+l))setLocations(prev=>prev.filter(x=>getName(x)!==l));}
-  // Return rules helpers
-  function getRuleForProc(proc){return (returnRules||[]).find(r=>r.procedure===proc);}
-  function saveRule(proc,revisionDays,maintenanceDays){
-    const existing=getRuleForProc(proc);
-    if(existing){setReturnRules(prev=>prev.map(r=>r.procedure===proc?{...r,revisionDays:Number(revisionDays),maintenanceDays:Number(maintenanceDays)}:r));}
-    else{setReturnRules(prev=>[...prev,{id:Date.now(),procedure:proc,revisionDays:Number(revisionDays),maintenanceDays:Number(maintenanceDays)}]);}
-    setEditRule(null);
+
+  const TABS=[{k:"procedimentos",l:"🩺 Procedimentos"},{k:"locais",l:"📍 Locais"},{k:"skincare",l:"🧴 Skincare"},{k:"clinica",l:"👩‍⚕️ Clínica"}];
+
+  // Formulário de procedimento (novo ou edição)
+  function ProcForm({initial,onSave,onCancel}){
+    const[form,setForm]=useState(initial||{name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1"});
+    const fv=k=>v=>setForm(p=>({...p,[k]:v}));
+    const isNew=!initial?.id||initial.id.startsWith("proc_new");
+    return h("div",{style:{background:P.bg3,border:`1px solid ${P.rose}`,borderRadius:12,padding:20,marginBottom:16}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.accent3,marginBottom:16}},isNew?"＋ Novo Procedimento":"✎ Editar: "+form.name),
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
+        h(Field,{label:"Nome do Procedimento"},h(Inp,{value:form.name,onChange:fv("name"),placeholder:"Ex: Preenchimento Labial"})),
+        h(Field,{label:"Categoria"},
+          h("select",{value:form.categoria,onChange:e=>setForm(p=>({...p,categoria:e.target.value})),style:{...IS,width:"100%"}},
+            PROC_CATS.map(cat=>h("option",{key:cat,value:cat},PROC_MAP_ICONS[cat]+" "+cat))
+          )
+        ),
+        h(Field,{label:"Revisão após sessão (dias)"},h(Inp,{type:"number",value:form.revisionDays,onChange:fv("revisionDays"),placeholder:"Ex: 14"})),
+        h(Field,{label:"Manutenção (dias)"},h(Inp,{type:"number",value:form.maintenanceDays,onChange:fv("maintenanceDays"),placeholder:"Ex: 120"})),
+        h(Field,{label:"Sessões padrão no pacote"},h(Inp,{type:"number",value:form.sessoesPadrao,onChange:fv("sessoesPadrao"),placeholder:"1"})),
+        h(Field,{label:"Descrição / Observações"},h(Inp,{value:form.descricao,onChange:fv("descricao"),placeholder:"Ex: Neuromodulador para relaxamento muscular"}))
+      ),
+      h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
+        h(Btn,{variant:"ghost",onClick:onCancel,style:{fontSize:12}},"Cancelar"),
+        h(Btn,{onClick:()=>onSave(form),style:{fontSize:12}},"✓ Salvar Procedimento")
+      )
+    );
   }
+
   return h("div",null,
-    h(SectionHeader,{title:"Configurações",sub:"Gerencie todos os dados do sistema"}),
-    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
-      // Dados profissional
-      h(Card,null,
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"👩‍⚕️ Dados da Profissional"),
-        h(Field,{label:"Nome"},h(Inp,{value:settings.doctorName||"",onChange:v=>setSettings(s=>({...s,doctorName:v})),placeholder:"Dra. Sofia"})),
-        h(Field,{label:"Profissão"},h(Inp,{value:settings.doctorTitle||"",onChange:v=>setSettings(s=>({...s,doctorTitle:v})),placeholder:"Médica Responsável"})),
-        h(Field,{label:"Clínica"},h(Inp,{value:settings.clinicName||"",onChange:v=>setSettings(s=>({...s,clinicName:v})),placeholder:"HarmonizaPro"})),
-        h("div",{style:{fontSize:12,color:P.green,marginTop:8}},"✓ Salvo automaticamente")
+    h(SectionHeader,{title:"Configurações",sub:"Gerencie procedimentos, locais e dados da clínica"}),
+    // Tab bar
+    h("div",{style:{display:"flex",gap:6,marginBottom:20,borderBottom:`1px solid ${P.border}`,paddingBottom:0}},
+      TABS.map(t=>h("button",{key:t.k,onClick:()=>setTab(t.k),style:{padding:"9px 18px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===t.k?P.rose:"transparent"}`,color:tab===t.k?P.accent3:P.text2,cursor:"pointer",fontSize:13,fontFamily:"'DM Sans',sans-serif",fontWeight:tab===t.k?600:400,marginBottom:-1,transition:"all .15s"}},t.l))
+    ),
+
+    // ── ABA PROCEDIMENTOS ────────────────────────────────────────────────────
+    tab==="procedimentos"&&h("div",null,
+      !showNewProc&&!editingProc&&h("div",{style:{display:"flex",justifyContent:"flex-end",marginBottom:14}},
+        h(Btn,{onClick:()=>setShowNewProc(true)},"＋ Novo Procedimento")
       ),
-      // Locais de atendimento
-      h(Card,null,
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"📍 Locais de Atendimento"),
-        h("div",{style:{display:"flex",gap:8,marginBottom:14}},
-          h(Inp,{value:newLoc,onChange:setNewLoc,placeholder:"Nome do local..."}),
-          h(Btn,{onClick:addLoc,style:{flexShrink:0,padding:"9px 14px"}},"＋")
-        ),
-        h("div",{style:{display:"flex",flexDirection:"column",gap:6}},locations.map(l=>{const ln=getName(l);return h("div",{key:ln,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
-          h("span",{style:{fontSize:13,color:P.text}},"📍 "+ln),
-          h("button",{onClick:()=>delLoc(ln),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15}},locations.length>1?"×":"")
-        );}))
-      ),
-      // Procedimentos
-      h(Card,{style:{gridColumn:"1/-1"}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"🩺 Procedimentos Cadastrados"),
-        h("div",{style:{display:"flex",gap:8,marginBottom:16}},
-          h(Inp,{value:newProc,onChange:setNewProc,placeholder:"Nome do novo procedimento...",style:{flex:1}}),
-          h(Btn,{onClick:addProc,style:{flexShrink:0}},"＋ Adicionar")
-        ),
-        h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:6}},procedures.map((procObj,i)=>{const proc=getName(procObj);return h("div",{key:proc,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
-          editProc===proc
-            ?h("div",{style:{display:"flex",gap:6,flex:1}},h(Inp,{value:editProcVal,onChange:setEditProcVal,style:{flex:1}}),h("button",{onClick:saveEditProc,style:{background:"none",border:"none",color:P.green,cursor:"pointer",fontSize:14}},"✓"),h("button",{onClick:()=>setEditProc(null),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:14}},"×"))
-            :h(Fragment,null,
-              h("div",{style:{display:"flex",alignItems:"center",gap:8}},h("span",{style:{fontSize:11,color:P.text3,minWidth:18}},`${i+1}`),h("span",{style:{fontSize:13,color:P.text}},proc)),
-              h("div",{style:{display:"flex",gap:4}},h("button",{onClick:()=>{setEditProc(proc);setEditProcVal(proc);},style:{background:"none",border:"none",color:P.accent,cursor:"pointer",fontSize:13}},"✎"),h("button",{onClick:()=>delProc(proc),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15}},"×"))
-            )
-        );}))
-      ),
-      // ── SKINCARE ──────────────────────────────────────────────────────────────
-      h(Card,{style:{gridColumn:"1/-1"}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"🧴 Skincare — Produtos & Frequências"),
-        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
-          // Produtos
-          h("div",null,
-            h("div",{style:{fontSize:13,color:P.text2,fontWeight:600,marginBottom:10}},"Produtos Cadastrados"),
-            h("div",{style:{display:"flex",gap:8,marginBottom:10}},
-              h(Inp,{value:newSkProd,onChange:setNewSkProd,placeholder:"Ex: Ácido Mandélico",style:{flex:1}}),
-              h(Btn,{onClick:addSkProd,style:{flexShrink:0,padding:"9px 14px"}},"＋")
-            ),
-            h("div",{style:{display:"flex",flexDirection:"column",gap:5}},
-              skProds.map(p=>h("div",{key:p,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
-                h("span",{style:{fontSize:12,color:P.text}},"🧴 "+p),
-                h("button",{onClick:()=>delSkProd(p),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:14}},"×")
-              ))
-            )
+      showNewProc&&h(ProcForm,{onSave:addNewProc,onCancel:()=>setShowNewProc(false)}),
+      editingProc&&h(ProcForm,{initial:editingProc,onSave:saveProc,onCancel:()=>setEditingProc(null)}),
+      // Agrupado por categoria
+      PROC_CATS.map(cat=>{
+        const catProcs=procedures.map(getProc).filter(p=>( p.categoria||"Outros")===cat);
+        if(catProcs.length===0)return null;
+        return h("div",{key:cat,style:{marginBottom:20}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:10}},
+            h("span",{style:{fontSize:18}},(PROC_MAP_ICONS[cat]||"🩺")),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:PROC_CAT_COLORS[cat]||P.text}},cat),
+            h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},catProcs.length)
           ),
-          // Frequências
-          h("div",null,
-            h("div",{style:{fontSize:13,color:P.text2,fontWeight:600,marginBottom:10}},"Frequências de Uso"),
-            h("div",{style:{display:"flex",gap:8,marginBottom:10}},
-              h(Inp,{value:newSkFreq,onChange:setNewSkFreq,placeholder:"Ex: 3x por semana",style:{flex:1}}),
-              h(Btn,{onClick:addSkFreq,style:{flexShrink:0,padding:"9px 14px"}},"＋")
-            ),
-            h("div",{style:{display:"flex",flexDirection:"column",gap:5}},
-              skFreqs.map(f=>h("div",{key:f,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
-                h("span",{style:{fontSize:12,color:P.text}},"⏱ "+f),
-                h("button",{onClick:()=>delSkFreq(f),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:14}},"×")
-              ))
-            )
-          )
-        )
-      ),
-      // ── PRAZOS DE RETORNO ──────────────────────────────────────────────────
-      h(Card,{style:{gridColumn:"1/-1"}},
-        h("div",{style:{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:6}},
-          h("div",null,
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:4}},"⏰ Prazos de Retorno por Procedimento"),
-            h("div",{style:{fontSize:12,color:P.text3,marginBottom:16}},"Ao registrar uma sessão, o retorno é criado automaticamente na Agenda com os dias configurados aqui.")
-          )
-        ),
-        h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}},
-          procedures.map(procObj=>{const proc=getName(procObj);
-            const rule=getRuleForProc(proc);
-            const isEditing=editRule&&editRule.procedure===proc;
-            return h("div",{key:proc,style:{padding:"12px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${isEditing?P.rose:P.border}`}},
-              h("div",{style:{fontSize:12.5,color:P.text,fontWeight:500,marginBottom:8}},proc),
-              isEditing
-                ?h("div",null,
-                  h("div",{style:{display:"flex",gap:10,marginBottom:10}},
-                    h("div",{style:{flex:1}},
-                      h("label",{style:{display:"block",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Revisão (dias)"),
-                      h("input",{type:"number",value:editRule.revisionDays,min:0,onChange:e=>setEditRule(r=>({...r,revisionDays:e.target.value})),style:{...IS,padding:"7px 10px",fontSize:13}})
-                    ),
-                    h("div",{style:{flex:1}},
-                      h("label",{style:{display:"block",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Manutenção (dias)"),
-                      h("input",{type:"number",value:editRule.maintenanceDays,min:0,onChange:e=>setEditRule(r=>({...r,maintenanceDays:e.target.value})),style:{...IS,padding:"7px 10px",fontSize:13}})
+          h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+            catProcs.map(proc=>{
+              const rule=(returnRules||[]).find(r=>r.procedure===proc.name);
+              const rev=proc.revisionDays||rule?.revisionDays||0;
+              const man=proc.maintenanceDays||rule?.maintenanceDays||0;
+              return h(Card,{key:proc.name,style:{padding:"12px 16px"}},
+                h("div",{style:{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}},
+                  h("div",{style:{flex:1}},
+                    h("div",{style:{fontSize:14,color:P.text,fontWeight:600,marginBottom:proc.descricao?4:0}},proc.name),
+                    proc.descricao&&h("div",{style:{fontSize:12,color:P.text3,marginBottom:6}},proc.descricao),
+                    h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+                      h("span",{style:{fontSize:11,color:PROC_CAT_COLORS[proc.categoria||"Outros"]||P.accent,background:(PROC_CAT_COLORS[proc.categoria||"Outros"]||P.accent)+"18",padding:"2px 8px",borderRadius:20}},(PROC_MAP_ICONS[proc.categoria]||"🩺")+" "+(proc.categoria||"Outros")),
+                      rev>0&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"⏱ Revisão: "+rev+"d"),
+                      man>0&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"🔄 Manutenção: "+man+"d"),
+                      (proc.sessoesPadrao>1)&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"📦 "+proc.sessoesPadrao+" sessões")
                     )
                   ),
-                  h("div",{style:{fontSize:10,color:P.text3,marginBottom:8}},"Use 0 para desativar aquele prazo."),
-                  h("div",{style:{display:"flex",gap:8}},
-                    h(Btn,{onClick:()=>saveRule(proc,editRule.revisionDays,editRule.maintenanceDays),style:{fontSize:11,padding:"5px 14px"}},"✓ Salvar"),
-                    h(Btn,{variant:"ghost",onClick:()=>setEditRule(null),style:{fontSize:11,padding:"5px 12px"}},"Cancelar")
+                  h("div",{style:{display:"flex",gap:6,flexShrink:0}},
+                    h("button",{onClick:()=>setEditingProc({...proc,revisionDays:rev,maintenanceDays:man}),style:{padding:"6px 12px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:12}},"✎ Editar"),
+                    h("button",{onClick:()=>delProc(proc.name),style:{padding:"6px 10px",borderRadius:8,background:"transparent",border:`1px solid rgba(192,112,112,.3)`,color:P.red,cursor:"pointer",fontSize:12}},"×")
                   )
                 )
-                :h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
-                  rule
-                    ?h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-                        rule.revisionDays>0&&h("span",{style:{fontSize:11,padding:"2px 9px",borderRadius:12,background:"rgba(92,31,50,.12)",color:P.accent,border:`1px solid rgba(92,31,50,.2)`}},`✏ Revisão: ${rule.revisionDays}d`),
-                        rule.maintenanceDays>0&&h("span",{style:{fontSize:11,padding:"2px 9px",borderRadius:12,background:"rgba(133,89,84,.1)",color:P.accent2,border:`1px solid rgba(133,89,84,.2)`}},`🔄 Manutenção: ${rule.maintenanceDays}d`),
-                        !rule.revisionDays&&!rule.maintenanceDays&&h("span",{style:{fontSize:11,color:P.text3}},"Sem retorno automático")
-                      )
-                    :h("span",{style:{fontSize:11,color:P.text3}},"Não configurado"),
-                  h("button",{onClick:()=>setEditRule({procedure:proc,revisionDays:rule?.revisionDays??14,maintenanceDays:rule?.maintenanceDays??90}),style:{background:"none",border:"none",color:P.accent,cursor:"pointer",fontSize:13,flexShrink:0}},"✎")
-                )
-            );
-          })
+              );
+            })
+          )
+        );
+      }),
+      // Procedimentos sem categoria definida (migração de dados antigos)
+      (()=>{
+        const orphans=procedures.map(getProc).filter(p=>!p.categoria||p.categoria==="Outros"&&!PROC_CATS.includes("Outros"));
+        return null; // já incluso em "Outros" acima
+      })()
+    ),
+
+    // ── ABA LOCAIS ───────────────────────────────────────────────────────────
+    tab==="locais"&&h(Card,null,
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"📍 Locais de Atendimento"),
+      h("div",{style:{display:"flex",gap:8,marginBottom:14}},
+        h(Inp,{value:newLoc,onChange:setNewLoc,placeholder:"Nome do local..."}),
+        h(Btn,{onClick:addLoc,style:{flexShrink:0,padding:"9px 14px"}},"＋")
+      ),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+        locations.map(l=>{const ln=getName(l);return h("div",{key:ln,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+            h("span",{style:{fontSize:18}},"📍"),
+            h("span",{style:{fontSize:14,color:P.text}},ln)
+          ),
+          h("button",{onClick:()=>delLoc(ln),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15}},locations.length>1?"×":"")
+        );})
+      )
+    ),
+
+    // ── ABA SKINCARE ─────────────────────────────────────────────────────────
+    tab==="skincare"&&h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
+      h(Card,null,
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"🧴 Produtos Cadastrados"),
+        h("div",{style:{display:"flex",gap:8,marginBottom:12}},
+          h(Inp,{value:newSkProd,onChange:setNewSkProd,placeholder:"Ex: Ácido Mandélico 10%"}),
+          h(Btn,{onClick:addSkProd,style:{flexShrink:0,padding:"9px 14px"}},"＋")
+        ),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:5}},
+          skProds.map(p=>h("div",{key:p,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 14px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
+            h("span",{style:{fontSize:13,color:P.text}},"🧴 "+p),
+            h("button",{onClick:()=>delSkProd(p),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15}},"×")
+          ))
+        )
+      ),
+      h(Card,null,
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"⏱ Frequências de Uso"),
+        h("div",{style:{display:"flex",gap:8,marginBottom:12}},
+          h(Inp,{value:newSkFreq,onChange:setNewSkFreq,placeholder:"Ex: 3x por semana"}),
+          h(Btn,{onClick:addSkFreq,style:{flexShrink:0,padding:"9px 14px"}},"＋")
+        ),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:5}},
+          skFreqs.map(f=>h("div",{key:f,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 14px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
+            h("span",{style:{fontSize:13,color:P.text}},"⏱ "+f),
+            h("button",{onClick:()=>delSkFreq(f),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15}},"×")
+          ))
         )
       )
+    ),
+
+    // ── ABA CLÍNICA ──────────────────────────────────────────────────────────
+    tab==="clinica"&&h(Card,{style:{maxWidth:480}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"👩‍⚕️ Dados da Clínica"),
+      h(Field,{label:"Nome da Profissional"},h(Inp,{value:settings.doctorName||"",onChange:v=>setSettings(s=>({...s,doctorName:v})),placeholder:"Dra. Sofia"})),
+      h(Field,{label:"Título / Profissão"},h(Inp,{value:settings.doctorTitle||"",onChange:v=>setSettings(s=>({...s,doctorTitle:v})),placeholder:"Médica Responsável"})),
+      h(Field,{label:"Nome da Clínica"},h(Inp,{value:settings.clinicName||"",onChange:v=>setSettings(s=>({...s,clinicName:v})),placeholder:"HarmonizaPro"})),
+      h("div",{style:{fontSize:12,color:P.green,marginTop:12}},"✓ Salvo automaticamente")
     )
   );
 }
 
-// ─── EVOLUÇÃO DE FOTOS (antes/depois por procedimento) ───────────────────────
+
 function EvolucaoFotos({patient,upd,addMedia,removeMedia}){
   const h=createElement;
   const [filterProc,setFilterProc]=useState("Todos");
@@ -2977,7 +3039,7 @@ function AppInner({ session, onLogout }) {
             page==="estoque"&&h(Estoque,{products,setProducts}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
-            page==="relatorios"&&h(Relatorios,{patients, incomes, expenses, onSelectPatient: handleSelectPatient, onNav: handleNav}),
+            page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures}),
             page==="config"&&h(Configuracoes,{procedures:procedureNames,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig})
           )
         )
