@@ -140,7 +140,7 @@ function debitarLote(setProducts, productName, loteId, qtdUsada) {
 }
 
 
-// ─── DATA HOOKS — localStorage only ─────────────────────────────────────────
+// ─── DATA HOOKS — Supabase com cache localStorage ────────────────────────────
 // Remove fotos base64 antes de salvar para não estourar a cota do localStorage
 function stripPhotos(data) {
   if (!Array.isArray(data)) return data;
@@ -160,9 +160,34 @@ function stripPhotos(data) {
   });
 }
 
+// Tabela única no Supabase: "app_data" com colunas (key TEXT PRIMARY KEY, value JSONB)
+// Cada "tabela" do app é uma linha com key = nome da tabela
+const SUPA_TABLE = "app_data";
+
+async function supaRead(key) {
+  try {
+    const { data, error } = await supabase
+      .from(SUPA_TABLE)
+      .select("value")
+      .eq("key", key)
+      .single();
+    if (error || !data) return null;
+    return data.value;
+  } catch { return null; }
+}
+
+async function supaWrite(key, value) {
+  try {
+    await supabase
+      .from(SUPA_TABLE)
+      .upsert({ key, value: stripPhotos(value) }, { onConflict: "key" });
+  } catch {}
+}
+
 function useSupaTable(key, initFallback = []) {
   const lsKey = "hapro2_" + key;
 
+  // Carrega do localStorage como estado inicial (rápido)
   const [data, setDataRaw] = useState(() => {
     try {
       const raw = localStorage.getItem(lsKey);
@@ -176,13 +201,33 @@ function useSupaTable(key, initFallback = []) {
     return initFallback;
   });
 
+  const [loading, setLoading] = useState(true);
+
+  // Na montagem: busca do Supabase e atualiza
+  useEffect(() => {
+    let cancelled = false;
+    supaRead(key).then(remote => {
+      if (cancelled) return;
+      setLoading(false);
+      if (remote !== null) {
+        const ok = Array.isArray(remote) ? remote.length >= 0
+          : (remote && typeof remote === "object");
+        if (ok) {
+          setDataRaw(remote);
+          try { localStorage.setItem(lsKey, JSON.stringify(remote)); } catch {}
+        }
+      }
+    });
+    return () => { cancelled = true; };
+  }, [key]);
+
   const setData = useCallback((valOrFn) => {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
+      // Salva localStorage (cache local)
       try {
         localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
       } catch {
-        // Quota cheia: limpa outras chaves hapro e tenta de novo
         try {
           Object.keys(localStorage)
             .filter(k => k.startsWith("hapro2_") && k !== lsKey)
@@ -190,11 +235,13 @@ function useSupaTable(key, initFallback = []) {
           localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
         } catch {}
       }
+      // Salva no Supabase (assíncrono, sem bloquear UI)
+      supaWrite(key, next);
       return next;
     });
-  }, [lsKey]);
+  }, [lsKey, key]);
 
-  return [data, setData, false];
+  return [data, setData, loading];
 }
 
 // useSettings: usa o mesmo mecanismo JSON
@@ -3643,7 +3690,7 @@ function AppInner({ session, onLogout }) {
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
 
-  // Dados carregam do localStorage — sem tela de loading
+  // Dados: cache local imediato + sincronização Supabase em background
   const procedureNames=Array.isArray(procedures)?procedures.map(p=>typeof p==="string"?p:(p.name||p)).filter(Boolean):INIT_PROCEDURES;
   // Migração silenciosa: garantir que todos os procedimentos tenham categoria
   useEffect(()=>{
