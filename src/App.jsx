@@ -1698,9 +1698,7 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
         ),
         h(Card,null,
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:12}},"📝 Recomendações & Observações"),
-          h("textarea",{value:recText,onChange:e=>setRecText(e.target.value),placeholder:"Ex: Introduzir retinol gradualmente, começar 2x/semana...
-Evitar ácidos juntos com retinol.
-Protetor solar obrigatório pela manhã.",rows:5,style:{...IS,width:"100%",resize:"vertical"}}),
+          h("textarea",{value:recText,onChange:e=>setRecText(e.target.value),placeholder:"Ex: Introduzir retinol gradualmente, começar 2x/semana...\nEvitar ácidos juntos com retinol.\nProtetor solar obrigatório pela manhã.",rows:5,style:{...IS,width:"100%",resize:"vertical"}}),
           h("div",{style:{display:"flex",justifyContent:"flex-end",marginTop:8}},
             h(Btn,{onClick:saveRec,style:{fontSize:12}},"Salvar Recomendações")
           )
