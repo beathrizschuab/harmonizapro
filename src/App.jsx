@@ -2538,12 +2538,22 @@ const PROC_CATS=["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios /
 const PROC_MAP_ICONS={"Toxina Botulínica":"💉","Preenchimento":"✨","Bioestimuladores":"🧬","Fios / Lifting":"🧵","Skincare Clínico":"🧴","Avaliação / Consultoria":"📋","Outros":"🩺"};
 const PROC_CAT_COLORS={"Toxina Botulínica":P.rose,"Preenchimento":"#7aaed4","Bioestimuladores":P.gold,"Fios / Lifting":"#9b7aad","Skincare Clínico":P.accent,"Avaliação / Consultoria":P.green,"Outros":P.text3};
 
-function Configuracoes({procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig}){
+function Configuracoes({procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats}){
   const h=createElement;
   const[tab,setTab]=useState("procedimentos");
   const[newLoc,setNewLoc]=useState("");
   const[newSkProd,setNewSkProd]=useState("");
   const[newSkFreq,setNewSkFreq]=useState("");
+  const[newCat,setNewCat]=useState("");
+  const[newCatIcon,setNewCatIcon]=useState("🩺");
+  const cats=Array.isArray(procCats)&&procCats.length>0?procCats:["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios / Lifting","Skincare Clínico","Avaliação / Consultoria","Outros"];
+  function addCat(){const t=newCat.trim();if(t&&!cats.includes(t)){setProcCats([...cats,t]);setNewCat("");setNewCatIcon("🩺");}}
+  function delCat(cat){
+    if(procedures.map(p=>typeof p==="object"?p.categoria:"").includes(cat)){
+      alert("Esta categoria está em uso por um ou mais procedimentos. Remova-os primeiro.");return;
+    }
+    if(window.confirm("Excluir categoria: "+cat+"?"))setProcCats(cats.filter(c=>c!==cat));
+  }
   const[editingProc,setEditingProc]=useState(null); // proc object being edited
   const[showNewProc,setShowNewProc]=useState(false);
   const[newProcForm,setNewProcForm]=useState({name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1"});
@@ -2608,7 +2618,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
         h(Field,{label:"Nome do Procedimento"},h(Inp,{value:form.name,onChange:fv("name"),placeholder:"Ex: Preenchimento Labial"})),
         h(Field,{label:"Categoria"},
           h("select",{value:form.categoria,onChange:e=>setForm(p=>({...p,categoria:e.target.value})),style:{...IS,width:"100%"}},
-            PROC_CATS.map(cat=>h("option",{key:cat,value:cat},PROC_MAP_ICONS[cat]+" "+cat))
+            cats.map(cat=>h("option",{key:cat,value:cat},(PROC_MAP_ICONS[cat]||"🩺")+" "+cat))
           )
         ),
         h(Field,{label:"Revisão após sessão (dias)"},h(Inp,{type:"number",value:form.revisionDays,onChange:fv("revisionDays"),placeholder:"Ex: 14"})),
@@ -2638,7 +2648,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
       showNewProc&&h(ProcForm,{onSave:addNewProc,onCancel:()=>setShowNewProc(false)}),
       editingProc&&h(ProcForm,{initial:editingProc,onSave:saveProc,onCancel:()=>setEditingProc(null)}),
       // Agrupado por categoria
-      PROC_CATS.map(cat=>{
+      cats.map(cat=>{
         const catProcs=procedures.map(getProc).filter(p=>( p.categoria||"Outros")===cat);
         if(catProcs.length===0)return null;
         return h("div",{key:cat,style:{marginBottom:20}},
@@ -2674,11 +2684,21 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
           )
         );
       }),
-      // Procedimentos sem categoria definida (migração de dados antigos)
-      (()=>{
-        const orphans=procedures.map(getProc).filter(p=>!p.categoria||p.categoria==="Outros"&&!PROC_CATS.includes("Outros"));
-        return null; // já incluso em "Outros" acima
-      })()
+      // Gerenciar categorias
+      h(Card,{style:{marginTop:8,border:`1px solid rgba(196,169,106,.2)`}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.yellow,marginBottom:12}},"🏷️ Gerenciar Categorias"),
+        h("div",{style:{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}},
+          h(Inp,{value:newCat,onChange:setNewCat,placeholder:"Nova categoria... ex: Laser, Drenagem",style:{flex:"1 1 200px"}}),
+          h(Btn,{onClick:addCat,style:{flexShrink:0}},"＋ Adicionar")
+        ),
+        h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+          cats.map(cat=>h("div",{key:cat,style:{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:P.bg3,border:`1px solid ${(PROC_CAT_COLORS[cat]||P.border)}33`,borderRadius:20}},
+            h("span",{style:{fontSize:13}},(PROC_MAP_ICONS[cat]||"🩺")),
+            h("span",{style:{fontSize:12,color:PROC_CAT_COLORS[cat]||P.text2}},cat),
+            h("button",{onClick:()=>delCat(cat),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:13,lineHeight:1,padding:"0 2px"}},"×")
+          ))
+        )
+      )
     ),
 
     // ── ABA LOCAIS ───────────────────────────────────────────────────────────
@@ -2963,6 +2983,7 @@ function AppInner({ session, onLogout }) {
   const[procedures,setProcedures,loadingProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
   const[locations,setLocations,loadingLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
   const[returnRules,setReturnRules,loadingRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
+  const[procCats,setProcCats]=useSupaTable("proc_cats",["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios / Lifting","Skincare Clínico","Avaliação / Consultoria","Outros"]);
   const[skincareConfig,setSkincareConfig]=useSupaTable("skincare_config",{
     produtos:["Vitamina C","Retinol","Ácido Glicólico","Ácido Hialurônico","Protetor Solar FPS 50+","Niacinamida","Peptídeos","Bakuchiol","AHA/BHA","Ceramidas","Água Micelar","Hidratante Facial"],
     frequencias:["Diário","Noturno","2x por semana","Semanal","Mensal","Conforme necessário"]
@@ -3040,7 +3061,7 @@ function AppInner({ session, onLogout }) {
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures}),
-            page==="config"&&h(Configuracoes,{procedures:procedureNames,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig})
+            page==="config"&&h(Configuracoes,{procedures:procedureNames,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats})
           )
         )
       )
