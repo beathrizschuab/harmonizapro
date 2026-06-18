@@ -404,6 +404,254 @@ function FaceMapEditor({sessionMap,onChange,readOnly=false}){
     )
   );
 }
+// ─── PHOTO ANNOTATOR ──────────────────────────────────────────────────────────
+function PhotoAnnotator({photo,onSave,onClose}){
+  const canvasRef=useRef();
+  const[tool,setTool]=useState("pen");
+  const[color,setColor]=useState("#E1594A");
+  const[size,setSize]=useState(3);
+  const[drawing,setDrawing]=useState(false);
+  const[history,setHistory]=useState([]);
+  const[textInput,setTextInput]=useState("");
+  const[textPos,setTextPos]=useState(null);
+  const[showTextInput,setShowTextInput]=useState(false);
+  const startRef=useRef(null);
+  const lastRef=useRef(null);
+  const imgRef=useRef(null);
+  const h=createElement;
+
+  useEffect(()=>{
+    const canvas=canvasRef.current;
+    if(!canvas)return;
+    const img=new Image();
+    img.onload=()=>{
+      imgRef.current=img;
+      // Fit canvas to modal (max 900x700)
+      const maxW=Math.min(window.innerWidth*0.82,900);
+      const maxH=Math.min(window.innerHeight*0.72,700);
+      const scale=Math.min(maxW/img.naturalWidth,maxH/img.naturalHeight,1);
+      canvas.width=Math.round(img.naturalWidth*scale);
+      canvas.height=Math.round(img.naturalHeight*scale);
+      const ctx=canvas.getContext("2d");
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      saveSnap();
+    };
+    img.src=photo.url;
+  },[]);
+
+  function saveSnap(){
+    const canvas=canvasRef.current;
+    if(!canvas)return;
+    setHistory(h=>[...h.slice(-20),canvas.toDataURL()]);
+  }
+
+  function undo(){
+    if(history.length<2)return;
+    const prev=history[history.length-2];
+    setHistory(h=>h.slice(0,-1));
+    const img=new Image();
+    img.onload=()=>{
+      const canvas=canvasRef.current;
+      const ctx=canvas.getContext("2d");
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(img,0,0);
+    };
+    img.src=prev;
+  }
+
+  function getPos(e){
+    const canvas=canvasRef.current;
+    const rect=canvas.getBoundingClientRect();
+    const scaleX=canvas.width/rect.width;
+    const scaleY=canvas.height/rect.height;
+    const clientX=e.touches?e.touches[0].clientX:e.clientX;
+    const clientY=e.touches?e.touches[0].clientY:e.clientY;
+    return{x:(clientX-rect.left)*scaleX,y:(clientY-rect.top)*scaleY};
+  }
+
+  function onMouseDown(e){
+    e.preventDefault();
+    const pos=getPos(e);
+    if(tool==="text"){setTextPos(pos);setShowTextInput(true);return;}
+    setDrawing(true);
+    startRef.current=pos;
+    lastRef.current=pos;
+    if(tool==="pen"||tool==="eraser"){
+      const canvas=canvasRef.current;
+      const ctx=canvas.getContext("2d");
+      ctx.beginPath();
+      ctx.moveTo(pos.x,pos.y);
+    }
+  }
+
+  function onMouseMove(e){
+    e.preventDefault();
+    if(!drawing)return;
+    const pos=getPos(e);
+    const canvas=canvasRef.current;
+    const ctx=canvas.getContext("2d");
+    if(tool==="pen"){
+      ctx.lineWidth=size;
+      ctx.lineCap="round";
+      ctx.lineJoin="round";
+      ctx.strokeStyle=color;
+      ctx.globalCompositeOperation="source-over";
+      ctx.lineTo(pos.x,pos.y);
+      ctx.stroke();
+      lastRef.current=pos;
+    } else if(tool==="eraser"){
+      ctx.lineWidth=size*5;
+      ctx.lineCap="round";
+      ctx.lineJoin="round";
+      ctx.globalCompositeOperation="destination-out";
+      ctx.lineTo(pos.x,pos.y);
+      ctx.stroke();
+      lastRef.current=pos;
+    } else {
+      // Shapes: redraw from last snapshot to show preview
+      if(history.length===0)return;
+      const snap=history[history.length-1];
+      const img=new Image();
+      img.onload=()=>{
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(img,0,0);
+        ctx.globalCompositeOperation="source-over";
+        ctx.lineWidth=size;
+        ctx.strokeStyle=color;
+        ctx.fillStyle=color;
+        const sx=startRef.current.x,sy=startRef.current.y;
+        if(tool==="arrow"){
+          // Line
+          ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(pos.x,pos.y);ctx.stroke();
+          // Arrowhead
+          const angle=Math.atan2(pos.y-sy,pos.x-sx);
+          const hs=Math.max(size*3,12);
+          ctx.beginPath();
+          ctx.moveTo(pos.x,pos.y);
+          ctx.lineTo(pos.x-hs*Math.cos(angle-0.45),pos.y-hs*Math.sin(angle-0.45));
+          ctx.lineTo(pos.x-hs*Math.cos(angle+0.45),pos.y-hs*Math.sin(angle+0.45));
+          ctx.closePath();ctx.fill();
+        } else if(tool==="circle"){
+          const rx=Math.abs(pos.x-sx)/2,ry=Math.abs(pos.y-sy)/2;
+          const cx=sx+(pos.x-sx)/2,cy=sy+(pos.y-sy)/2;
+          ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);ctx.stroke();
+        } else if(tool==="rect"){
+          ctx.beginPath();ctx.strokeRect(sx,sy,pos.x-sx,pos.y-sy);
+        }
+      };
+      img.src=snap;
+    }
+  }
+
+  function onMouseUp(e){
+    e.preventDefault();
+    if(!drawing)return;
+    setDrawing(false);
+    saveSnap();
+  }
+
+  function placeText(){
+    if(!textInput.trim()||!textPos)return;
+    const canvas=canvasRef.current;
+    const ctx=canvas.getContext("2d");
+    const fs=Math.max(size*5,16);
+    ctx.font=`bold ${fs}px DM Sans, sans-serif`;
+    ctx.fillStyle=color;
+    ctx.globalCompositeOperation="source-over";
+    // Shadow for readability
+    ctx.shadowColor="rgba(0,0,0,0.8)";
+    ctx.shadowBlur=4;
+    ctx.fillText(textInput,textPos.x,textPos.y);
+    ctx.shadowBlur=0;
+    setTextInput("");setShowTextInput(false);setTextPos(null);
+    saveSnap();
+  }
+
+  function handleSave(){
+    const canvas=canvasRef.current;
+    // Flatten: draw on white bg to avoid transparency issues
+    const out=document.createElement("canvas");
+    out.width=canvas.width;out.height=canvas.height;
+    const octx=out.getContext("2d");
+    if(imgRef.current)octx.drawImage(imgRef.current,0,0,out.width,out.height);
+    octx.drawImage(canvas,0,0);
+    const dataUrl=out.toDataURL("image/jpeg",0.92);
+    onSave({id:Date.now()+Math.random(),name:(photo.name||"foto")+"_anotada.jpg",type:"image/jpeg",url:dataUrl,date:new Date().toLocaleDateString("pt-BR"),annotated:true});
+  }
+
+  const TOOLS=[
+    {k:"pen",icon:"✏️",label:"Lápis"},
+    {k:"arrow",icon:"➜",label:"Seta"},
+    {k:"circle",icon:"○",label:"Círculo"},
+    {k:"rect",icon:"□",label:"Retângulo"},
+    {k:"text",icon:"T",label:"Texto"},
+    {k:"eraser",icon:"⌫",label:"Borracha"},
+  ];
+  const COLORS=["#E1594A","#F5A623","#F8E71C","#7ED321","#4A90E2","#9B59B6","#ffffff","#000000"];
+  const SIZES=[{v:2,l:"Fino"},{v:4,l:"Médio"},{v:8,l:"Grosso"}];
+
+  return h("div",{onClick:e=>e.target===e.currentTarget&&onClose(),style:{position:"fixed",inset:0,background:"rgba(8,4,6,.97)",zIndex:3000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",padding:"16px",overflow:"auto"}},
+    // Header
+    h("div",{style:{width:"100%",maxWidth:960,display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexShrink:0}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent3}},"✎ Anotação de Foto"),
+      h("div",{style:{display:"flex",gap:8}},
+        h("button",{onClick:undo,title:"Desfazer (Ctrl+Z)",style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,cursor:"pointer",fontSize:13}},"↩ Desfazer"),
+        h("button",{onClick:handleSave,style:{padding:"7px 18px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,cursor:"pointer",fontSize:13,fontWeight:600}},"💾 Salvar Anotação"),
+        h("button",{onClick:onClose,style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text3,cursor:"pointer",fontSize:13}},"✕ Cancelar")
+      )
+    ),
+    // Toolbar
+    h("div",{style:{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center",justifyContent:"center",padding:"10px 16px",background:P.bg2,borderRadius:12,border:`1px solid ${P.border}`,flexShrink:0}},
+      // Tools
+      h("div",{style:{display:"flex",gap:4}},
+        TOOLS.map(t=>h("button",{key:t.k,onClick:()=>setTool(t.k),title:t.label,style:{width:36,height:36,borderRadius:8,border:`1px solid ${tool===t.k?P.rose:P.border}`,background:tool===t.k?P.rose:"transparent",color:tool===t.k?P.accent3:P.text2,cursor:"pointer",fontSize:t.k==="arrow"?16:14,fontWeight:700,fontFamily:"monospace"}},t.icon))
+      ),
+      h("div",{style:{width:1,height:28,background:P.border,margin:"0 4px"}}),
+      // Colors
+      h("div",{style:{display:"flex",gap:4}},
+        COLORS.map(c=>h("button",{key:c,onClick:()=>setColor(c),style:{width:22,height:22,borderRadius:"50%",background:c,border:`2px solid ${color===c?P.accent3:P.border}`,cursor:"pointer",transform:color===c?"scale(1.2)":"scale(1)",transition:"transform .1s"}}))
+      ),
+      h("div",{style:{width:1,height:28,background:P.border,margin:"0 4px"}}),
+      // Size
+      h("div",{style:{display:"flex",gap:4}},
+        SIZES.map(s=>h("button",{key:s.v,onClick:()=>setSize(s.v),style:{padding:"4px 10px",borderRadius:8,fontSize:11,border:`1px solid ${size===s.v?P.rose:P.border}`,background:size===s.v?P.rose:"transparent",color:size===s.v?P.accent3:P.text2,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},s.l))
+      )
+    ),
+    // Canvas
+    h("div",{style:{position:"relative",flexShrink:0}},
+      h("canvas",{
+        ref:canvasRef,
+        onMouseDown,onMouseMove,onMouseUp,
+        onMouseLeave:e=>{if(drawing){setDrawing(false);saveSnap();}},
+        onTouchStart:onMouseDown,onTouchMove:onMouseMove,onTouchEnd:onMouseUp,
+        style:{display:"block",borderRadius:10,border:`1px solid ${P.border}`,cursor:tool==="eraser"?"cell":tool==="text"?"text":"crosshair",touchAction:"none",maxWidth:"100%"}
+      }),
+      // Cursor de cor atual
+      h("div",{style:{position:"absolute",bottom:10,right:10,width:18,height:18,borderRadius:"50%",background:color,border:"2px solid rgba(255,255,255,.4)",pointerEvents:"none"}})
+    ),
+    // Text input overlay
+    showTextInput&&h("div",{style:{position:"fixed",inset:0,zIndex:4000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.5)"},onClick:()=>{setShowTextInput(false);setTextPos(null);}},
+      h("div",{onClick:e=>e.stopPropagation(),style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:10,minWidth:300}},
+        h("div",{style:{fontSize:13,color:P.accent3,marginBottom:4}},"Digite o texto da anotação"),
+        h("input",{autoFocus:true,value:textInput,onChange:e=>setTextInput(e.target.value),onKeyDown:e=>e.key==="Enter"&&placeText(),placeholder:"Ex: Tratar aqui · Assimetria",style:{padding:"9px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:14,outline:"none",fontFamily:"'DM Sans',sans-serif"}}),
+        h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
+          h("button",{onClick:()=>{setShowTextInput(false);setTextPos(null);},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text3,cursor:"pointer",fontSize:13}},"Cancelar"),
+          h("button",{onClick:placeText,style:{padding:"7px 16px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,cursor:"pointer",fontSize:13,fontWeight:600}},"Colocar")
+        )
+      )
+    ),
+    // Tool tip
+    h("div",{style:{marginTop:10,fontSize:11,color:P.text3,textAlign:"center",flexShrink:0}},
+      tool==="pen"?"✏️ Clique e arraste para desenhar livremente"
+      :tool==="arrow"?"➜ Clique e arraste para criar uma seta"
+      :tool==="circle"?"○ Clique e arraste para criar um círculo/elipse"
+      :tool==="rect"?"□ Clique e arraste para criar um retângulo"
+      :tool==="text"?"T Clique na foto para posicionar o texto"
+      :"⌫ Arraste sobre as anotações para apagar"
+    )
+  );
+}
+
 // ─── MEDIA GALLERY ─────────────────────────────────────────────────────────────
 function MediaGallery({items,onAdd,onRemove,label,docMode=false}){
   const[preview,setPreview]=useState(null);
@@ -2777,6 +3025,7 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia}){
   const h=createElement;
   const [filterProc,setFilterProc]=useState("Todos");
   const [lightbox,setLightbox]=useState(null);
+  const [annotating,setAnnotating]=useState(null); // {photo, sessId}
   // Todas as sessões, ordenadas por data mais antiga primeiro
   const allSessions=(patient.sessions||[]);
   const parseDt=s=>{try{const[d,m,y]=String(s||"").split("/");return new Date(y+"-"+m+"-"+d);}catch{return new Date(0);}};
@@ -2840,12 +3089,22 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia}){
                   onClick:()=>setLightbox({photos:allPhotos,idx:allPhotos.findIndex(p=>p.id===ph.id)})},
                   h("img",{src:ph.url,alt:ph.name,style:{width:"100%",height:"100%",objectFit:"cover",borderRadius:8,border:`1px solid ${P.border}`,display:"block"}}),
                   h("div",{style:{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,.55)",borderRadius:"0 0 8px 8px",padding:"3px 6px",fontSize:9,color:"rgba(255,255,255,.8)",textAlign:"center"}},ph.date||s.date),
-                  h("button",{onClick:e=>{e.stopPropagation();removeMedia(s.id,ph.id,"photos");},style:{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.7)",border:"none",color:"#fff",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}},"×")
+                  h("button",{onClick:e=>{e.stopPropagation();removeMedia(s.id,ph.id,"photos");},style:{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.7)",border:"none",color:"#fff",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}},"×"),
+                  h("button",{onClick:e=>{e.stopPropagation();setAnnotating({photo:ph,sessId:s.id});},title:"Anotar foto",style:{position:"absolute",top:4,right:28,width:20,height:20,borderRadius:"50%",background:"rgba(92,31,50,.85)",border:"none",color:"#fff",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}},"\u270f")
                 ))
               )
           );
         })
       ),
+    // Annotator modal
+    annotating&&h(PhotoAnnotator,{
+      photo:annotating.photo,
+      onClose:()=>setAnnotating(null),
+      onSave:newPhoto=>{
+        upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===annotating.sessId?{...s,photos:[...(s.photos||[]),newPhoto]}:s)}));
+        setAnnotating(null);
+      }
+    }),
     // Lightbox
     lightbox&&h("div",{onClick:()=>setLightbox(null),style:{position:"fixed",inset:0,background:"rgba(0,0,0,.95)",zIndex:2000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}},
       h("div",{style:{fontSize:12,color:"rgba(255,255,255,.5)"}},
@@ -2855,6 +3114,7 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia}){
       h("img",{src:lightbox.photos[lightbox.idx]?.url,onClick:e=>e.stopPropagation(),style:{maxWidth:"88vw",maxHeight:"78vh",borderRadius:10,objectFit:"contain",boxShadow:"0 8px 40px rgba(0,0,0,.8)"}}),
       h("div",{style:{display:"flex",gap:10,alignItems:"center"}},
         h("button",{onClick:e=>{e.stopPropagation();setLightbox(l=>({...l,idx:Math.max(0,l.idx-1)}));},disabled:lightbox.idx===0,style:{background:lightbox.idx===0?"rgba(255,255,255,.05)":"rgba(255,255,255,.15)",border:"none",color:"#fff",padding:"10px 20px",borderRadius:8,cursor:lightbox.idx===0?"default":"pointer",fontSize:18,opacity:lightbox.idx===0?.3:1}},"‹"),
+        h("button",{onClick:e=>{e.stopPropagation();const ph=lightbox.photos[lightbox.idx];if(ph){setAnnotating({photo:ph,sessId:ph.sessId});setLightbox(null);}},style:{background:"rgba(92,31,50,.7)",border:"1px solid rgba(157,119,97,.4)",color:P.accent3,padding:"8px 18px",borderRadius:8,cursor:"pointer",fontSize:13}},"✎ Anotar"),
         h("button",{onClick:e=>{e.stopPropagation();setLightbox(l=>({...l,idx:Math.min(l.photos.length-1,l.idx+1)}));},disabled:lightbox.idx===lightbox.photos.length-1,style:{background:lightbox.idx===lightbox.photos.length-1?"rgba(255,255,255,.05)":"rgba(255,255,255,.15)",border:"none",color:"#fff",padding:"10px 20px",borderRadius:8,cursor:lightbox.idx===lightbox.photos.length-1?"default":"pointer",fontSize:18,opacity:lightbox.idx===lightbox.photos.length-1?.3:1}},"›"),
         h("button",{onClick:()=>setLightbox(null),style:{background:"rgba(255,255,255,.1)",border:"1px solid rgba(255,255,255,.2)",color:"#fff",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontSize:13}},"✕ Fechar")
       )
