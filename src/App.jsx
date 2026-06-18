@@ -1190,7 +1190,7 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
   const[icForm,setIcForm]=useState({type:"Edema",notes:"",conduct:"",date:""});
   const[planForm,setPlanForm]=useState({title:"",steps:"",notes:""});
   const totalSpent=(patient.sessions||[]).reduce((a,s)=>a+s.value,0);
-  const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"fichaRapida",l:"⚡ Ficha Rápida"},{k:"orcamentos",l:"💼 Orçamentos"},{k:"mapa",l:"🗺 Mapa"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"}];
+  const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"fichaRapida",l:"⚡ Ficha Rápida"},{k:"orcamentos",l:"💼 Orçamentos"},{k:"mapa",l:"🗺 Mapa"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"},{k:"skincare",l:"🧴 Skincare"},{k:"indicacoes",l:"🤝 Indicações"}];
   function upd(fn){setPatients(prev=>prev.map(p=>p.id===patient.id?fn(p):p));}
   // Sincroniza sessão → incomes (fonte única de verdade)
   function syncIncome(sess,patName){
@@ -1581,7 +1581,7 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
           h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
             Array.from({length:pkg.total},(_,i)=>{
               const checked=i<pkg.done;
-              const sess=pkg.sessions&&pkg.sessions[i];
+              const sess=pkg.sessions&&(pkg.sessions.find(s=>s.num===i+1)||pkg.sessions[i]);
               return h("div",{key:i,title:sess?"Realizada em "+sess.date:"Pendente",style:{width:36,height:36,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,border:`2px solid ${checked?P.green:P.border}`,background:checked?"rgba(122,173,138,.15)":P.bg3,color:checked?P.green:P.text3,position:"relative",cursor:"default"}},
                 checked?"✓":(i+1),
                 checked&&sess&&h("div",{style:{position:"absolute",bottom:-18,left:"50%",transform:"translateX(-50%)",fontSize:9,color:P.text3,whiteSpace:"nowrap"}},sess.date.slice(0,5))
@@ -1625,6 +1625,155 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
         )))
       ))
     ),
+    // ─── SKINCARE TAB
+    tab==="skincare"&&(()=>{
+      const sk=patient.skincare||{produtos:[],recomendacoes:"",adesao:"boa"};
+      const [showSkForm,setShowSkForm]=useState(false);
+      const [skForm,setSkForm]=useState({nome:"",frequencia:"Diário",periodo:"Manhã e Noite",obs:""});
+      const [recText,setRecText]=useState(sk.recomendacoes||"");
+      const FREQ=["Diário","Noturno","2x por semana","Semanal","Mensal"];
+      const PERIODOS=["Manhã","Noite","Manhã e Noite","Conforme necessário"];
+      const PRODS_SUGERIDOS=["Vitamina C","Retinol","Ácido Glicólico","Ácido Hialurônico","Protetor Solar FPS 50+","Niacinamida","Peptídeos","Bakuchiol","AHA/BHA","Ceramidas","Água Micelar","Hidratante Facial"];
+      function addProduto(){
+        if(!skForm.nome)return;
+        const novo={id:Date.now(),nome:skForm.nome,frequencia:skForm.frequencia,periodo:skForm.periodo,obs:skForm.obs,adesao:"regular",addedAt:new Date().toLocaleDateString("pt-BR")};
+        upd(p=>({...p,skincare:{...(p.skincare||{}),produtos:[...(sk.produtos||[]),novo]}}));
+        setSkForm({nome:"",frequencia:"Diário",periodo:"Manhã e Noite",obs:""});setShowSkForm(false);
+      }
+      function removeProduto(id){upd(p=>({...p,skincare:{...(p.skincare||{}),produtos:(sk.produtos||[]).filter(x=>x.id!==id)}}));}
+      function toggleAdesao(id){
+        const opts=["ótima","boa","regular","baixa"];
+        upd(p=>({...p,skincare:{...(p.skincare||{}),produtos:(sk.produtos||[]).map(x=>{if(x.id!==id)return x;const i=opts.indexOf(x.adesao||"regular");return{...x,adesao:opts[(i+1)%opts.length]};})}}));
+      }
+      function saveRec(){upd(p=>({...p,skincare:{...(p.skincare||{}),recomendacoes:recText}}));}
+      const adesaoCor={ótima:P.green,boa:"#7aaed4",regular:P.yellow,baixa:P.red};
+      return h("div",null,
+        h(SectionHeader,{title:"🧴 Skincare em Uso",sub:"Produtos domiciliares e adesão ao protocolo"}),
+        h(Card,{style:{marginBottom:14}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Produtos em Uso"),
+            h(Btn,{onClick:()=>setShowSkForm(v=>!v),style:{fontSize:12}},"＋ Adicionar Produto")
+          ),
+          showSkForm&&h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`,marginBottom:14}},
+            h("div",{style:{marginBottom:10,fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text}},"Novo Produto"),
+            h("div",{style:{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}},
+              h("div",{style:{flex:"1 1 200px"}},
+                h("div",{style:{fontSize:11,color:P.text3,marginBottom:4}},"Produto"),
+                h("input",{value:skForm.nome,onChange:e=>setSkForm(p=>({...p,nome:e.target.value})),list:"sk-sugestoes",placeholder:"Nome do produto...",style:{...IS,width:"100%"}})
+              ),
+              h("datalist",{id:"sk-sugestoes"},PRODS_SUGERIDOS.map(s=>h("option",{key:s,value:s}))),
+              h("div",{style:{flex:"1 1 140px"}},
+                h("div",{style:{fontSize:11,color:P.text3,marginBottom:4}},"Frequência"),
+                h("select",{value:skForm.frequencia,onChange:e=>setSkForm(p=>({...p,frequencia:e.target.value})),style:{...IS,width:"100%"}},FREQ.map(f=>h("option",{key:f,value:f},f)))
+              ),
+              h("div",{style:{flex:"1 1 160px"}},
+                h("div",{style:{fontSize:11,color:P.text3,marginBottom:4}},"Período"),
+                h("select",{value:skForm.periodo,onChange:e=>setSkForm(p=>({...p,periodo:e.target.value})),style:{...IS,width:"100%"}},PERIODOS.map(p=>h("option",{key:p,value:p},p)))
+              ),
+              h("div",{style:{flex:"1 1 200px"}},
+                h("div",{style:{fontSize:11,color:P.text3,marginBottom:4}},"Observação"),
+                h("input",{value:skForm.obs,onChange:e=>setSkForm(p=>({...p,obs:e.target.value})),placeholder:"Ex: aplicar após limpeza",style:{...IS,width:"100%"}})
+              )
+            ),
+            h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
+              h(Btn,{variant:"ghost",onClick:()=>setShowSkForm(false),style:{fontSize:12}},"Cancelar"),
+              h(Btn,{onClick:addProduto,style:{fontSize:12}},"Adicionar")
+            )
+          ),
+          (sk.produtos||[]).length===0&&!showSkForm?h("div",{style:{textAlign:"center",padding:24,color:P.text3,fontSize:13}},"Nenhum produto cadastrado."):null,
+          h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+            (sk.produtos||[]).map(prod=>h("div",{key:prod.id,style:{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
+              h("div",{style:{fontSize:22,flexShrink:0}},"🧴"),
+              h("div",{style:{flex:1}},
+                h("div",{style:{fontSize:14,color:P.text,fontWeight:600}},prod.nome),
+                h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},prod.frequencia+" · "+prod.periodo+(prod.obs?" · "+prod.obs:"")),
+                h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},"Adicionado em "+prod.addedAt)
+              ),
+              h("button",{onClick:()=>toggleAdesao(prod.id),title:"Clique para alterar adesão",style:{padding:"4px 12px",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer",background:"transparent",border:`1px solid ${adesaoCor[prod.adesao||"regular"]}44`,color:adesaoCor[prod.adesao||"regular"]}},
+                "Adesão: "+(prod.adesao||"regular")
+              ),
+              h("button",{onClick:()=>removeProduto(prod.id),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:16,padding:"4px"}},"×")
+            ))
+          )
+        ),
+        h(Card,null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:12}},"📝 Recomendações & Observações"),
+          h("textarea",{value:recText,onChange:e=>setRecText(e.target.value),placeholder:"Ex: Introduzir retinol gradualmente, começar 2x/semana...
+Evitar ácidos juntos com retinol.
+Protetor solar obrigatório pela manhã.",rows:5,style:{...IS,width:"100%",resize:"vertical"}}),
+          h("div",{style:{display:"flex",justifyContent:"flex-end",marginTop:8}},
+            h(Btn,{onClick:saveRec,style:{fontSize:12}},"Salvar Recomendações")
+          )
+        )
+      );
+    })(),
+    // ─── INDICAÇÕES TAB
+    tab==="indicacoes"&&(()=>{
+      const indicados=patients.filter(p=>p.id!==patient.id&&(p.indicadoPor||"").toLowerCase().trim()===(patient.name||"").toLowerCase().trim());
+      const totalGerado=indicados.reduce((acc,p)=>{const s=(p.sessions||[]).filter(x=>x.paid).reduce((a,x)=>a+x.value,0);return acc+s;},0);
+      const quemIndicou=patients.find(p=>p.name&&patient.indicadoPor&&p.name.toLowerCase().trim()===patient.indicadoPor.toLowerCase().trim());
+      return h("div",null,
+        h(SectionHeader,{title:"🤝 Árvore de Indicações",sub:"Rastreio automático por nome do indicador"}),
+        // Quem indicou esta paciente
+        h(Card,{style:{marginBottom:14}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:12}},"Indicada por"),
+          patient.indicadoPor
+            ?h("div",{style:{display:"flex",alignItems:"center",gap:12}},
+                h("div",{style:{fontSize:28}},"👤"),
+                h("div",null,
+                  h("div",{style:{fontSize:15,color:P.text,fontWeight:600}},patient.indicadoPor),
+                  quemIndicou
+                    ?h("div",{onClick:()=>{onSelectPatient&&onSelectPatient(quemIndicou);},style:{fontSize:12,color:P.accent,marginTop:4,cursor:"pointer",textDecoration:"underline"}},"Ver prontuário →")
+                    :h("div",{style:{fontSize:12,color:P.text3,marginTop:4}},"Não cadastrada no sistema")
+                )
+              )
+            :h("div",{style:{fontSize:13,color:P.text3}},"Nenhuma indicação registrada.")
+        ),
+        // Quem esta paciente indicou
+        h(Card,{style:{marginBottom:14,border:`1px solid ${indicados.length>0?"rgba(122,174,212,.35)":P.border}`}},
+          h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}},
+            h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},patient.name.split(" ")[0]+" indicou"),
+              indicados.length>0&&h("span",{style:{fontSize:12,fontWeight:700,color:"#7aaed4",background:"rgba(122,174,212,.15)",padding:"2px 10px",borderRadius:20}},indicados.length)
+            ),
+            indicados.length>0&&h("div",{style:{textAlign:"right"}},
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:P.green}},fmtCurr(totalGerado)),
+              h("div",{style:{fontSize:11,color:P.text3}},"valor gerado")
+            )
+          ),
+          indicados.length===0
+            ?h("div",{style:{fontSize:13,color:P.text3}},"Nenhuma indicação registrada. Quando outra paciente cadastrar ""+patient.name.split(" ")[0]+"" como indicador, aparecerá aqui automaticamente.")
+            :h("div",{style:{display:"flex",flexDirection:"column",gap:0}},
+              indicados.map((ind,i)=>{
+                const val=(ind.sessions||[]).filter(s=>s.paid).reduce((a,s)=>a+s.value,0);
+                const isLast=i===indicados.length-1;
+                return h("div",{key:ind.id,style:{display:"flex",gap:12,paddingBottom:isLast?0:10,marginBottom:isLast?0:10,borderBottom:isLast?"none":`1px solid ${P.border}`}},
+                  h("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",width:24}},
+                    h("div",{style:{width:2,height:12,background:P.border}}),
+                    h("div",{style:{fontSize:14}},"├"),
+                  ),
+                  h("div",{onClick:()=>{onSelectPatient&&onSelectPatient(ind);},style:{flex:1,display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"8px 12px",borderRadius:10,background:P.bg3,border:`1px solid ${P.border}`},onMouseEnter:e=>e.currentTarget.style.borderColor=P.accent,onMouseLeave:e=>e.currentTarget.style.borderColor=P.border},
+                    h(Avatar,{name:ind.name,size:36,src:ind.profilePhoto,idx:patients.indexOf(ind)}),
+                    h("div",{style:{flex:1}},
+                      h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},ind.name),
+                      h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},(ind.sessions||[]).length+" sessões · desde "+ind.since)
+                    ),
+                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.green}},fmtCurr(val))
+                  )
+                );
+              })
+            )
+        ),
+        // Resumo
+        indicados.length>0&&h(Card,{style:{background:"rgba(122,174,212,.05)",border:"1px solid rgba(122,174,212,.25)"}},
+          h("div",{style:{display:"flex",gap:24,flexWrap:"wrap",alignItems:"center"}},
+            h("div",{style:{textAlign:"center"}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:36,color:"#7aaed4",lineHeight:1}},indicados.length),h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},"indicações")),
+            h("div",{style:{textAlign:"center"}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:36,color:P.green,lineHeight:1}},fmtCurr(totalGerado)),h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},"valor gerado")),
+            h("div",{style:{fontSize:13,color:P.text3,flex:1,fontStyle:"italic"}},"Excelente indicadora! Configure recompensas para incentivar ainda mais.")
+          )
+        )
+      );
+    })(),
     // ─── MODALS
     h(Modal,{open:showNewS,onClose:()=>{setShowNewS(false);setEditSess(null);},title:editSess?"✎ Editar Sessão":"✦ Nova Sessão",width:620},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
