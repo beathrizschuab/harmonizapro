@@ -160,34 +160,67 @@ function stripPhotos(data) {
   });
 }
 
-// Tabela única no Supabase: "app_data" com colunas (key TEXT PRIMARY KEY, value JSONB)
-// Cada "tabela" do app é uma linha com key = nome da tabela
-const SUPA_TABLE = "app_data";
+// ─── SUPABASE SYNC ────────────────────────────────────────────────────────────
+// Tabela no Supabase: "app_data" (key TEXT PRIMARY KEY, value JSONB, user_id UUID)
+// SQL para criar:
+//   create table app_data (
+//     key text not null,
+//     user_id uuid not null references auth.users(id),
+//     value jsonb not null,
+//     updated_at timestamptz default now(),
+//     primary key (key, user_id)
+//   );
+//   alter table app_data enable row level security;
+//   create policy "own data" on app_data for all to authenticated
+//     using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+let _supaUserId = null;
+supabase.auth.getSession().then(({data:{session}})=>{ if(session) _supaUserId=session.user.id; });
+supabase.auth.onAuthStateChange((_,s)=>{ _supaUserId = s?.user?.id||null; });
+
+// Estado global de conectividade com Supabase
+let _supaOk = null; // null=desconhecido, true=ok, false=erro
+const _supaListeners = new Set();
+function setSupaOk(v){ _supaOk=v; _supaListeners.forEach(fn=>fn(v)); }
+function useSupaStatus(){ const[s,set]=useState(_supaOk); useEffect(()=>{ set(_supaOk); _supaListeners.add(set); return()=>_supaListeners.delete(set); },[]); return s; }
 
 async function supaRead(key) {
+  if (!_supaUserId) return null;
   try {
     const { data, error } = await supabase
-      .from(SUPA_TABLE)
+      .from("app_data")
       .select("value")
       .eq("key", key)
+      .eq("user_id", _supaUserId)
       .single();
-    if (error || !data) return null;
-    return data.value;
-  } catch { return null; }
+    if (error) {
+      // PGRST116 = row not found — normal na primeira vez
+      if (error.code !== "PGRST116") setSupaOk(false);
+      return null;
+    }
+    setSupaOk(true);
+    return data?.value ?? null;
+  } catch { setSupaOk(false); return null; }
 }
 
 async function supaWrite(key, value) {
+  if (!_supaUserId) return;
   try {
-    await supabase
-      .from(SUPA_TABLE)
-      .upsert({ key, value: stripPhotos(value) }, { onConflict: "key" });
-  } catch {}
+    const { error } = await supabase
+      .from("app_data")
+      .upsert(
+        { key, user_id: _supaUserId, value: stripPhotos(value), updated_at: new Date().toISOString() },
+        { onConflict: "key,user_id" }
+      );
+    if (error) { setSupaOk(false); }
+    else { setSupaOk(true); }
+  } catch { setSupaOk(false); }
 }
 
 function useSupaTable(key, initFallback = []) {
   const lsKey = "hapro2_" + key;
 
-  // Carrega do localStorage como estado inicial (rápido)
+  // Estado inicial do localStorage (carrega instantâneo)
   const [data, setDataRaw] = useState(() => {
     try {
       const raw = localStorage.getItem(lsKey);
@@ -203,28 +236,38 @@ function useSupaTable(key, initFallback = []) {
 
   const [loading, setLoading] = useState(true);
 
-  // Na montagem: busca do Supabase e atualiza
+  // Ao montar: busca do Supabase e substitui se vier dado mais recente
   useEffect(() => {
     let cancelled = false;
-    supaRead(key).then(remote => {
+    // Aguarda user_id estar disponível (máx 3s)
+    const tryRead = (attempts=0) => {
       if (cancelled) return;
-      setLoading(false);
-      if (remote !== null) {
-        const ok = Array.isArray(remote) ? remote.length >= 0
-          : (remote && typeof remote === "object");
-        if (ok) {
-          setDataRaw(remote);
-          try { localStorage.setItem(lsKey, JSON.stringify(remote)); } catch {}
-        }
+      if (!_supaUserId && attempts < 10) {
+        setTimeout(()=>tryRead(attempts+1), 300);
+        return;
       }
-    });
+      supaRead(key).then(remote => {
+        if (cancelled) return;
+        setLoading(false);
+        if (remote !== null) {
+          const ok = Array.isArray(remote) ? true : (remote && typeof remote === "object");
+          if (ok) {
+            setDataRaw(remote);
+            try { localStorage.setItem(lsKey, JSON.stringify(remote)); } catch {}
+          }
+        } else {
+          setLoading(false);
+        }
+      });
+    };
+    tryRead();
     return () => { cancelled = true; };
   }, [key]);
 
   const setData = useCallback((valOrFn) => {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
-      // Salva localStorage (cache local)
+      // 1) Salva localStorage imediatamente
       try {
         localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
       } catch {
@@ -235,7 +278,7 @@ function useSupaTable(key, initFallback = []) {
           localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
         } catch {}
       }
-      // Salva no Supabase (assíncrono, sem bloquear UI)
+      // 2) Salva no Supabase (assíncrono — não bloqueia UI)
       supaWrite(key, next);
       return next;
     });
@@ -1065,6 +1108,21 @@ function MediaGallery({items,onAdd,onRemove,label,docMode=false}){
     )
   );
 }
+// ─── SYNC INDICATOR ───────────────────────────────────────────────────────────
+function SyncIndicator(){
+  const h=createElement;
+  const status=useSupaStatus();
+  if(status===null)return null;
+  const ok=status===true;
+  return h("div",{
+    style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:ok?"rgba(122,173,138,.10)":"rgba(192,112,112,.12)",border:`1px solid ${ok?"rgba(122,173,138,.25)":"rgba(192,112,112,.3)"}`,cursor:"default",flexShrink:0},
+    title:ok?"Dados sincronizados — aparecem em todos os dispositivos":"Sem sincronizacao com servidor. Verifique a tabela app_data no Supabase."
+  },
+    h("div",{style:{width:7,height:7,borderRadius:"50%",background:ok?"#7aad8a":"#c07070"}}),
+    h("span",{style:{fontSize:11,color:ok?"#7aad8a":"#c07070",fontWeight:500,whiteSpace:"nowrap"}},ok?"Nuvem 2713":"Sem sync")
+  );
+}
+
 // ─── GLOBAL SEARCH ────────────────────────────────────────────────────────────
 function GlobalSearch({patients,agenda,onSelectPatient,onNav}){
   const[q,setQ]=useState("");
@@ -3873,7 +3931,8 @@ function AppInner({ session, onLogout }) {
             h("span",{style:{display:"block",width:16,height:1.5,background:P.text2,borderRadius:2}})
           ),
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:isMobile?17:20,color:P.text,flexShrink:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:isMobile?120:260}},pageTitles[page]),
-          h(GlobalSearch,{patients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav})
+          h(GlobalSearch,{patients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav}),
+          h(SyncIndicator,null)
         ),
         // Conteúdo principal
         h("div",{style:{flex:1,overflowY:"auto",padding:isMobile?12:24}},
