@@ -168,9 +168,16 @@ function useSupaTable(key, initFallback = []) {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
       (async () => {
-        if (!uid.current) return;
+        // Se uid ainda não foi carregado, busca agora para não perder o save
+        let userId = uid.current;
+        if (!userId) {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          uid.current = user.id;
+          userId = user.id;
+        }
         await supabase.from("app_data").upsert({
-          user_id: uid.current,
+          user_id: userId,
           key,
           value: JSON.stringify(next),
           updated_at: new Date().toISOString(),
