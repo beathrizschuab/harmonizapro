@@ -1740,7 +1740,7 @@ function PatientDetail({patient,setPatients,onBack,procedures,locations,products
             )
           ),
           indicados.length===0
-            ?h("div",{style:{fontSize:13,color:P.text3}},"Nenhuma indicação registrada. Quando outra paciente cadastrar ""+patient.name.split(" ")[0]+"" como indicador, aparecerá aqui automaticamente.")
+            ?h("div",{style:{fontSize:13,color:P.text3}},`Nenhuma indicação registrada. Quando outra paciente cadastrar '${patient.name.split(" ")[0]}' como indicador, aparecerá aqui automaticamente.`)
             :h("div",{style:{display:"flex",flexDirection:"column",gap:0}},
               indicados.map((ind,i)=>{
                 const val=(ind.sessions||[]).filter(s=>s.paid).reduce((a,s)=>a+s.value,0);
