@@ -216,12 +216,27 @@ async function supaWrite(key, value) {
 function useSupaTable(key, initFallback = []) {
   const lsKey = "hapro2_" + key;
 
-  // Começa com null para indicar "ainda não carregou do Supabase"
-  const [data, setDataRaw] = useState(null);
+  // Dados sempre começam com valor válido (nunca null) para evitar crashes.
+  // "synced" indica se o Supabase já respondeu ao menos uma vez.
+  const [data, setDataRaw] = useState(() => {
+    // Tenta localStorage como valor temporário enquanto Supabase carrega
+    try {
+      const raw = localStorage.getItem(lsKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const ok = Array.isArray(parsed) ? parsed.length > 0
+          : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
+        if (ok) return parsed;
+      }
+    } catch {}
+    // Se não tiver nada no localStorage, usa um array/objeto vazio seguro
+    // (não o initFallback com dados demo) para sinalizar "ainda sem dados"
+    return Array.isArray(initFallback) ? [] : {};
+  });
   const [loading, setLoading] = useState(true);
+  const [synced, setSynced] = useState(false);
 
-  // Ao montar: SEMPRE busca do Supabase primeiro.
-  // Só usa localStorage/fallback se o Supabase falhar completamente.
+  // Ao montar: SEMPRE busca do Supabase. Quando chegar, substitui tudo.
   useEffect(() => {
     let cancelled = false;
     const tryRead = (attempts=0) => {
@@ -231,44 +246,33 @@ function useSupaTable(key, initFallback = []) {
         return;
       }
       if (!_supaUserId) {
-        // Sem usuário autenticado após timeout: usa localStorage ou fallback
-        try {
-          const raw = localStorage.getItem(lsKey);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            const ok = Array.isArray(parsed) ? parsed.length > 0
-              : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
-            if (ok) { setDataRaw(parsed); setLoading(false); return; }
-          }
-        } catch {}
-        setDataRaw(initFallback);
+        // Timeout sem usuário: usa fallback e marca como sincronizado
+        setDataRaw(prev => {
+          const empty = Array.isArray(prev) ? prev.length === 0 : Object.keys(prev||{}).length === 0;
+          return empty ? initFallback : prev;
+        });
         setLoading(false);
+        setSynced(true);
         return;
       }
       supaRead(key).then(remote => {
         if (cancelled) return;
         setLoading(false);
+        setSynced(true);
         if (remote !== null) {
           const ok = Array.isArray(remote) ? true : (remote && typeof remote === "object");
           if (ok) {
-            // Dado vem do Supabase — fonte da verdade
+            // Supabase tem dados: usa como fonte da verdade
             setDataRaw(remote);
             try { localStorage.setItem(lsKey, JSON.stringify(remote)); } catch {}
             return;
           }
         }
-        // Supabase não tem dado ainda (conta nova/chave nova):
-        // usa localStorage se tiver algo, senão usa o fallback
-        try {
-          const raw = localStorage.getItem(lsKey);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            const ok = Array.isArray(parsed) ? parsed.length > 0
-              : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
-            if (ok) { setDataRaw(parsed); return; }
-          }
-        } catch {}
-        setDataRaw(initFallback);
+        // Supabase vazio (conta nova): usa localStorage ou initFallback
+        setDataRaw(prev => {
+          const empty = Array.isArray(prev) ? prev.length === 0 : Object.keys(prev||{}).length === 0;
+          return empty ? initFallback : prev;
+        });
       });
     };
     tryRead();
@@ -295,7 +299,7 @@ function useSupaTable(key, initFallback = []) {
     });
   }, [lsKey, key]);
 
-  return [data, setData, loading];
+  return [data, setData, loading, synced];
 }
 
 // useSettings: usa o mesmo mecanismo JSON
