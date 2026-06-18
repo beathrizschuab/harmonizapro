@@ -141,38 +141,38 @@ function debitarLote(setProducts, productName, loteId, qtdUsada) {
 
 
 // ─── SUPABASE DATA HOOKS ─────────────────────────────────────────────────────
-// Dual-save: localStorage (imediato, nunca perde) + Supabase (sincronia entre devices)
+// localStorage é a fonte primária — Supabase sincroniza em background.
+// Nunca bloqueia a UI esperando rede.
 function useSupaTable(key, initFallback = []) {
-  const lsKey = "app_" + key;
+  const lsKey = "hapro_" + key;
 
-  // Carrega do localStorage imediatamente — sem tela vazia ao recarregar
+  // Carrega do localStorage na hora — sem tela de loading
   const [data, setDataRaw] = useState(() => {
     try { const s = localStorage.getItem(lsKey); if (s) return JSON.parse(s); } catch {}
     return initFallback;
   });
-  const [loading, setLoading] = useState(true);
   const uid = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
+    // Tenta buscar do Supabase em background para sincronizar
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user || cancelled) { if (!cancelled) setLoading(false); return; }
+      if (!user || cancelled) return;
       uid.current = user.id;
       supabase.from("app_data").select("value")
         .eq("user_id", user.id).eq("key", key).maybeSingle()
         .then(({ data: row, error }) => {
-          if (!cancelled) {
-            if (!error && row && row.value) {
-              try {
-                const parsed = JSON.parse(row.value);
-                setDataRaw(parsed);
-                try { localStorage.setItem(lsKey, JSON.stringify(parsed)); } catch {}
-              } catch {}
+          if (cancelled || error || !row?.value) return;
+          try {
+            const parsed = JSON.parse(row.value);
+            // Só usa o Supabase se tiver dados (evita sobrescrever com vazio)
+            if (Array.isArray(parsed) ? parsed.length > 0 : Object.keys(parsed||{}).length > 0) {
+              setDataRaw(parsed);
+              try { localStorage.setItem(lsKey, JSON.stringify(parsed)); } catch {}
             }
-            setLoading(false);
-          }
-        }).catch(() => { if (!cancelled) setLoading(false); });
-    }).catch(() => { if (!cancelled) setLoading(false); });
+          } catch {}
+        }).catch(() => {});
+    }).catch(() => {});
     return () => { cancelled = true; };
   }, [key]);
 
@@ -180,10 +180,10 @@ function useSupaTable(key, initFallback = []) {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
 
-      // 1. localStorage — salva na hora, garante persistência local
+      // Salva no localStorage imediatamente — persiste ao recarregar
       try { localStorage.setItem(lsKey, JSON.stringify(next)); } catch {}
 
-      // 2. Supabase — sem updated_at para evitar erro 500 de coluna inexistente
+      // Tenta Supabase em background (sem updated_at que causava erro 500)
       (async () => {
         let userId = uid.current;
         if (!userId) {
@@ -206,7 +206,8 @@ function useSupaTable(key, initFallback = []) {
     });
   }, [key]);
 
-  return [data, setData, loading];
+  // loading sempre false — não bloqueia mais a UI
+  return [data, setData, false];
 }
 
 // useSettings: usa o mesmo mecanismo JSON
@@ -2664,12 +2665,7 @@ function AppInner({ session, onLogout }) {
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
 
-  // Aguarda todos os dados carregarem antes de renderizar a UI
-  const isLoading = loadingPatients||loadingAgenda||loadingExpenses||loadingIncomes||loadingProducts||loadingSettings||loadingProcedures||loadingLocations||loadingRules;
-  if(isLoading) return createElement("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:P.bg,color:P.text3,fontSize:14,fontFamily:"sans-serif",flexDirection:"column",gap:12}},
-    createElement("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:P.accent3}},"HarmonizaPro"),
-    createElement("div",null,"Carregando dados...")
-  );
+  // Dados carregam do localStorage instantaneamente — sem tela de loading
   const procedureNames=Array.isArray(procedures)?procedures.map(p=>typeof p==="string"?p:(p.name||p)).filter(Boolean):INIT_PROCEDURES;
   const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
   const h=createElement;
