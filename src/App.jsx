@@ -404,7 +404,320 @@ function FaceMapEditor({sessionMap,onChange,readOnly=false}){
     )
   );
 }
-// ─── PHOTO ANNOTATOR ──────────────────────────────────────────────────────────
+// ─── PLAN ANNOTATOR ───────────────────────────────────────────────────────────
+// Salva anotações como dados estruturados para reedição posterior
+function PlanAnnotator({initial,onSave,onClose}){
+  const canvasRef=useRef();
+  const overlayRef=useRef(); // canvas de preview ao desenhar shapes
+  const imgRef=useRef(null);
+  const h=createElement;
+
+  // Estado das ferramentas
+  const[tool,setTool]=useState("pen");
+  const[color,setColor]=useState("#E1594A");
+  const[size,setSize]=useState(3);
+  const[drawing,setDrawing]=useState(false);
+  const[textInput,setTextInput]=useState("");
+  const[textPos,setTextPos]=useState(null);
+  const[showTextBox,setShowTextBox]=useState(false);
+
+  // Dados estruturados das anotações
+  const[strokes,setStrokes]=useState(initial?.strokes||[]); // [{points,color,size}]
+  const[shapes,setShapes]=useState(initial?.shapes||[]);    // [{type,x1,y1,x2,y2,color,size}]
+  const[texts,setTexts]=useState(initial?.texts||[]);       // [{x,y,text,color,size}]
+  const[baseImage,setBaseImage]=useState(initial?.baseImage||null);
+  const[canvasW,setCanvasW]=useState(initial?.canvasW||800);
+  const[canvasH,setCanvasH]=useState(initial?.canvasH||600);
+
+  // Estado para undo
+  const[undoStack,setUndoStack]=useState([]);
+  const startRef=useRef(null);
+  const currentStrokeRef=useRef([]);
+  const hasImage=!!baseImage;
+
+  // Dimensionar canvas
+  function getCanvasSize(img){
+    const maxW=Math.min(window.innerWidth*0.80,900);
+    const maxH=Math.min(window.innerHeight*0.65,680);
+    const scale=Math.min(maxW/img.naturalWidth,maxH/img.naturalHeight,1);
+    return{w:Math.round(img.naturalWidth*scale),h:Math.round(img.naturalHeight*scale)};
+  }
+
+  // Redraw completo da cena
+  function redraw(canvas,bImg,sStrokes,sShapes,sTexts){
+    if(!canvas)return;
+    const ctx=canvas.getContext("2d");
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(bImg)ctx.drawImage(bImg,0,0,canvas.width,canvas.height);
+    // Strokes
+    sStrokes.forEach(stroke=>{
+      if(!stroke.points||stroke.points.length<2)return;
+      ctx.beginPath();ctx.lineWidth=stroke.size;ctx.lineCap="round";ctx.lineJoin="round";
+      ctx.strokeStyle=stroke.color;ctx.globalCompositeOperation="source-over";
+      ctx.moveTo(stroke.points[0].x,stroke.points[0].y);
+      stroke.points.forEach(p=>ctx.lineTo(p.x,p.y));
+      ctx.stroke();
+    });
+    // Shapes
+    sShapes.forEach(sh=>{
+      ctx.lineWidth=sh.size;ctx.strokeStyle=sh.color;ctx.fillStyle=sh.color;
+      ctx.globalCompositeOperation="source-over";
+      if(sh.type==="arrow"){
+        ctx.beginPath();ctx.moveTo(sh.x1,sh.y1);ctx.lineTo(sh.x2,sh.y2);ctx.stroke();
+        const angle=Math.atan2(sh.y2-sh.y1,sh.x2-sh.x1);
+        const hs=Math.max(sh.size*3,14);
+        ctx.beginPath();ctx.moveTo(sh.x2,sh.y2);
+        ctx.lineTo(sh.x2-hs*Math.cos(angle-0.45),sh.y2-hs*Math.sin(angle-0.45));
+        ctx.lineTo(sh.x2-hs*Math.cos(angle+0.45),sh.y2-hs*Math.sin(angle+0.45));
+        ctx.closePath();ctx.fill();
+      } else if(sh.type==="circle"){
+        const rx=Math.abs(sh.x2-sh.x1)/2,ry=Math.abs(sh.y2-sh.y1)/2;
+        const cx=sh.x1+(sh.x2-sh.x1)/2,cy=sh.y1+(sh.y2-sh.y1)/2;
+        ctx.beginPath();ctx.ellipse(cx,cy,Math.max(rx,1),Math.max(ry,1),0,0,Math.PI*2);ctx.stroke();
+      } else if(sh.type==="rect"){
+        ctx.beginPath();ctx.strokeRect(sh.x1,sh.y1,sh.x2-sh.x1,sh.y2-sh.y1);
+      } else if(sh.type==="highlight"){
+        ctx.globalAlpha=0.28;ctx.fillStyle=sh.color;
+        ctx.fillRect(sh.x1,sh.y1,sh.x2-sh.x1,sh.y2-sh.y1);
+        ctx.globalAlpha=1;
+      }
+    });
+    // Texts
+    sTexts.forEach(t=>{
+      const fs=Math.max(t.size*5,15);
+      ctx.font=`bold ${fs}px DM Sans,sans-serif`;ctx.fillStyle=t.color;
+      ctx.globalCompositeOperation="source-over";
+      ctx.shadowColor="rgba(0,0,0,.85)";ctx.shadowBlur=5;
+      ctx.fillText(t.text,t.x,t.y);ctx.shadowBlur=0;
+    });
+  }
+
+  // Redraw quando dados mudam
+  useEffect(()=>{
+    const canvas=canvasRef.current;
+    if(!canvas)return;
+    canvas.width=canvasW;canvas.height=canvasH;
+    redraw(canvas,imgRef.current,strokes,shapes,texts);
+  },[strokes,shapes,texts,canvasW,canvasH,baseImage]);
+
+  // Carregar imagem base
+  useEffect(()=>{
+    if(!baseImage)return;
+    const img=new Image();
+    img.onload=()=>{
+      imgRef.current=img;
+      if(!initial?.canvasW){
+        const{w,h}=getCanvasSize(img);
+        setCanvasW(w);setCanvasH(h);
+      }
+    };
+    img.src=baseImage;
+  },[baseImage]);
+
+  function handleFileUpload(file){
+    const r=new FileReader();
+    r.onload=e=>{
+      setBaseImage(e.target.result);
+      setStrokes([]);setShapes([]);setTexts([]);setUndoStack([]);
+    };
+    r.readAsDataURL(file);
+  }
+
+  function getPos(e){
+    const canvas=canvasRef.current;
+    const rect=canvas.getBoundingClientRect();
+    const scaleX=canvas.width/rect.width;
+    const scaleY=canvas.height/rect.height;
+    const src=e.touches?e.touches[0]:e;
+    return{x:(src.clientX-rect.left)*scaleX,y:(src.clientY-rect.top)*scaleY};
+  }
+
+  function pushUndo(){setUndoStack(u=>[...u.slice(-15),{strokes:[...strokes],shapes:[...shapes],texts:[...texts]}]);}
+
+  function undo(){
+    if(!undoStack.length)return;
+    const prev=undoStack[undoStack.length-1];
+    setUndoStack(u=>u.slice(0,-1));
+    setStrokes(prev.strokes);setShapes(prev.shapes);setTexts(prev.texts);
+  }
+
+  function onMouseDown(e){
+    e.preventDefault();
+    if(!hasImage)return;
+    const pos=getPos(e);
+    if(tool==="text"){setTextPos(pos);setShowTextBox(true);return;}
+    pushUndo();
+    setDrawing(true);
+    startRef.current=pos;
+    currentStrokeRef.current=[pos];
+  }
+
+  function onMouseMove(e){
+    e.preventDefault();
+    if(!drawing||!hasImage)return;
+    const pos=getPos(e);
+    const canvas=canvasRef.current;
+    const ov=overlayRef.current;
+
+    if(tool==="pen"){
+      // Desenha incrementalmente no canvas principal
+      const ctx=canvas.getContext("2d");
+      const pts=currentStrokeRef.current;
+      if(pts.length>0){
+        ctx.beginPath();ctx.lineWidth=size;ctx.lineCap="round";ctx.lineJoin="round";
+        ctx.strokeStyle=color;ctx.globalCompositeOperation="source-over";
+        ctx.moveTo(pts[pts.length-1].x,pts[pts.length-1].y);
+        ctx.lineTo(pos.x,pos.y);ctx.stroke();
+      }
+      currentStrokeRef.current=[...currentStrokeRef.current,pos];
+    } else if(ov){
+      // Shapes: preview no overlay canvas
+      const octx=ov.getContext("2d");
+      octx.clearRect(0,0,ov.width,ov.height);
+      const sx=startRef.current.x,sy=startRef.current.y;
+      octx.lineWidth=size;octx.strokeStyle=color;octx.fillStyle=color;
+      if(tool==="arrow"){
+        octx.beginPath();octx.moveTo(sx,sy);octx.lineTo(pos.x,pos.y);octx.stroke();
+        const angle=Math.atan2(pos.y-sy,pos.x-sx);
+        const hs=Math.max(size*3,14);
+        octx.beginPath();octx.moveTo(pos.x,pos.y);
+        octx.lineTo(pos.x-hs*Math.cos(angle-0.45),pos.y-hs*Math.sin(angle-0.45));
+        octx.lineTo(pos.x-hs*Math.cos(angle+0.45),pos.y-hs*Math.sin(angle+0.45));
+        octx.closePath();octx.fill();
+      } else if(tool==="circle"){
+        const rx=Math.abs(pos.x-sx)/2,ry=Math.abs(pos.y-sy)/2;
+        const cx=sx+(pos.x-sx)/2,cy=sy+(pos.y-sy)/2;
+        octx.beginPath();octx.ellipse(cx,cy,Math.max(rx,1),Math.max(ry,1),0,0,Math.PI*2);octx.stroke();
+      } else if(tool==="rect"){
+        octx.beginPath();octx.strokeRect(sx,sy,pos.x-sx,pos.y-sy);
+      } else if(tool==="highlight"){
+        octx.globalAlpha=0.32;octx.fillStyle=color;
+        octx.fillRect(sx,sy,pos.x-sx,pos.y-sy);octx.globalAlpha=1;
+      }
+    }
+  }
+
+  function onMouseUp(e){
+    e.preventDefault();
+    if(!drawing||!hasImage)return;
+    const pos=getPos(e);
+    const ov=overlayRef.current;
+    if(ov){const ctx=ov.getContext("2d");ctx.clearRect(0,0,ov.width,ov.height);}
+
+    if(tool==="pen"){
+      const pts=[...currentStrokeRef.current,pos];
+      if(pts.length>1)setStrokes(s=>[...s,{id:Date.now(),points:pts,color,size}]);
+      currentStrokeRef.current=[];
+    } else {
+      const sx=startRef.current.x,sy=startRef.current.y;
+      if(Math.abs(pos.x-sx)>3||Math.abs(pos.y-sy)>3)
+        setShapes(s=>[...s,{id:Date.now(),type:tool,x1:sx,y1:sy,x2:pos.x,y2:pos.y,color,size}]);
+    }
+    setDrawing(false);
+  }
+
+  function placeText(){
+    if(!textInput.trim()||!textPos)return;
+    pushUndo();
+    setTexts(t=>[...t,{id:Date.now(),x:textPos.x,y:textPos.y,text:textInput,color,size}]);
+    setTextInput("");setShowTextBox(false);setTextPos(null);
+  }
+
+  function handleSave(titleArg,notesArg,stepsArg){
+    // Gera thumbnail
+    const canvas=canvasRef.current;
+    let thumbnail=null;
+    if(canvas&&baseImage){
+      const th=document.createElement("canvas");
+      th.width=320;th.height=Math.round(320*(canvas.height/canvas.width));
+      const tc=th.getContext("2d");tc.drawImage(canvas,0,0,th.width,th.height);
+      thumbnail=th.toDataURL("image/jpeg",0.75);
+    }
+    onSave({baseImage,strokes,shapes,texts,canvasW,canvasH,thumbnail});
+  }
+
+  const TOOLS=[
+    {k:"pen",icon:"✏️",label:"Lápis livre"},
+    {k:"arrow",icon:"➜",label:"Seta"},
+    {k:"circle",icon:"○",label:"Círculo"},
+    {k:"rect",icon:"□",label:"Retângulo"},
+    {k:"highlight",icon:"▬",label:"Destacar área"},
+    {k:"text",icon:"T",label:"Texto"},
+  ];
+  const COLORS=["#E1594A","#F5A623","#F8E71C","#7ED321","#4A90E2","#B07FE8","#ffffff","#111111"];
+  const SIZES=[{v:2,l:"S"},{v:4,l:"M"},{v:8,l:"G"}];
+
+  return h("div",{style:{position:"fixed",inset:0,background:"rgba(8,4,6,.97)",zIndex:3000,display:"flex",flexDirection:"column",alignItems:"center",padding:"14px 16px",overflow:"auto",gap:10}},
+    // Header
+    h("div",{style:{width:"100%",maxWidth:980,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent3}},initial?"✎ Editar Planejamento":"🎯 Novo Planejamento com Foto"),
+      h("div",{style:{display:"flex",gap:8}},
+        h("button",{onClick:undo,disabled:!undoStack.length,style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:undoStack.length?P.text2:P.text3,cursor:undoStack.length?"pointer":"default",fontSize:13}},"↩ Desfazer"),
+        h("button",{onClick:()=>handleSave(),style:{padding:"7px 18px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,cursor:"pointer",fontSize:13,fontWeight:600}},"💾 Salvar"),
+        h("button",{onClick:onClose,style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text3,cursor:"pointer",fontSize:13}},"✕")
+      )
+    ),
+    // Toolbar (só aparece se tiver imagem)
+    hasImage&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",justifyContent:"center",padding:"8px 14px",background:P.bg2,borderRadius:10,border:`1px solid ${P.border}`,flexShrink:0}},
+      h("div",{style:{display:"flex",gap:3}},
+        TOOLS.map(t=>h("button",{key:t.k,onClick:()=>setTool(t.k),title:t.label,style:{width:34,height:34,borderRadius:7,border:`1px solid ${tool===t.k?P.rose:P.border}`,background:tool===t.k?P.rose:"transparent",color:tool===t.k?P.accent3:P.text2,cursor:"pointer",fontSize:t.k==="arrow"?16:13,fontWeight:700,fontFamily:"monospace"}},t.icon))
+      ),
+      h("div",{style:{width:1,height:26,background:P.border,margin:"0 3px"}}),
+      h("div",{style:{display:"flex",gap:3}},
+        COLORS.map(c=>h("button",{key:c,onClick:()=>setColor(c),style:{width:20,height:20,borderRadius:"50%",background:c,border:`2px solid ${color===c?P.accent3:"rgba(255,255,255,.2)"}`,cursor:"pointer",transform:color===c?"scale(1.2)":"none",transition:"transform .1s"}}))
+      ),
+      h("div",{style:{width:1,height:26,background:P.border,margin:"0 3px"}}),
+      h("div",{style:{display:"flex",gap:3}},
+        SIZES.map(s=>h("button",{key:s.v,onClick:()=>setSize(s.v),style:{width:28,height:28,borderRadius:6,fontSize:11,border:`1px solid ${size===s.v?P.rose:P.border}`,background:size===s.v?P.rose:"transparent",color:size===s.v?P.accent3:P.text2,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontWeight:700}},s.l))
+      ),
+      h("div",{style:{width:1,height:26,background:P.border,margin:"0 3px"}}),
+      h("label",{style:{display:"flex",alignItems:"center",gap:6,fontSize:12,color:P.accent,border:`1px solid rgba(157,119,97,.4)`,borderRadius:7,padding:"4px 10px",cursor:"pointer",background:"rgba(157,119,97,.06)"}},
+        "🔄 Trocar foto",
+        h("input",{type:"file",accept:"image/*",style:{display:"none"},onChange:e=>{if(e.target.files[0])handleFileUpload(e.target.files[0]);}})
+      )
+    ),
+    // Canvas area
+    h("div",{style:{position:"relative",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",flex:1,minHeight:0}},
+      !hasImage
+        ? h("label",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,width:480,height:320,border:`2px dashed ${P.border}`,borderRadius:14,cursor:"pointer",background:P.bg3,color:P.text3}},
+            h("div",{style:{fontSize:48}},"📷"),
+            h("div",{style:{fontSize:16,color:P.accent3,fontFamily:"'Cormorant Garamond',serif"}},"Selecionar foto da paciente"),
+            h("div",{style:{fontSize:12,color:P.text3}},"Clique para carregar uma imagem"),
+            h("input",{type:"file",accept:"image/*",style:{display:"none"},onChange:e=>{if(e.target.files[0])handleFileUpload(e.target.files[0]);}})
+          )
+        : h(Fragment,null,
+            h("canvas",{
+              ref:canvasRef,
+              onMouseDown,onMouseMove,onMouseUp,
+              onMouseLeave:e=>{if(drawing){onMouseUp(e);}},
+              onTouchStart:onMouseDown,onTouchMove:onMouseMove,onTouchEnd:onMouseUp,
+              style:{display:"block",borderRadius:10,border:`1px solid ${P.border}`,cursor:tool==="text"?"text":"crosshair",touchAction:"none",maxWidth:"100%",maxHeight:"65vh"}
+            }),
+            h("canvas",{
+              ref:overlayRef,
+              width:canvasW,height:canvasH,
+              style:{position:"absolute",top:0,left:0,borderRadius:10,pointerEvents:"none",maxWidth:"100%",maxHeight:"65vh"}
+            }),
+            h("div",{style:{position:"absolute",bottom:8,right:8,display:"flex",alignItems:"center",gap:6,background:"rgba(0,0,0,.5)",borderRadius:8,padding:"4px 10px"}},
+              h("div",{style:{width:10,height:10,borderRadius:"50%",background:color,flexShrink:0}}),
+              h("span",{style:{fontSize:10,color:"rgba(255,255,255,.6)"}},TOOLS.find(t=>t.k===tool)?.label)
+            )
+          )
+    ),
+    // Text input modal
+    showTextBox&&h("div",{style:{position:"fixed",inset:0,zIndex:4000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.6)"},onClick:()=>{setShowTextBox(false);setTextPos(null);}},
+      h("div",{onClick:e=>e.stopPropagation(),style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:12,padding:20,minWidth:320,display:"flex",flexDirection:"column",gap:10}},
+        h("div",{style:{fontSize:13,color:P.accent3}},"✍️ Texto da anotação"),
+        h("input",{autoFocus:true,value:textInput,onChange:e=>setTextInput(e.target.value),onKeyDown:e=>e.key==="Enter"&&placeText(),placeholder:"Ex: Tratar aqui · Simetria · Volume",style:{padding:"9px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:14,outline:"none",fontFamily:"'DM Sans',sans-serif"}}),
+        h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
+          h("button",{onClick:()=>{setShowTextBox(false);setTextPos(null);},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text3,cursor:"pointer",fontSize:13}},"Cancelar"),
+          h("button",{onClick:placeText,style:{padding:"7px 16px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,cursor:"pointer",fontSize:13,fontWeight:600}},"Colocar ✓")
+        )
+      )
+    )
+  );
+}
+
 function PhotoAnnotator({photo,onSave,onClose}){
   const canvasRef=useRef();
   const[tool,setTool]=useState("pen");
@@ -1567,6 +1880,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[editPat,setEditPat]=useState(false);
   const[showIntercorr,setShowIntercorr]=useState(null);
   const[showPlan,setShowPlan]=useState(false);
+  const[planAnnotating,setPlanAnnotating]=useState(null); // null | "new" | planObj
   const[showNewPkg,setShowNewPkg]=useState(false);
   const[pkgForm,setPkgForm]=useState({name:"",procedure:"",total:4,price:"",notes:""});
   // ─ Orçamentos ─
@@ -1658,10 +1972,21 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     setShowIntercorr(null);setIcForm({type:"Edema",notes:"",conduct:"",date:""});
   }
   function addPlanejamento(){
-    const pl={id:Date.now(),title:planForm.title,steps:planForm.steps.split("\n").filter(s=>s.trim()),notes:planForm.notes,done:false,created:new Date().toLocaleDateString("pt-BR")};
+    const pl={id:Date.now(),title:planForm.title,steps:planForm.steps.split("\n").filter(s=>s.trim()),notes:planForm.notes,done:false,created:new Date().toLocaleDateString("pt-BR"),annotation:null};
     upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
     setShowPlan(false);setPlanForm({title:"",steps:"",notes:""});
   }
+  function savePlanAnnotation(planId,annotData){
+    upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>pl.id===planId?{...pl,annotation:annotData,updatedAt:new Date().toLocaleDateString("pt-BR")}:pl)}));
+    setPlanAnnotating(null);
+  }
+  function savePlanAnnotationNew(annotData){
+    const pl={id:Date.now(),title:planForm.title||"Planejamento Visual",steps:planForm.steps.split("\n").filter(s=>s.trim()),notes:planForm.notes,done:false,created:new Date().toLocaleDateString("pt-BR"),annotation:annotData};
+    upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
+    setPlanAnnotating(null);setShowPlan(false);setPlanForm({title:"",steps:"",notes:""});
+  }
+  function deletePlan(id){if(window.confirm("Excluir planejamento?"))upd(p=>({...p,planejamento:(p.planejamento||[]).filter(pl=>pl.id!==id)}));}
+
   function togglePlanStep(planId,stepIdx){
     upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>{if(pl.id!==planId)return pl;const steps=[...pl.steps];steps[stepIdx]=steps[stepIdx].includes("✓")?steps[stepIdx].replace(" ✓",""):steps[stepIdx]+" ✓";return{...pl,steps};})}));
   }
@@ -1904,20 +2229,67 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     ),
     // ─── PLANEJAMENTO TAB
     tab==="planejamento"&&h("div",null,
+      // PlanAnnotator fullscreen (sobrepõe tudo)
+      planAnnotating&&h(PlanAnnotator,{
+        initial:planAnnotating==="new"?null:planAnnotating.annotation,
+        onClose:()=>setPlanAnnotating(null),
+        onSave:annotData=>{
+          if(planAnnotating==="new") savePlanAnnotationNew(annotData);
+          else savePlanAnnotation(planAnnotating.id,annotData);
+        }
+      }),
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Planejamento Facial"),
-        h(Btn,{onClick:()=>setShowPlan(true)},"＋ Novo Plano")
+        h("div",{style:{display:"flex",gap:8}},
+          h(Btn,{variant:"ghost",onClick:()=>setShowPlan(true),style:{fontSize:12}},"＋ Plano de Texto"),
+          h(Btn,{onClick:()=>{setPlanAnnotating("new");},style:{fontSize:12}},"🖼 Plano com Foto")
+        )
       ),
-      (patient.planejamento||[]).length===0?h(Card,{style:{textAlign:"center",padding:32}},h("div",{style:{fontSize:28,marginBottom:8}},"🎯"),h("div",{style:{color:P.text3,fontSize:13}},"Nenhum planejamento criado.")):
-      (patient.planejamento||[]).map(pl=>h(Card,{key:pl.id,style:{marginBottom:14}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:8}},pl.title),
-        pl.notes&&h("div",{style:{fontSize:13,color:P.text3,marginBottom:10}},pl.notes),
-        h("div",null,(pl.steps||[]).map((step,si)=>h("div",{key:si,onClick:()=>togglePlanStep(pl.id,si),style:{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${P.border}`,cursor:"pointer"}},
-          h("div",{style:{width:16,height:16,borderRadius:4,border:`2px solid ${step.includes("✓")?P.green:P.border}`,background:step.includes("✓")?P.green:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#fff"}},step.includes("✓")?"✓":""),
-          h("span",{style:{fontSize:13,color:step.includes("✓")?P.green:P.text,textDecoration:step.includes("✓")?"line-through":"none"}},step.replace(" ✓",""))
-        ))),
-        h("div",{style:{fontSize:11,color:P.text3,marginTop:8}},`Criado em ${pl.created}`)
-      ))
+      (patient.planejamento||[]).length===0&&h(Card,{style:{textAlign:"center",padding:40}},
+        h("div",{style:{fontSize:32,marginBottom:12}},"🎯"),
+        h("div",{style:{color:P.text3,fontSize:14,marginBottom:16}},"Nenhum planejamento criado."),
+        h("div",{style:{display:"flex",gap:10,justifyContent:"center"}},
+          h(Btn,{variant:"ghost",onClick:()=>setShowPlan(true)},"＋ Plano de Texto"),
+          h(Btn,{onClick:()=>setPlanAnnotating("new")},"🖼 Plano com Foto")
+        )
+      ),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:14}},
+        (patient.planejamento||[]).map(pl=>h(Card,{key:pl.id,style:{padding:0,overflow:"hidden"}},
+          // Se tiver anotação visual, mostrar thumbnail à esquerda
+          h("div",{style:{display:"flex",gap:0}},
+            pl.annotation?.thumbnail&&h("div",{style:{width:180,flexShrink:0,position:"relative",cursor:"pointer"},onClick:()=>setPlanAnnotating(pl)},
+              h("img",{src:pl.annotation.thumbnail,alt:"anotação",style:{width:"100%",height:"100%",objectFit:"cover",display:"block",minHeight:130}}),
+              h("div",{style:{position:"absolute",inset:0,background:"rgba(0,0,0,.0)",display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .2s"},
+                onMouseEnter:e=>e.currentTarget.style.opacity=1,onMouseLeave:e=>e.currentTarget.style.opacity=0},
+                h("div",{style:{background:"rgba(0,0,0,.7)",borderRadius:8,padding:"6px 12px",color:"#fff",fontSize:12,fontWeight:600}},"✎ Editar")
+              )
+            ),
+            h("div",{style:{flex:1,padding:"14px 16px",display:"flex",flexDirection:"column",gap:8}},
+              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
+                h("div",null,
+                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:2}},pl.title),
+                  h("div",{style:{fontSize:11,color:P.text3}},
+                    "Criado em "+pl.created,
+                    pl.updatedAt&&h("span",{style:{marginLeft:8,color:P.accent}},"· Editado em "+pl.updatedAt),
+                    pl.annotation&&h("span",{style:{marginLeft:8,fontSize:10,color:P.green,background:"rgba(122,173,138,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(122,173,138,.3)"}},"📷 Com anotação visual")
+                  )
+                ),
+                h("div",{style:{display:"flex",gap:5,flexShrink:0}},
+                  h("button",{onClick:()=>setPlanAnnotating(pl),title:pl.annotation?"Editar anotação visual":"Adicionar foto",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},pl.annotation?"✎ Foto":"📷 Foto"),
+                  h("button",{onClick:()=>deletePlan(pl.id),style:{padding:"5px 8px",borderRadius:7,background:"transparent",border:"1px solid rgba(192,112,112,.2)",color:P.red,cursor:"pointer",fontSize:11}},"🗑")
+                )
+              ),
+              pl.notes&&h("div",{style:{fontSize:13,color:P.text3,fontStyle:"italic"}},pl.notes),
+              (pl.steps||[]).length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:2}},
+                (pl.steps||[]).map((step,si)=>h("div",{key:si,onClick:()=>togglePlanStep(pl.id,si),style:{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid rgba(71,35,37,.3)`,cursor:"pointer"}},
+                  h("div",{style:{width:14,height:14,borderRadius:3,border:`2px solid ${step.includes("✓")?P.green:P.border}`,background:step.includes("✓")?P.green:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff"}},step.includes("✓")?"✓":""),
+                  h("span",{style:{fontSize:12.5,color:step.includes("✓")?P.green:P.text,textDecoration:step.includes("✓")?"line-through":"none"}},step.replace(" ✓",""))
+                ))
+              )
+            )
+          )
+        ))
+      )
     ),
     // ─── ANAMNESE TAB
     tab==="anamnese"&&patient.anamnese&&h("div",null,
@@ -2106,13 +2478,17 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},h(Btn,{variant:"ghost",onClick:()=>setShowIntercorr(null)},"Cancelar"),h(Btn,{onClick:()=>saveIntercorrencia(showIntercorr==="global"?(patient.sessions||[])[0]?.id:showIntercorr)},"Registrar"))
     ),
-    showPlan&&h(Modal,{open:true,onClose:()=>setShowPlan(false),title:"🎯 Novo Planejamento Facial",width:480},
+    showPlan&&h(Modal,{open:true,onClose:()=>setShowPlan(false),title:"🎯 Novo Plano de Tratamento",width:480},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Título do Plano"},h(Inp,{value:planForm.title,onChange:v=>setPlanForm(p=>({...p,title:v})),placeholder:"Ex: Protocolo de Harmonização Completa"})),
-        h(Field,{label:"Etapas (uma por linha)"},h(TA,{value:planForm.steps,onChange:v=>setPlanForm(p=>({...p,steps:v})),placeholder:"Toxina Botulínica\nPreenchimento Labial\nBioestimulador...",rows:5})),
+        h(Field,{label:"Etapas (uma por linha)"},h(TA,{value:planForm.steps,onChange:v=>setPlanForm(p=>({...p,steps:v})),placeholder:"Toxina Botulínica\nPreenchimento Labial\nBioestimulador...",rows:4})),
         h(Field,{label:"Observações"},h(TA,{value:planForm.notes,onChange:v=>setPlanForm(p=>({...p,notes:v})),placeholder:"Metas, prazos, considerações...",rows:2}))
       ),
-      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},h(Btn,{variant:"ghost",onClick:()=>setShowPlan(false)},"Cancelar"),h(Btn,{onClick:addPlanejamento},"Criar Plano"))
+      h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},
+        h(Btn,{variant:"ghost",onClick:()=>setShowPlan(false)},"Cancelar"),
+        h("button",{onClick:()=>{if(!planForm.title.trim())return;setPlanAnnotating("new");},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid ${P.gold}`,color:P.gold}},"🖼 Salvar e Anotar Foto"),
+        h(Btn,{onClick:addPlanejamento},"Criar Plano")
+      )
     ),
     editPat&&h(Modal,{open:true,onClose:()=>setEditPat(false),title:"✎ Editar Dados da Paciente",width:620},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
