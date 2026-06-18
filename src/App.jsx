@@ -141,48 +141,71 @@ function debitarLote(setProducts, productName, loteId, qtdUsada) {
 
 
 // ─── SUPABASE DATA HOOKS ─────────────────────────────────────────────────────
-// Salva tudo numa única tabela "app_data" com campo JSON — sem problema de colunas
+// Salva em localStorage (imediato) + Supabase (persistente).
+// localStorage garante que dados nunca se perdem por falha de rede ou RLS.
 function useSupaTable(key, initFallback = []) {
-  const [data, setDataRaw] = useState(initFallback);
+  const lsKey = "app_" + key;
+
+  // Inicializa do localStorage imediatamente (sem flash de tela vazia)
+  const [data, setDataRaw] = useState(() => {
+    try { const s = localStorage.getItem(lsKey); if (s) return JSON.parse(s); } catch {}
+    return initFallback;
+  });
   const [loading, setLoading] = useState(true);
   const uid = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user || cancelled) { if(!cancelled) setLoading(false); return; }
+      if (!user || cancelled) { if (!cancelled) setLoading(false); return; }
       uid.current = user.id;
-      supabase.from("app_data").select("value").eq("user_id", user.id).eq("key", key).maybeSingle().then(({ data: row, error }) => {
-        if (!cancelled) {
-          if (!error && row && row.value) {
-            try { setDataRaw(JSON.parse(row.value)); } catch { setDataRaw(initFallback); }
+      supabase.from("app_data").select("value")
+        .eq("user_id", user.id).eq("key", key).maybeSingle()
+        .then(({ data: row, error }) => {
+          if (!cancelled) {
+            if (!error && row && row.value) {
+              try {
+                const parsed = JSON.parse(row.value);
+                setDataRaw(parsed);
+                // Sincroniza localStorage com o valor do servidor
+                try { localStorage.setItem(lsKey, JSON.stringify(parsed)); } catch {}
+              } catch {}
+            }
+            setLoading(false);
           }
-          setLoading(false);
-        }
-      }).catch(() => { if(!cancelled) setLoading(false); });
-    }).catch(() => { if(!cancelled) setLoading(false); });
+        }).catch(() => { if (!cancelled) setLoading(false); });
+    }).catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [key]);
 
   const setData = useCallback((valOrFn) => {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
+
+      // 1. Salva no localStorage imediatamente (nunca perde dado)
+      try { localStorage.setItem(lsKey, JSON.stringify(next)); } catch {}
+
+      // 2. Tenta salvar no Supabase em background
       (async () => {
-        // Se uid ainda não foi carregado, busca agora para não perder o save
         let userId = uid.current;
         if (!userId) {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user) return;
-          uid.current = user.id;
-          userId = user.id;
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            uid.current = user.id;
+            userId = user.id;
+          } catch { return; }
         }
-        await supabase.from("app_data").upsert({
-          user_id: userId,
-          key,
-          value: JSON.stringify(next),
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id,key" });
+        try {
+          await supabase.from("app_data").upsert({
+            user_id: userId,
+            key,
+            value: JSON.stringify(next),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "user_id,key" });
+        } catch {}
       })();
+
       return next;
     });
   }, [key]);
