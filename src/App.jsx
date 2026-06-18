@@ -141,21 +141,28 @@ function debitarLote(setProducts, productName, loteId, qtdUsada) {
 
 
 // ─── SUPABASE DATA HOOKS ─────────────────────────────────────────────────────
-// localStorage é a fonte primária — Supabase sincroniza em background.
-// Nunca bloqueia a UI esperando rede.
+// localStorage é a fonte primária. Supabase sincroniza em background.
+// initFallback só é usado se NÃO houver nada no localStorage.
 function useSupaTable(key, initFallback = []) {
   const lsKey = "hapro_" + key;
 
-  // Carrega do localStorage na hora — sem tela de loading
   const [data, setDataRaw] = useState(() => {
-    try { const s = localStorage.getItem(lsKey); if (s) return JSON.parse(s); } catch {}
+    try {
+      const s = localStorage.getItem(lsKey);
+      if (s) {
+        const parsed = JSON.parse(s);
+        // Só usa localStorage se tiver dados reais (não vazio)
+        const hasData = Array.isArray(parsed) ? parsed.length > 0 : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
+        if (hasData) return parsed;
+      }
+    } catch {}
     return initFallback;
   });
+
   const uid = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
-    // Tenta buscar do Supabase em background para sincronizar
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user || cancelled) return;
       uid.current = user.id;
@@ -165,8 +172,8 @@ function useSupaTable(key, initFallback = []) {
           if (cancelled || error || !row?.value) return;
           try {
             const parsed = JSON.parse(row.value);
-            // Só usa o Supabase se tiver dados (evita sobrescrever com vazio)
-            if (Array.isArray(parsed) ? parsed.length > 0 : Object.keys(parsed||{}).length > 0) {
+            const hasData = Array.isArray(parsed) ? parsed.length > 0 : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
+            if (hasData) {
               setDataRaw(parsed);
               try { localStorage.setItem(lsKey, JSON.stringify(parsed)); } catch {}
             }
@@ -180,10 +187,10 @@ function useSupaTable(key, initFallback = []) {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
 
-      // Salva no localStorage imediatamente — persiste ao recarregar
-      try { localStorage.setItem(lsKey, JSON.stringify(next)); } catch {}
+      // Salva no localStorage IMEDIATAMENTE — persiste ao recarregar
+      try { localStorage.setItem(lsKey, JSON.stringify(next)); } catch (e) { console.error("localStorage error:", e); }
 
-      // Tenta Supabase em background (sem updated_at que causava erro 500)
+      // Supabase em background (sem updated_at que causava erro 500)
       (async () => {
         let userId = uid.current;
         if (!userId) {
@@ -206,7 +213,6 @@ function useSupaTable(key, initFallback = []) {
     });
   }, [key]);
 
-  // loading sempre false — não bloqueia mais a UI
   return [data, setData, false];
 }
 
