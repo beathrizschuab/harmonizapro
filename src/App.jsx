@@ -2538,6 +2538,35 @@ const PROC_CATS=["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios /
 const PROC_MAP_ICONS={"Toxina Botulínica":"💉","Preenchimento":"✨","Bioestimuladores":"🧬","Fios / Lifting":"🧵","Skincare Clínico":"🧴","Avaliação / Consultoria":"📋","Outros":"🩺"};
 const PROC_CAT_COLORS={"Toxina Botulínica":P.rose,"Preenchimento":"#7aaed4","Bioestimuladores":P.gold,"Fios / Lifting":"#9b7aad","Skincare Clínico":P.accent,"Avaliação / Consultoria":P.green,"Outros":P.text3};
 
+// ─── PROC FORM (standalone to respect React hook rules) ──────────────────────
+function ProcForm({initial,onSave,onCancel,cats}){
+  const h=createElement;
+  const[form,setForm]=useState(initial||{name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1"});
+  useEffect(()=>{if(initial)setForm(initial);},[initial?.id]);
+  const fv=k=>v=>setForm(p=>({...p,[k]:v}));
+  const isNew=!initial?.id;
+  return h("div",{style:{background:P.bg3,border:`1px solid ${P.rose}`,borderRadius:12,padding:20,marginBottom:16}},
+    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.accent3,marginBottom:16}},isNew?"＋ Novo Procedimento":"✎ Editar: "+form.name),
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
+      h(Field,{label:"Nome do Procedimento"},h(Inp,{value:form.name,onChange:fv("name"),placeholder:"Ex: Preenchimento Labial"})),
+      h(Field,{label:"Categoria"},
+        h("select",{value:form.categoria||"Outros",onChange:e=>setForm(p=>({...p,categoria:e.target.value})),style:{...IS,width:"100%"}},
+          (cats||[]).map(cat=>h("option",{key:cat,value:cat},(PROC_MAP_ICONS[cat]||"🩺")+" "+cat))
+        )
+      ),
+      h(Field,{label:"Revisão após sessão (dias)"},h(Inp,{type:"number",value:form.revisionDays||"",onChange:fv("revisionDays"),placeholder:"Ex: 14"})),
+      h(Field,{label:"Manutenção (dias)"},h(Inp,{type:"number",value:form.maintenanceDays||"",onChange:fv("maintenanceDays"),placeholder:"Ex: 120"})),
+      h(Field,{label:"Sessões padrão no pacote"},h(Inp,{type:"number",value:form.sessoesPadrao||"1",onChange:fv("sessoesPadrao"),placeholder:"1"})),
+      h(Field,{label:"Descrição / Observações"},h(Inp,{value:form.descricao||"",onChange:fv("descricao"),placeholder:"Ex: Neuromodulador para relaxamento muscular"}))
+    ),
+    h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
+      h(Btn,{variant:"ghost",onClick:onCancel,style:{fontSize:12}},"Cancelar"),
+      h(Btn,{onClick:()=>onSave({...form,name:form.name.trim()}),style:{fontSize:12}},"✓ Salvar Procedimento")
+    )
+  );
+}
+
+
 function Configuracoes({procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats}){
   const h=createElement;
   const[tab,setTab]=useState("procedimentos");
@@ -2608,31 +2637,6 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   const TABS=[{k:"procedimentos",l:"🩺 Procedimentos"},{k:"locais",l:"📍 Locais"},{k:"skincare",l:"🧴 Skincare"},{k:"clinica",l:"👩‍⚕️ Clínica"}];
 
   // Formulário de procedimento (novo ou edição)
-  function ProcForm({initial,onSave,onCancel}){
-    const[form,setForm]=useState(initial||{name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1"});
-    const fv=k=>v=>setForm(p=>({...p,[k]:v}));
-    const isNew=!initial?.id||initial.id.startsWith("proc_new");
-    return h("div",{style:{background:P.bg3,border:`1px solid ${P.rose}`,borderRadius:12,padding:20,marginBottom:16}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.accent3,marginBottom:16}},isNew?"＋ Novo Procedimento":"✎ Editar: "+form.name),
-      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
-        h(Field,{label:"Nome do Procedimento"},h(Inp,{value:form.name,onChange:fv("name"),placeholder:"Ex: Preenchimento Labial"})),
-        h(Field,{label:"Categoria"},
-          h("select",{value:form.categoria,onChange:e=>setForm(p=>({...p,categoria:e.target.value})),style:{...IS,width:"100%"}},
-            cats.map(cat=>h("option",{key:cat,value:cat},(PROC_MAP_ICONS[cat]||"🩺")+" "+cat))
-          )
-        ),
-        h(Field,{label:"Revisão após sessão (dias)"},h(Inp,{type:"number",value:form.revisionDays,onChange:fv("revisionDays"),placeholder:"Ex: 14"})),
-        h(Field,{label:"Manutenção (dias)"},h(Inp,{type:"number",value:form.maintenanceDays,onChange:fv("maintenanceDays"),placeholder:"Ex: 120"})),
-        h(Field,{label:"Sessões padrão no pacote"},h(Inp,{type:"number",value:form.sessoesPadrao,onChange:fv("sessoesPadrao"),placeholder:"1"})),
-        h(Field,{label:"Descrição / Observações"},h(Inp,{value:form.descricao,onChange:fv("descricao"),placeholder:"Ex: Neuromodulador para relaxamento muscular"}))
-      ),
-      h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
-        h(Btn,{variant:"ghost",onClick:onCancel,style:{fontSize:12}},"Cancelar"),
-        h(Btn,{onClick:()=>onSave(form),style:{fontSize:12}},"✓ Salvar Procedimento")
-      )
-    );
-  }
-
   return h("div",null,
     h(SectionHeader,{title:"Configurações",sub:"Gerencie procedimentos, locais e dados da clínica"}),
     // Tab bar
@@ -2645,8 +2649,8 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
       !showNewProc&&!editingProc&&h("div",{style:{display:"flex",justifyContent:"flex-end",marginBottom:14}},
         h(Btn,{onClick:()=>setShowNewProc(true)},"＋ Novo Procedimento")
       ),
-      showNewProc&&h(ProcForm,{onSave:addNewProc,onCancel:()=>setShowNewProc(false)}),
-      editingProc&&h(ProcForm,{initial:editingProc,onSave:saveProc,onCancel:()=>setEditingProc(null)}),
+      showNewProc&&h(ProcForm,{onSave:addNewProc,onCancel:()=>setShowNewProc(false),cats}),
+      editingProc&&h(ProcForm,{initial:editingProc,onSave:saveProc,onCancel:()=>setEditingProc(null),cats}),
       // Agrupado por categoria
       cats.map(cat=>{
         const catProcs=procedures.map(getProc).filter(p=>( p.categoria||"Outros")===cat);
