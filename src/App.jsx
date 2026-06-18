@@ -509,6 +509,9 @@ function PlanAnnotator({initial,onSave,onClose}){
       if(!initial?.canvasW){
         const{w,h}=getCanvasSize(img);
         setCanvasW(w);setCanvasH(h);
+      } else {
+        const canvas=canvasRef.current;
+        if(canvas)redraw(canvas,img,strokes,shapes,texts);
       }
     };
     img.src=baseImage;
