@@ -140,194 +140,112 @@ function debitarLote(setProducts, productName, loteId, qtdUsada) {
 }
 
 
-// ─── DATA HOOKS — Supabase com cache localStorage ────────────────────────────
-// Remove fotos base64 antes de salvar para não estourar a cota do localStorage
+// ─── UTILS ────────────────────────────────────────────────────────────────────
 function stripPhotos(data) {
   if (!Array.isArray(data)) return data;
   return data.map(item => {
     if (!item || typeof item !== "object") return item;
     const out = { ...item };
-    if (typeof out.profilePhoto === "string" && out.profilePhoto.startsWith("data:"))
-      out.profilePhoto = null;
-    if (Array.isArray(out.sessions))
-      out.sessions = out.sessions.map(s => ({
-        ...s,
-        photos: Array.isArray(s.photos)
-          ? s.photos.filter(p => !(typeof p === "string" && p.startsWith("data:")))
-          : (s.photos || [])
-      }));
+    if (typeof out.profilePhoto === "string" && out.profilePhoto.startsWith("data:")) out.profilePhoto = null;
+    if (Array.isArray(out.sessions)) out.sessions = out.sessions.map(s => ({
+      ...s, photos: Array.isArray(s.photos) ? s.photos.filter(p => !(typeof p==="string"&&p.startsWith("data:"))) : (s.photos||[])
+    }));
     return out;
   });
 }
 
 // ─── SUPABASE SYNC ────────────────────────────────────────────────────────────
-// Tabela no Supabase: "app_data" (key TEXT PRIMARY KEY, value JSONB, user_id UUID)
-// SQL para criar:
-//   create table app_data (
+// TABELA NECESSÁRIA NO SUPABASE (rodar no SQL Editor):
+//
+//   create table if not exists app_data (
 //     key text not null,
-//     user_id uuid not null references auth.users(id),
-//     value jsonb not null,
+//     user_id uuid not null references auth.users(id) on delete cascade,
+//     value jsonb not null default '[]',
 //     updated_at timestamptz default now(),
 //     primary key (key, user_id)
 //   );
 //   alter table app_data enable row level security;
-//   create policy "own data" on app_data for all to authenticated
-//     using (auth.uid() = user_id) with check (auth.uid() = user_id);
+//   create policy "users_own_data" on app_data
+//     for all to authenticated
+//     using (auth.uid() = user_id)
+//     with check (auth.uid() = user_id);
 
-let _supaUserId = null;
-// Fila de writes pendentes — executados assim que _supaUserId estiver disponível
-const _pendingWrites = new Map(); // key -> value (último valor vence)
-const _authReadyListeners = new Set();
-
-function _onAuthReady(userId) {
-  _supaUserId = userId;
-  // Dispara todos os writes que ficaram na fila
-  if (_pendingWrites.size > 0) {
-    _pendingWrites.forEach((value, key) => {
-      _flushWrite(key, value);
-    });
-    _pendingWrites.clear();
-  }
-  _authReadyListeners.forEach(fn => fn(userId));
-}
-
-supabase.auth.getSession().then(({data:{session}})=>{
-  if (session) _onAuthReady(session.user.id);
-});
-supabase.auth.onAuthStateChange((_,s)=>{
-  if (s?.user?.id) _onAuthReady(s.user.id);
-  else _supaUserId = null;
-});
-
-// Estado global de conectividade com Supabase
 let _supaOk = null;
 const _supaListeners = new Set();
-function setSupaOk(v){ _supaOk=v; _supaListeners.forEach(fn=>fn(v)); }
-function useSupaStatus(){ const[s,set]=useState(_supaOk); useEffect(()=>{ set(_supaOk); _supaListeners.add(set); return()=>_supaListeners.delete(set); },[]); return s; }
+function _setSupaOk(v) { if(_supaOk===v)return; _supaOk=v; _supaListeners.forEach(fn=>fn(v)); }
+function useSupaStatus() {
+  const [s, set] = useState(_supaOk);
+  useEffect(() => { set(_supaOk); _supaListeners.add(set); return () => _supaListeners.delete(set); }, []);
+  return s;
+}
+
+async function getUserId() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user?.id || null;
+}
 
 async function supaRead(key) {
-  // Aguarda userId estar disponível (até 8s)
-  if (!_supaUserId) {
-    await new Promise((resolve) => {
-      const timeout = setTimeout(() => { _authReadyListeners.delete(resolve); resolve(); }, 8000);
-      const wrapped = (id) => { clearTimeout(timeout); _authReadyListeners.delete(wrapped); resolve(id); };
-      _authReadyListeners.add(wrapped);
-    });
-  }
-  if (!_supaUserId) return null;
+  const uid = await getUserId();
+  if (!uid) { _setSupaOk(false); return null; }
   try {
     const { data, error } = await supabase
-      .from("app_data")
-      .select("value")
-      .eq("key", key)
-      .eq("user_id", _supaUserId)
-      .maybeSingle();
-    if (error) { setSupaOk(false); return null; }
-    setSupaOk(true);
+      .from("app_data").select("value").eq("key", key).eq("user_id", uid).maybeSingle();
+    if (error) { _setSupaOk(false); console.warn("[sync] read error", key, error.message); return null; }
+    _setSupaOk(true);
     return data?.value ?? null;
-  } catch { setSupaOk(false); return null; }
+  } catch(e) { _setSupaOk(false); console.warn("[sync] read exception", key, e); return null; }
 }
 
-async function _flushWrite(key, value) {
-  if (!_supaUserId) return;
+async function supaWrite(key, value) {
+  const uid = await getUserId();
+  if (!uid) { _setSupaOk(false); return false; }
   try {
-    const { error } = await supabase
-      .from("app_data")
-      .upsert(
-        { key, user_id: _supaUserId, value: stripPhotos(value), updated_at: new Date().toISOString() },
-        { onConflict: "key,user_id" }
-      );
-    if (error) setSupaOk(false);
-    else setSupaOk(true);
-  } catch { setSupaOk(false); }
-}
-
-function supaWrite(key, value) {
-  if (!_supaUserId) {
-    // Usuário ainda não autenticado — enfileira (último valor vence)
-    _pendingWrites.set(key, value);
-    return;
-  }
-  _flushWrite(key, value);
+    const clean = stripPhotos(value);
+    const { error } = await supabase.from("app_data")
+      .upsert({ key, user_id: uid, value: clean, updated_at: new Date().toISOString() }, { onConflict: "key,user_id" });
+    if (error) { _setSupaOk(false); console.warn("[sync] write error", key, error.message); return false; }
+    _setSupaOk(true);
+    return true;
+  } catch(e) { _setSupaOk(false); console.warn("[sync] write exception", key, e); return false; }
 }
 
 function useSupaTable(key, initFallback = []) {
   const lsKey = "hapro2_" + key;
-
   const [data, setDataRaw] = useState(initFallback);
-  const [loading, setLoading] = useState(true);
+  const [synced, setSynced] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-
-    // Mostra dados locais imediatamente como placeholder visual
-    let localData = null;
-    try {
-      const raw = localStorage.getItem(lsKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const ok = Array.isArray(parsed) ? parsed.length > 0
-          : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
-        if (ok) { localData = parsed; if (!cancelled) setDataRaw(parsed); }
-      }
-    } catch {}
-
     supaRead(key).then(remote => {
       if (cancelled) return;
-      setLoading(false);
-      if (remote !== null) {
-        const ok = Array.isArray(remote) ? true : (remote && typeof remote === "object");
-        if (ok) {
-          // Supabase tem dados — é a fonte de verdade, sobrescreve tudo
-          setDataRaw(remote);
-          try { localStorage.setItem(lsKey, JSON.stringify(remote)); } catch {}
-          return;
-        }
-      }
-      // Supabase não tem dados para esta chave ainda:
-      // Se temos dados locais reais (não demo), sobe para o Supabase
-      if (localData !== null) {
-        supaWrite(key, localData);
-      }
-    }).catch(() => { if (!cancelled) setLoading(false); });
-
+      setSynced(true);
+      if (remote !== null) setDataRaw(remote);
+    });
     return () => { cancelled = true; };
   }, [key]);
 
   const setData = useCallback((valOrFn) => {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
-      try {
-        localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
-      } catch {
-        try {
-          Object.keys(localStorage)
-            .filter(k => k.startsWith("hapro2_") && k !== lsKey)
-            .forEach(k => localStorage.removeItem(k));
-          localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
-        } catch {}
-      }
       supaWrite(key, next);
+      try { localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next))); } catch {}
       return next;
     });
-  }, [lsKey, key]);
+  }, [key, lsKey]);
 
-  return [data, setData, loading];
+  return [data, setData, !synced];
 }
 
-// useSettings: usa o mesmo mecanismo JSON
 function useSettings(defaults) {
   const [data, setData, loading] = useSupaTable("settings", defaults);
-  // Garante que data seja sempre um objeto (não array)
   const safeData = (data && !Array.isArray(data) && typeof data === "object") ? data : defaults;
   return [safeData, setData, loading];
 }
 
-// Compatibilidade: manter useLocalStorage para dados locais temporários
-function useLocalStorage(key,init){
-  const[val,setVal]=useState(()=>{try{const s=localStorage.getItem(key);return s?JSON.parse(s):init;}catch{return init;}});
-  const set=useCallback(v=>{const nv=typeof v==="function"?v(val):v;setVal(nv);try{localStorage.setItem(key,JSON.stringify(nv));}catch{};},[key]);
-  return[val,set];
+function useLocalStorage(key, init) {
+  const [val, setVal] = useState(() => { try { const s=localStorage.getItem(key); return s?JSON.parse(s):init; } catch { return init; } });
+  const set = useCallback(v => { const nv=typeof v==="function"?v(val):v; setVal(nv); try{localStorage.setItem(key,JSON.stringify(nv));}catch{}; }, [key]);
+  return [val, set];
 }
 
 // ─── ERROR BOUNDARY (mostra o erro real em vez de tela branca) ────────────────
@@ -1140,32 +1058,14 @@ function MediaGallery({items,onAdd,onRemove,label,docMode=false}){
 function SyncIndicator(){
   const h=createElement;
   const status=useSupaStatus();
-  const[saving,setSaving]=useState(false);
-
-  // Observa writes em andamento via _supaOk transitions
-  useEffect(()=>{
-    let timer;
-    const handler=(v)=>{
-      if(v===null){ setSaving(true); clearTimeout(timer); timer=setTimeout(()=>setSaving(false),3000); }
-    };
-    _supaListeners.add(handler);
-    return()=>{ _supaListeners.delete(handler); clearTimeout(timer); };
-  },[]);
-
-  if(status===null&&!saving)return null;
+  if(status===null)return null;
   const ok=status===true;
-  const color=saving?"#c4a96a":ok?"#7aad8a":"#c07070";
-  const bg=saving?"rgba(196,169,106,.12)":ok?"rgba(122,173,138,.10)":"rgba(192,112,112,.12)";
-  const border=saving?"rgba(196,169,106,.3)":ok?"rgba(122,173,138,.25)":"rgba(192,112,112,.3)";
-  const label=saving?"Salvando...":ok?"Sincronizado ☁":"Erro de sync";
-  const dot=saving
-    ? h("div",{style:{width:7,height:7,borderRadius:"50%",background:color,animation:"hapro-pulse 1s ease-in-out infinite"}})
-    : h("div",{style:{width:7,height:7,borderRadius:"50%",background:color}});
   return h("div",{
-    style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:bg,border:`1px solid ${border}`,cursor:"default",flexShrink:0},
-    title:ok?"Dados sincronizados — aparecem em todos os dispositivos":saving?"Salvando dados no servidor...":"Erro ao sincronizar. Verifique a conexão."
-  }, dot,
-    h("span",{style:{fontSize:11,color,fontWeight:500,whiteSpace:"nowrap"}},label)
+    style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:ok?"rgba(122,173,138,.10)":"rgba(192,112,112,.12)",border:`1px solid ${ok?"rgba(122,173,138,.25)":"rgba(192,112,112,.3)"}`,cursor:"default",flexShrink:0},
+    title:ok?"Dados sincronizados — aparecem em todos os dispositivos":"Sem sincronizacao com servidor. Verifique a tabela app_data no Supabase."
+  },
+    h("div",{style:{width:7,height:7,borderRadius:"50%",background:ok?"#7aad8a":"#c07070"}}),
+    h("span",{style:{fontSize:11,color:ok?"#7aad8a":"#c07070",fontWeight:500,whiteSpace:"nowrap"}},ok?"Nuvem 2713":"Sem sync")
   );
 }
 
@@ -3794,7 +3694,31 @@ function AppInner({ session, onLogout }) {
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
 
-  const globalLoading = loadingPatients || loadingAgenda || loadingSettings;
+  // ── Migração inicial: sobe dados do localStorage para o Supabase ──────────
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      const uid=await getUserId();
+      if(!uid||cancelled)return;
+      const migKey="hapro2_migrated_v1_"+uid;
+      if(localStorage.getItem(migKey))return;
+      const keys=["patients","agenda","expenses","incomes","products","settings","procedures","locations","return_rules","proc_cats","skincare_config"];
+      await Promise.all(keys.map(async k=>{
+        const raw=localStorage.getItem("hapro2_"+k);
+        if(!raw)return;
+        try{
+          const parsed=JSON.parse(raw);
+          const hasData=Array.isArray(parsed)?parsed.length>0:(parsed&&typeof parsed==="object"&&Object.keys(parsed).length>0);
+          if(!hasData)return;
+          const remote=await supaRead(k);
+          const remoteEmpty=remote===null||(Array.isArray(remote)&&remote.length===0);
+          if(remoteEmpty)await supaWrite(k,parsed);
+        }catch{}
+      }));
+      if(!cancelled)localStorage.setItem(migKey,"1");
+    })();
+    return()=>{cancelled=true;};
+  },[]);
 
   // Dados: cache local imediato + sincronização Supabase em background
   const procedureNames=Array.isArray(procedures)?procedures.map(p=>typeof p==="string"?p:(p.name||p)).filter(Boolean):INIT_PROCEDURES;
@@ -3947,7 +3871,6 @@ function AppInner({ session, onLogout }) {
       ::-webkit-scrollbar-thumb{background:${P.border};border-radius:2px;}
       input,select,textarea{font-family:'DM Sans',sans-serif;color:${P.text};}
       select option{background:${P.bg2};}
-      @keyframes hapro-bar{0%{width:0%;margin-left:0}50%{width:70%;margin-left:15%}100%{width:0%;margin-left:100%}}
       @media(max-width:639px){
         .resp-grid-4{grid-template-columns:repeat(2,1fr)!important;}
         .resp-grid-2{grid-template-columns:1fr!important;}
@@ -3960,15 +3883,7 @@ function AppInner({ session, onLogout }) {
         .resp-grid-21{grid-template-columns:1fr!important;}
       }
     `),
-    globalLoading
-      ? h("div",{style:{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:P.bg,gap:16}},
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:P.accent3,letterSpacing:".04em"}},"HarmonizaPro"),
-          h("div",{style:{width:180,height:3,background:P.card2,borderRadius:99,overflow:"hidden"}},
-            h("div",{style:{height:"100%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:99,animation:"hapro-bar 1.4s ease-in-out infinite"}})
-          ),
-          h("div",{style:{fontSize:12,color:P.text3,letterSpacing:".1em",textTransform:"uppercase"}},"Sincronizando dados...")
-        )
-      : h("div",{style:{display:"flex",height:"100vh",overflow:"hidden",background:P.bg,position:"relative"}},
+    h("div",{style:{display:"flex",height:"100vh",overflow:"hidden",background:P.bg,position:"relative"}},
       // Overlay escuro para fechar sidebar no mobile
       isMobile&&sidebarOpen&&h("div",{
         onClick:()=>setSidebarOpen(false),
@@ -4009,7 +3924,7 @@ function AppInner({ session, onLogout }) {
           )
         )
       )
-    ) // fecha else do ternário globalLoading
+    )
   );
 }
 
