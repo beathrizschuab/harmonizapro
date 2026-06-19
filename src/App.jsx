@@ -175,16 +175,45 @@ function stripPhotos(data) {
 //     using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 let _supaUserId = null;
-supabase.auth.getSession().then(({data:{session}})=>{ if(session) _supaUserId=session.user.id; });
-supabase.auth.onAuthStateChange((_,s)=>{ _supaUserId = s?.user?.id||null; });
+// Fila de writes pendentes — executados assim que _supaUserId estiver disponível
+const _pendingWrites = new Map(); // key -> value (último valor vence)
+const _authReadyListeners = new Set();
+
+function _onAuthReady(userId) {
+  _supaUserId = userId;
+  // Dispara todos os writes que ficaram na fila
+  if (_pendingWrites.size > 0) {
+    _pendingWrites.forEach((value, key) => {
+      _flushWrite(key, value);
+    });
+    _pendingWrites.clear();
+  }
+  _authReadyListeners.forEach(fn => fn(userId));
+}
+
+supabase.auth.getSession().then(({data:{session}})=>{
+  if (session) _onAuthReady(session.user.id);
+});
+supabase.auth.onAuthStateChange((_,s)=>{
+  if (s?.user?.id) _onAuthReady(s.user.id);
+  else _supaUserId = null;
+});
 
 // Estado global de conectividade com Supabase
-let _supaOk = null; // null=desconhecido, true=ok, false=erro
+let _supaOk = null;
 const _supaListeners = new Set();
 function setSupaOk(v){ _supaOk=v; _supaListeners.forEach(fn=>fn(v)); }
 function useSupaStatus(){ const[s,set]=useState(_supaOk); useEffect(()=>{ set(_supaOk); _supaListeners.add(set); return()=>_supaListeners.delete(set); },[]); return s; }
 
 async function supaRead(key) {
+  // Aguarda userId estar disponível (até 8s)
+  if (!_supaUserId) {
+    await new Promise((resolve) => {
+      const timeout = setTimeout(() => { _authReadyListeners.delete(resolve); resolve(); }, 8000);
+      const wrapped = (id) => { clearTimeout(timeout); _authReadyListeners.delete(wrapped); resolve(id); };
+      _authReadyListeners.add(wrapped);
+    });
+  }
   if (!_supaUserId) return null;
   try {
     const { data, error } = await supabase
@@ -199,7 +228,7 @@ async function supaRead(key) {
   } catch { setSupaOk(false); return null; }
 }
 
-async function supaWrite(key, value) {
+async function _flushWrite(key, value) {
   if (!_supaUserId) return;
   try {
     const { error } = await supabase
@@ -208,64 +237,66 @@ async function supaWrite(key, value) {
         { key, user_id: _supaUserId, value: stripPhotos(value), updated_at: new Date().toISOString() },
         { onConflict: "key,user_id" }
       );
-    if (error) { setSupaOk(false); }
-    else { setSupaOk(true); }
+    if (error) setSupaOk(false);
+    else setSupaOk(true);
   } catch { setSupaOk(false); }
+}
+
+function supaWrite(key, value) {
+  if (!_supaUserId) {
+    // Usuário ainda não autenticado — enfileira (último valor vence)
+    _pendingWrites.set(key, value);
+    return;
+  }
+  _flushWrite(key, value);
 }
 
 function useSupaTable(key, initFallback = []) {
   const lsKey = "hapro2_" + key;
 
-  // localStorage só serve como placeholder visual enquanto o Supabase carrega.
-  // NUNCA é tratado como fonte de verdade — o Supabase sempre vence.
   const [data, setDataRaw] = useState(initFallback);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    // Mostra dados locais imediatamente para evitar tela em branco,
-    // mas eles serão substituídos assim que o Supabase responder.
+
+    // Mostra dados locais imediatamente como placeholder visual
+    let localData = null;
     try {
       const raw = localStorage.getItem(lsKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         const ok = Array.isArray(parsed) ? parsed.length > 0
           : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
-        if (ok && !cancelled) setDataRaw(parsed);
+        if (ok) { localData = parsed; if (!cancelled) setDataRaw(parsed); }
       }
     } catch {}
 
-    // Aguarda _supaUserId estar disponível (sessão do Supabase) e então busca
-    const tryRead = (attempts = 0) => {
+    supaRead(key).then(remote => {
       if (cancelled) return;
-      if (!_supaUserId) {
-        if (attempts < 20) { setTimeout(() => tryRead(attempts + 1), 300); return; }
-        // Sem sessão após 6s: usa fallback
-        setLoading(false);
-        return;
-      }
-      supaRead(key).then(remote => {
-        if (cancelled) return;
-        setLoading(false);
-        if (remote !== null) {
-          const ok = Array.isArray(remote) ? true : (remote && typeof remote === "object");
-          if (ok) {
-            // Supabase é a fonte de verdade — sobrescreve qualquer dado local
-            setDataRaw(remote);
-            try { localStorage.setItem(lsKey, JSON.stringify(remote)); } catch {}
-          }
+      setLoading(false);
+      if (remote !== null) {
+        const ok = Array.isArray(remote) ? true : (remote && typeof remote === "object");
+        if (ok) {
+          // Supabase tem dados — é a fonte de verdade, sobrescreve tudo
+          setDataRaw(remote);
+          try { localStorage.setItem(lsKey, JSON.stringify(remote)); } catch {}
+          return;
         }
-        // Se remote === null (chave não existe no Supabase ainda), mantém o que tem
-      }).catch(() => { if (!cancelled) setLoading(false); });
-    };
-    tryRead();
+      }
+      // Supabase não tem dados para esta chave ainda:
+      // Se temos dados locais reais (não demo), sobe para o Supabase
+      if (localData !== null) {
+        supaWrite(key, localData);
+      }
+    }).catch(() => { if (!cancelled) setLoading(false); });
+
     return () => { cancelled = true; };
   }, [key]);
 
   const setData = useCallback((valOrFn) => {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
-      // 1) Atualiza localStorage como cache local
       try {
         localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
       } catch {
@@ -276,7 +307,6 @@ function useSupaTable(key, initFallback = []) {
           localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
         } catch {}
       }
-      // 2) Salva no Supabase — fonte de verdade
       supaWrite(key, next);
       return next;
     });
@@ -1110,14 +1140,32 @@ function MediaGallery({items,onAdd,onRemove,label,docMode=false}){
 function SyncIndicator(){
   const h=createElement;
   const status=useSupaStatus();
-  if(status===null)return null;
+  const[saving,setSaving]=useState(false);
+
+  // Observa writes em andamento via _supaOk transitions
+  useEffect(()=>{
+    let timer;
+    const handler=(v)=>{
+      if(v===null){ setSaving(true); clearTimeout(timer); timer=setTimeout(()=>setSaving(false),3000); }
+    };
+    _supaListeners.add(handler);
+    return()=>{ _supaListeners.delete(handler); clearTimeout(timer); };
+  },[]);
+
+  if(status===null&&!saving)return null;
   const ok=status===true;
+  const color=saving?"#c4a96a":ok?"#7aad8a":"#c07070";
+  const bg=saving?"rgba(196,169,106,.12)":ok?"rgba(122,173,138,.10)":"rgba(192,112,112,.12)";
+  const border=saving?"rgba(196,169,106,.3)":ok?"rgba(122,173,138,.25)":"rgba(192,112,112,.3)";
+  const label=saving?"Salvando...":ok?"Sincronizado ☁":"Erro de sync";
+  const dot=saving
+    ? h("div",{style:{width:7,height:7,borderRadius:"50%",background:color,animation:"hapro-pulse 1s ease-in-out infinite"}})
+    : h("div",{style:{width:7,height:7,borderRadius:"50%",background:color}});
   return h("div",{
-    style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:ok?"rgba(122,173,138,.10)":"rgba(192,112,112,.12)",border:`1px solid ${ok?"rgba(122,173,138,.25)":"rgba(192,112,112,.3)"}`,cursor:"default",flexShrink:0},
-    title:ok?"Dados sincronizados — aparecem em todos os dispositivos":"Sem sincronizacao com servidor. Verifique a tabela app_data no Supabase."
-  },
-    h("div",{style:{width:7,height:7,borderRadius:"50%",background:ok?"#7aad8a":"#c07070"}}),
-    h("span",{style:{fontSize:11,color:ok?"#7aad8a":"#c07070",fontWeight:500,whiteSpace:"nowrap"}},ok?"Nuvem 2713":"Sem sync")
+    style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:bg,border:`1px solid ${border}`,cursor:"default",flexShrink:0},
+    title:ok?"Dados sincronizados — aparecem em todos os dispositivos":saving?"Salvando dados no servidor...":"Erro ao sincronizar. Verifique a conexão."
+  }, dot,
+    h("span",{style:{fontSize:11,color,fontWeight:500,whiteSpace:"nowrap"}},label)
   );
 }
 
