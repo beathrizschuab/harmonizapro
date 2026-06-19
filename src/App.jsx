@@ -3746,20 +3746,7 @@ function AppInner({ session, onLogout }) {
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
 
-  // ── Loading global: aguarda Supabase carregar os dados principais ──────────
-  // Isso garante que TODOS os dispositivos vejam os mesmos dados do servidor,
-  // independente do que estiver salvo localmente em cada aparelho.
   const globalLoading = loadingPatients || loadingAgenda || loadingSettings;
-  if (globalLoading) {
-    return createElement("div",{style:{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:P.bg,gap:16}},
-      createElement("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:P.accent3,letterSpacing:".04em"}},"HarmonizaPro"),
-      createElement("div",{style:{width:180,height:3,background:P.card2,borderRadius:99,overflow:"hidden"}},
-        createElement("div",{style:{height:"100%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:99,animation:"hapro-bar 1.4s ease-in-out infinite"},})
-      ),
-      createElement("style",null,`@keyframes hapro-bar{0%{width:0%;margin-left:0}50%{width:70%;margin-left:15%}100%{width:0%;margin-left:100%}}`),
-      createElement("div",{style:{fontSize:12,color:P.text3,letterSpacing:".1em",textTransform:"uppercase"}},"Sincronizando dados...")
-    );
-  }
 
   // Dados: cache local imediato + sincronização Supabase em background
   const procedureNames=Array.isArray(procedures)?procedures.map(p=>typeof p==="string"?p:(p.name||p)).filter(Boolean):INIT_PROCEDURES;
@@ -3912,6 +3899,7 @@ function AppInner({ session, onLogout }) {
       ::-webkit-scrollbar-thumb{background:${P.border};border-radius:2px;}
       input,select,textarea{font-family:'DM Sans',sans-serif;color:${P.text};}
       select option{background:${P.bg2};}
+      @keyframes hapro-bar{0%{width:0%;margin-left:0}50%{width:70%;margin-left:15%}100%{width:0%;margin-left:100%}}
       @media(max-width:639px){
         .resp-grid-4{grid-template-columns:repeat(2,1fr)!important;}
         .resp-grid-2{grid-template-columns:1fr!important;}
@@ -3924,7 +3912,15 @@ function AppInner({ session, onLogout }) {
         .resp-grid-21{grid-template-columns:1fr!important;}
       }
     `),
-    h("div",{style:{display:"flex",height:"100vh",overflow:"hidden",background:P.bg,position:"relative"}},
+    globalLoading
+      ? h("div",{style:{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:P.bg,gap:16}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:P.accent3,letterSpacing:".04em"}},"HarmonizaPro"),
+          h("div",{style:{width:180,height:3,background:P.card2,borderRadius:99,overflow:"hidden"}},
+            h("div",{style:{height:"100%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:99,animation:"hapro-bar 1.4s ease-in-out infinite"}})
+          ),
+          h("div",{style:{fontSize:12,color:P.text3,letterSpacing:".1em",textTransform:"uppercase"}},"Sincronizando dados...")
+        )
+      : h("div",{style:{display:"flex",height:"100vh",overflow:"hidden",background:P.bg,position:"relative"}},
       // Overlay escuro para fechar sidebar no mobile
       isMobile&&sidebarOpen&&h("div",{
         onClick:()=>setSidebarOpen(false),
@@ -3965,7 +3961,7 @@ function AppInner({ session, onLogout }) {
           )
         )
       )
-    )
+    ) // fecha else do ternário globalLoading
   );
 }
 
