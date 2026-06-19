@@ -175,14 +175,8 @@ function stripPhotos(data) {
 //     using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 let _supaUserId = null;
-supabase.auth.getSession().then(({data:{session}})=>{
-  if(session) { _supaUserId=session.user.id; console.log("[auth] getSession() definiu _supaUserId =", _supaUserId); }
-  else console.warn("[auth] getSession() SEM sessão ativa");
-});
-supabase.auth.onAuthStateChange((event,s)=>{
-  _supaUserId = s?.user?.id||null;
-  console.log("[auth] onAuthStateChange event=", event, "_supaUserId =", _supaUserId);
-});
+supabase.auth.getSession().then(({data:{session}})=>{ if(session) _supaUserId=session.user.id; });
+supabase.auth.onAuthStateChange((_,s)=>{ _supaUserId = s?.user?.id||null; });
 
 // Estado global de conectividade com Supabase
 let _supaOk = null; // null=desconhecido, true=ok, false=erro
@@ -191,10 +185,7 @@ function setSupaOk(v){ _supaOk=v; _supaListeners.forEach(fn=>fn(v)); }
 function useSupaStatus(){ const[s,set]=useState(_supaOk); useEffect(()=>{ set(_supaOk); _supaListeners.add(set); return()=>_supaListeners.delete(set); },[]); return s; }
 
 async function supaRead(key) {
-  if (!_supaUserId) {
-    console.warn("[supaRead] BLOQUEADO: sem _supaUserId. key=", key);
-    return null;
-  }
+  if (!_supaUserId) return null;
   try {
     const { data, error } = await supabase
       .from("app_data")
@@ -202,31 +193,14 @@ async function supaRead(key) {
       .eq("key", key)
       .eq("user_id", _supaUserId)
       .maybeSingle();
-    if (error) {
-      console.error("[supaRead] ERRO key=", key, error);
-      setSupaOk(false);
-      return null;
-    }
-    console.log("[supaRead] OK key=", key, "user=", _supaUserId, "tem dado:", data?.value != null);
+    if (error) { setSupaOk(false); return null; }
     setSupaOk(true);
     return data?.value ?? null;
-  } catch (e) {
-    console.error("[supaRead] EXCEPTION key=", key, e);
-    setSupaOk(false);
-    return null;
-  }
+  } catch { setSupaOk(false); return null; }
 }
 
-// Controla a "versão" mais recente de escrita por chave, para que uma leitura
-// antiga (de um remount concorrente) nunca sobrescreva uma escrita mais nova.
-const _writeVersion = {};
-
 async function supaWrite(key, value) {
-  if (!_supaUserId) {
-    console.warn("[supaWrite] BLOQUEADO: sem _supaUserId. key=", key);
-    return;
-  }
-  _writeVersion[key] = (_writeVersion[key] || 0) + 1;
+  if (!_supaUserId) return;
   try {
     const { error } = await supabase
       .from("app_data")
@@ -234,88 +208,55 @@ async function supaWrite(key, value) {
         { key, user_id: _supaUserId, value: stripPhotos(value), updated_at: new Date().toISOString() },
         { onConflict: "key,user_id" }
       );
-    if (error) {
-      console.error("[supaWrite] ERRO ao gravar key=", key, error);
-      setSupaOk(false);
-    } else {
-      console.log("[supaWrite] OK key=", key, "user=", _supaUserId);
-      setSupaOk(true);
-    }
-  } catch (e) {
-    console.error("[supaWrite] EXCEPTION key=", key, e);
-    setSupaOk(false);
-  }
+    if (error) { setSupaOk(false); }
+    else { setSupaOk(true); }
+  } catch { setSupaOk(false); }
 }
 
 function useSupaTable(key, initFallback = []) {
   const lsKey = "hapro2_" + key;
 
-  // Dados sempre começam com valor válido (nunca null) para evitar crashes.
-  // "synced" indica se o Supabase já respondeu ao menos uma vez.
-  const [data, setDataRaw] = useState(() => {
-    // Tenta localStorage como valor temporário enquanto Supabase carrega
+  // localStorage só serve como placeholder visual enquanto o Supabase carrega.
+  // NUNCA é tratado como fonte de verdade — o Supabase sempre vence.
+  const [data, setDataRaw] = useState(initFallback);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Mostra dados locais imediatamente para evitar tela em branco,
+    // mas eles serão substituídos assim que o Supabase responder.
     try {
       const raw = localStorage.getItem(lsKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         const ok = Array.isArray(parsed) ? parsed.length > 0
           : (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
-        if (ok) return parsed;
+        if (ok && !cancelled) setDataRaw(parsed);
       }
     } catch {}
-    // Se não tiver nada no localStorage, usa um array/objeto vazio seguro
-    // (não o initFallback com dados demo) para sinalizar "ainda sem dados"
-    return Array.isArray(initFallback) ? [] : {};
-  });
-  const [loading, setLoading] = useState(true);
-  const [synced, setSynced] = useState(false);
 
-  // Ao montar: SEMPRE busca do Supabase. Quando chegar, substitui tudo.
-  useEffect(() => {
-    let cancelled = false;
-    const tryRead = (attempts=0) => {
+    // Aguarda _supaUserId estar disponível (sessão do Supabase) e então busca
+    const tryRead = (attempts = 0) => {
       if (cancelled) return;
-      if (!_supaUserId && attempts < 15) {
-        setTimeout(()=>tryRead(attempts+1), 300);
-        return;
-      }
       if (!_supaUserId) {
-        // Timeout sem usuário: usa fallback e marca como sincronizado
-        setDataRaw(prev => {
-          const empty = Array.isArray(prev) ? prev.length === 0 : Object.keys(prev||{}).length === 0;
-          return empty ? initFallback : prev;
-        });
+        if (attempts < 20) { setTimeout(() => tryRead(attempts + 1), 300); return; }
+        // Sem sessão após 6s: usa fallback
         setLoading(false);
-        setSynced(true);
         return;
       }
-      const readStartVersion = (_writeVersion[key] || 0);
       supaRead(key).then(remote => {
         if (cancelled) return;
         setLoading(false);
-        setSynced(true);
-        // Se uma escrita aconteceu DEPOIS que essa leitura começou, o dado
-        // lido pode já estar desatualizado em relação ao que está na tela
-        // (que reflete a escrita mais recente). Nesse caso, não sobrescreve.
-        if (readStartVersion !== (_writeVersion[key] || 0)) {
-          console.warn("[supaRead] IGNORADO (obsoleto) key=", key, "— houve escrita concorrente mais recente");
-          return;
-        }
         if (remote !== null) {
           const ok = Array.isArray(remote) ? true : (remote && typeof remote === "object");
           if (ok) {
-            // Supabase tem dados: usa como fonte da verdade
+            // Supabase é a fonte de verdade — sobrescreve qualquer dado local
             setDataRaw(remote);
             try { localStorage.setItem(lsKey, JSON.stringify(remote)); } catch {}
-            return;
           }
         }
-        // Supabase vazio (conta nova): usa localStorage ou initFallback
-        setDataRaw(prev => {
-          const empty = Array.isArray(prev) ? prev.length === 0 : Object.keys(prev||{}).length === 0;
-          return empty ? initFallback : prev;
-        });
-      });
+        // Se remote === null (chave não existe no Supabase ainda), mantém o que tem
+      }).catch(() => { if (!cancelled) setLoading(false); });
     };
     tryRead();
     return () => { cancelled = true; };
@@ -324,7 +265,7 @@ function useSupaTable(key, initFallback = []) {
   const setData = useCallback((valOrFn) => {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
-      // 1) Salva localStorage imediatamente
+      // 1) Atualiza localStorage como cache local
       try {
         localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
       } catch {
@@ -335,13 +276,13 @@ function useSupaTable(key, initFallback = []) {
           localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next)));
         } catch {}
       }
-      // 2) Salva no Supabase (assíncrono — não bloqueia UI)
+      // 2) Salva no Supabase — fonte de verdade
       supaWrite(key, next);
       return next;
     });
   }, [lsKey, key]);
 
-  return [data, setData, loading, synced];
+  return [data, setData, loading];
 }
 
 // useSettings: usa o mesmo mecanismo JSON
@@ -3763,12 +3704,7 @@ function App(){
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
-        // Evita re-render/remount desnecessário do AppInner quando o Supabase
-        // apenas revalida o token em segundo plano (mesmo usuário já logado).
-        // Sem isso, AppInner remonta a cada revalidação e cada useSupaTable
-        // refaz sua busca do zero — podendo sobrescrever dados recém-salvos
-        // com uma resposta antiga (race condition).
-        setSession(prev => (prev && prev.user?.id === s?.user?.id) ? prev : s);
+        setSession(s);
       } else if (event === "SIGNED_OUT" || !s) {
         setSession(null);
       }
@@ -3810,28 +3746,20 @@ function AppInner({ session, onLogout }) {
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
 
-  // ── Migração inicial: sobe dados do localStorage para o Supabase ──────────
-  useEffect(()=>{
-    const migKey="hapro2_migrated_v1_"+(session?.user?.id||"");
-    if(localStorage.getItem(migKey))return;
-    const keys=["patients","agenda","expenses","incomes","products","settings","procedures","locations","return_rules","proc_cats","skincare_config"];
-    const waitAndMigrate=(attempts=0)=>{
-      if(!_supaUserId){ if(attempts<15)setTimeout(()=>waitAndMigrate(attempts+1),400); return; }
-      Promise.all(keys.map(async k=>{
-        const raw=localStorage.getItem("hapro2_"+k);
-        if(!raw)return;
-        try{
-          const parsed=JSON.parse(raw);
-          const hasData=Array.isArray(parsed)?parsed.length>0:(parsed&&typeof parsed==="object"&&Object.keys(parsed).length>0);
-          if(!hasData)return;
-          const remote=await supaRead(k);
-          const remoteEmpty=remote===null||(Array.isArray(remote)&&remote.length===0);
-          if(remoteEmpty)await supaWrite(k,parsed);
-        }catch{}
-      })).then(()=>localStorage.setItem(migKey,"1"));
-    };
-    waitAndMigrate();
-  },[]);
+  // ── Loading global: aguarda Supabase carregar os dados principais ──────────
+  // Isso garante que TODOS os dispositivos vejam os mesmos dados do servidor,
+  // independente do que estiver salvo localmente em cada aparelho.
+  const globalLoading = loadingPatients || loadingAgenda || loadingSettings;
+  if (globalLoading) {
+    return createElement("div",{style:{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:P.bg,gap:16}},
+      createElement("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:P.accent3,letterSpacing:".04em"}},"HarmonizaPro"),
+      createElement("div",{style:{width:180,height:3,background:P.card2,borderRadius:99,overflow:"hidden"}},
+        createElement("div",{style:{height:"100%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:99,animation:"hapro-bar 1.4s ease-in-out infinite"},})
+      ),
+      createElement("style",null,`@keyframes hapro-bar{0%{width:0%;margin-left:0}50%{width:70%;margin-left:15%}100%{width:0%;margin-left:100%}}`),
+      createElement("div",{style:{fontSize:12,color:P.text3,letterSpacing:".1em",textTransform:"uppercase"}},"Sincronizando dados...")
+    );
+  }
 
   // Dados: cache local imediato + sincronização Supabase em background
   const procedureNames=Array.isArray(procedures)?procedures.map(p=>typeof p==="string"?p:(p.name||p)).filter(Boolean):INIT_PROCEDURES;
@@ -3849,7 +3777,6 @@ function AppInner({ session, onLogout }) {
   },[]);
   const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
   const h=createElement;
-
   const todayStr=new Date().toISOString().slice(0,10);
   const todayApptCount=agenda.filter(a=>a.date===todayStr).length;
   const criticalStock=products.filter(p=>p.status==="critical").length;
@@ -3869,20 +3796,6 @@ function AppInner({ session, onLogout }) {
   const[sidebarOpen,setSidebarOpen]=useState(isDesktop);
   // collapsed (só ícones) — apenas desktop/tablet
   const[sidebarCollapsed,setSidebarCollapsed]=useState(false);
-
-  // Aguarda dados essenciais carregarem do Supabase antes de renderizar.
-  // Isso evita que o app inicie com dados do localStorage de outro dispositivo
-  // ou com os dados de demonstração embutidos no código.
-  if (loadingPatients || loadingAgenda || patients === null || agenda === null) {
-    return h("div", {
-      style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: P.bg, gap: 16 }
-    },
-      h("div", { style: { fontFamily: "'Cormorant Garamond',serif", fontSize: 28, color: P.accent3, letterSpacing: ".04em" } }, "HarmonizaPro"),
-      h("div", { style: { width: 32, height: 32, border: `3px solid ${P.border}`, borderTopColor: P.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite" } }),
-      h("div", { style: { fontSize: 13, color: P.text3 } }, "Sincronizando dados..."),
-      h("style", null, "@keyframes spin { to { transform: rotate(360deg); } }")
-    );
-  }
 
   // Fechar sidebar ao navegar no mobile
   function handleNav(k){
