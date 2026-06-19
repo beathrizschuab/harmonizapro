@@ -217,11 +217,16 @@ async function supaRead(key) {
   }
 }
 
+// Controla a "versão" mais recente de escrita por chave, para que uma leitura
+// antiga (de um remount concorrente) nunca sobrescreva uma escrita mais nova.
+const _writeVersion = {};
+
 async function supaWrite(key, value) {
   if (!_supaUserId) {
     console.warn("[supaWrite] BLOQUEADO: sem _supaUserId. key=", key);
     return;
   }
+  _writeVersion[key] = (_writeVersion[key] || 0) + 1;
   try {
     const { error } = await supabase
       .from("app_data")
@@ -284,10 +289,18 @@ function useSupaTable(key, initFallback = []) {
         setSynced(true);
         return;
       }
+      const readStartVersion = (_writeVersion[key] || 0);
       supaRead(key).then(remote => {
         if (cancelled) return;
         setLoading(false);
         setSynced(true);
+        // Se uma escrita aconteceu DEPOIS que essa leitura começou, o dado
+        // lido pode já estar desatualizado em relação ao que está na tela
+        // (que reflete a escrita mais recente). Nesse caso, não sobrescreve.
+        if (readStartVersion !== (_writeVersion[key] || 0)) {
+          console.warn("[supaRead] IGNORADO (obsoleto) key=", key, "— houve escrita concorrente mais recente");
+          return;
+        }
         if (remote !== null) {
           const ok = Array.isArray(remote) ? true : (remote && typeof remote === "object");
           if (ok) {
@@ -3750,7 +3763,12 @@ function App(){
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
-        setSession(s);
+        // Evita re-render/remount desnecessário do AppInner quando o Supabase
+        // apenas revalida o token em segundo plano (mesmo usuário já logado).
+        // Sem isso, AppInner remonta a cada revalidação e cada useSupaTable
+        // refaz sua busca do zero — podendo sobrescrever dados recém-salvos
+        // com uma resposta antiga (race condition).
+        setSession(prev => (prev && prev.user?.id === s?.user?.id) ? prev : s);
       } else if (event === "SIGNED_OUT" || !s) {
         setSession(null);
       }
