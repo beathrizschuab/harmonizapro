@@ -192,7 +192,12 @@ async function supaRead(key) {
       .from("app_data").select("value").eq("key", key).eq("user_id", uid).maybeSingle();
     if (error) { _setSupaOk(false); console.warn("[sync] read error", key, error.message); return null; }
     _setSupaOk(true);
-    return data?.value ?? null;
+    let val = data?.value ?? null;
+    // Supabase pode devolver o JSONB já como string (double-encoded) em vez de objeto/array
+    if (typeof val === "string") {
+      try { val = JSON.parse(val); } catch { /* mantém como string mesmo */ }
+    }
+    return val;
   } catch(e) { _setSupaOk(false); console.warn("[sync] read exception", key, e); return null; }
 }
 
