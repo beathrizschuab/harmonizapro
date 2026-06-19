@@ -213,13 +213,21 @@ function useSupaTable(key, initFallback = []) {
   const lsKey = "hapro2_" + key;
   const [data, setDataRaw] = useState(initFallback);
   const [synced, setSynced] = useState(false);
+  const wantArray = Array.isArray(initFallback);
 
   useEffect(() => {
     let cancelled = false;
     supaRead(key).then(remote => {
       if (cancelled) return;
       setSynced(true);
-      if (remote !== null) setDataRaw(remote);
+      if (remote !== null) {
+        // Só aceita o dado remoto se o "shape" combinar com o esperado
+        // (evita c.filter is not a function quando vem objeto/null no lugar de array)
+        const remoteIsArray = Array.isArray(remote);
+        const shapeOk = wantArray ? remoteIsArray : (!remoteIsArray && remote && typeof remote === "object");
+        if (shapeOk) setDataRaw(remote);
+        else console.warn("[sync] formato inesperado para", key, "— mantendo fallback", remote);
+      }
     });
     return () => { cancelled = true; };
   }, [key]);
@@ -3670,11 +3678,11 @@ function App(){
 }
 
 function AppInner({ session, onLogout }) {
-  const[patients,setPatients,loadingPatients]=useSupaTable("patients",INIT_PATIENTS);
-  const[agenda,setAgenda,loadingAgenda]=useSupaTable("agenda",INIT_AGENDA);
-  const[expenses,setExpenses,loadingExpenses]=useSupaTable("expenses",INIT_EXPENSES);
-  const[incomes,setIncomes,loadingIncomes]=useSupaTable("incomes",[]);
-  const[products,setProducts,loadingProducts]=useSupaTable("products",[
+  const[patientsRaw,setPatients,loadingPatients]=useSupaTable("patients",INIT_PATIENTS);
+  const[agendaRaw,setAgenda,loadingAgenda]=useSupaTable("agenda",INIT_AGENDA);
+  const[expensesRaw,setExpenses,loadingExpenses]=useSupaTable("expenses",INIT_EXPENSES);
+  const[incomesRaw,setIncomes,loadingIncomes]=useSupaTable("incomes",[]);
+  const[productsRaw,setProducts,loadingProducts]=useSupaTable("products",[
     {id:"p1",name:"Botox Allergan 100U",cat:"Toxina Botulínica",qty:2,min:5,unit:"un",expiry:"12/2026",cost:800,emoji:"💉",status:"critical"},
     {id:"p2",name:"Juvederm Ultra 1ml",cat:"Ácido Hialurônico",qty:5,min:8,unit:"sir",expiry:"08/2026",cost:450,emoji:"✨",status:"low"},
     {id:"p3",name:"Sculptra 367mg",cat:"Bioestimulador",qty:7,min:4,unit:"fr",expiry:"09/2026",cost:950,emoji:"🧪",status:"ok"},
@@ -3682,14 +3690,27 @@ function AppInner({ session, onLogout }) {
     {id:"p5",name:"Profhilo 2ml",cat:"Skinbooster",qty:4,min:3,unit:"sir",expiry:"11/2026",cost:520,emoji:"💧",status:"ok"},
   ]);
   const[settingsData,setSettings,loadingSettings]=useSettings({doctorName:"Dra. Sofia",doctorTitle:"Médica Responsável",clinicName:"HarmonizaPro"});
-  const[procedures,setProcedures,loadingProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
-  const[locations,setLocations,loadingLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
-  const[returnRules,setReturnRules,loadingRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
-  const[procCats,setProcCats]=useSupaTable("proc_cats",["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios / Lifting","Skincare Clínico","Avaliação / Consultoria","Outros"]);
+  const[proceduresRaw,setProcedures,loadingProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
+  const[locationsRaw,setLocations,loadingLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
+  const[returnRulesRaw,setReturnRules,loadingRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
+  const[procCatsRaw,setProcCats]=useSupaTable("proc_cats",["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios / Lifting","Skincare Clínico","Avaliação / Consultoria","Outros"]);
   const[skincareConfig,setSkincareConfig]=useSupaTable("skincare_config",{
     produtos:["Vitamina C","Retinol","Ácido Glicólico","Ácido Hialurônico","Protetor Solar FPS 50+","Niacinamida","Peptídeos","Bakuchiol","AHA/BHA","Ceramidas","Água Micelar","Hidratante Facial"],
     frequencias:["Diário","Noturno","2x por semana","Semanal","Mensal","Conforme necessário"]
   });
+
+  // ── Blindagem extra: garante que dados que devem ser array nunca virem outra coisa ──
+  // (proteção redundante caso algum dado venha corrompido do Supabase)
+  // Sobrescreve as variáveis originais — todo código abaixo já fica protegido
+  const patients=Array.isArray(patientsRaw)?patientsRaw:[];
+  const agenda=Array.isArray(agendaRaw)?agendaRaw:[];
+  const expenses=Array.isArray(expensesRaw)?expensesRaw:[];
+  const incomes=Array.isArray(incomesRaw)?incomesRaw:[];
+  const products=Array.isArray(productsRaw)?productsRaw:[];
+  const procedures=Array.isArray(proceduresRaw)?proceduresRaw:[];
+  const locations=Array.isArray(locationsRaw)?locationsRaw:[];
+  const returnRules=Array.isArray(returnRulesRaw)?returnRulesRaw:[];
+  const procCats=Array.isArray(procCatsRaw)?procCatsRaw:[];
   // Todos os useState ANTES de qualquer return condicional (regra dos hooks)
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
