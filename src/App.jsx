@@ -899,6 +899,12 @@ function useSettings(defaults) {
   return [safeData, setData, loading];
 }
 
+function useGoals() {
+  const [goals, setGoals, loading] = useSupaTable("goals", {});
+  const safeGoals = (goals && !Array.isArray(goals) && typeof goals === "object") ? goals : {};
+  return [safeGoals, setGoals, loading];
+}
+
 function useLocalStorage(key, init) {
   const [val, setVal] = useState(() => { try { const s=localStorage.getItem(key); return s?JSON.parse(s):init; } catch { return init; } });
   const set = useCallback(v => { const nv=typeof v==="function"?v(val):v; setVal(nv); try{localStorage.setItem(key,JSON.stringify(nv));}catch{}; }, [key]);
@@ -2363,7 +2369,80 @@ function Aniversariantes({patients,onSelectPatient,onNav}){
   );
 }
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
-function Dashboard({patients,agenda,onNav,onSelectPatient,settings,returnRules,isMobile=false,isTablet=false}){
+// ─── META DE FATURAMENTO ──────────────────────────────────────────────────────
+function MetaFaturamento({received,selMonth,selYear,goals,setGoals,prevMonthReceived}){
+  const h=createElement;
+  const goalKey=`${selYear}-${String(selMonth+1).padStart(2,"0")}`;
+  const meta=Number((goals||{})[goalKey]||0);
+  const[editing,setEditing]=useState(false);
+  const[inputVal,setInputVal]=useState("");
+
+  const pct=meta>0?(received/meta)*100:0;
+  const pctCapped=Math.min(pct,100);
+
+  const barColor=pct>=100?P.green:pct>=75?P.accent:pct>=50?P.yellow:P.red;
+
+  const now2=new Date();
+  const isCurrentMonth=selMonth===now2.getMonth()&&selYear===now2.getFullYear();
+  const daysInMonth=new Date(selYear,selMonth+1,0).getDate();
+  const dayOfMonth=isCurrentMonth?now2.getDate():daysInMonth;
+  const projection=dayOfMonth>0?Math.round((received/dayOfMonth)*daysInMonth):0;
+
+  const diffPct=prevMonthReceived>0?Math.round(((received-prevMonthReceived)/prevMonthReceived)*100):null;
+  const diffIsPositive=diffPct!==null&&diffPct>=0;
+
+  const statusLabel=pct>=100?"🎯 Meta atingida!":pct>=75?"🔥 Quase lá!":pct>=50?"📈 Na metade do caminho":pct>0?"🚀 Aquecendo motores...":meta>0?"⏳ Sem receitas ainda":"Nenhuma meta definida";
+
+  function openEdit(){setInputVal(meta>0?String(meta):"");setEditing(true);}
+  function saveMeta(){
+    const val=Number(String(inputVal).replace(/\D/g,""))||0;
+    setGoals(prev=>({...(prev||{}),[goalKey]:val}));
+    setEditing(false);
+  }
+  function handleKeyDown(e){if(e.key==="Enter")saveMeta();if(e.key==="Escape")setEditing(false);}
+
+  return h("div",{style:{background:`linear-gradient(135deg,${P.card},${P.card2})`,border:`1px solid ${P.border}`,borderRadius:16,padding:"20px 24px",marginBottom:18,position:"relative",overflow:"hidden"}},
+    h("div",{style:{position:"absolute",top:-30,right:-30,width:120,height:120,borderRadius:"50%",background:barColor,opacity:.04,pointerEvents:"none"}}),
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:8}},
+      h("div",null,
+        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"🎯 Meta de Faturamento"),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.text,lineHeight:1.1}},`${MONTH_NAMES[selMonth]} ${selYear}`)
+      ),
+      editing
+        ?h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+            h("span",{style:{fontSize:12,color:P.text3}},"R$"),
+            h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:handleKeyDown,placeholder:"ex: 30000",style:{width:110,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"6px 10px",color:P.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}}),
+            h("button",{onClick:saveMeta,style:{background:P.rose,border:"none",borderRadius:8,color:P.accent3,cursor:"pointer",padding:"6px 14px",fontSize:12,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},"Salvar"),
+            h("button",{onClick:()=>setEditing(false),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text3,cursor:"pointer",padding:"6px 10px",fontSize:12,fontFamily:"'DM Sans',sans-serif"}},"✕")
+          )
+        :h("button",{onClick:openEdit,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.accent,cursor:"pointer",padding:"6px 14px",fontSize:11,fontFamily:"'DM Sans',sans-serif"}},meta>0?"✎ Editar meta":"＋ Definir meta")
+    ),
+    h("div",{style:{display:"flex",alignItems:"baseline",gap:10,marginBottom:14,flexWrap:"wrap"}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:barColor,lineHeight:1}},fmtCurr(received)),
+      meta>0&&h("div",{style:{fontSize:14,color:P.text3}},`de ${fmtCurr(meta)}`),
+      meta>0&&h("div",{style:{fontSize:12,fontWeight:700,padding:"2px 10px",borderRadius:20,background:pct>=100?"rgba(122,173,138,.15)":"rgba(157,119,97,.12)",color:barColor}},`${Math.round(pct)}%`)
+    ),
+    h("div",{style:{width:"100%",height:10,background:P.bg3,borderRadius:10,overflow:"hidden",marginBottom:14}},
+      h("div",{style:{width:`${pctCapped}%`,height:"100%",background:`linear-gradient(90deg,${P.rose},${barColor})`,borderRadius:10,transition:"width .5s cubic-bezier(.4,0,.2,1)"}})
+    ),
+    h("div",{style:{display:"flex",gap:20,flexWrap:"wrap",alignItems:"center"}},
+      h("div",{style:{fontSize:12,color:P.text2}},statusLabel),
+      meta>0&&isCurrentMonth&&h("div",{style:{display:"flex",alignItems:"center",gap:6,fontSize:12}},
+        h("span",{style:{color:P.text3}},"Projeção:"),
+        h("span",{style:{color:projection>=meta?P.green:P.yellow,fontWeight:600}},fmtCurr(projection)),
+        projection>=meta
+          ?h("span",{style:{fontSize:10,color:P.green}},"✓ vai bater")
+          :h("span",{style:{fontSize:10,color:P.yellow}},`faltam ${fmtCurr(meta-projection)}`)
+      ),
+      diffPct!==null&&h("div",{style:{display:"flex",alignItems:"center",gap:4,fontSize:12}},
+        h("span",{style:{color:P.text3}},"vs mês anterior:"),
+        h("span",{style:{color:diffIsPositive?P.green:P.red,fontWeight:600}},`${diffIsPositive?"+":""}${diffPct}%`)
+      )
+    )
+  );
+}
+
+function Dashboard({patients,agenda,onNav,onSelectPatient,settings,returnRules,isMobile=false,isTablet=false,goals={},setGoals,incomes=[],expenses=[]}){
   const today=new Date();
   const todayStr=today.toISOString().slice(0,10);
   const todayBirthdays=patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();});
@@ -2372,6 +2451,14 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,settings,returnRules,i
   const totalPend=allS.filter(s=>!s.paid).reduce((a,s)=>a+s.value,0);
   const todayAppts=agenda.filter(a=>a.date===todayStr).sort((a,b)=>a.time.localeCompare(b.time));
   const months=[{m:"Dez",v:52},{m:"Jan",v:39},{m:"Fev",v:63},{m:"Mar",v:70},{m:"Abr",v:58},{m:"Mai",v:95}];
+  // ── Receita real do mês corrente (para a meta) ──
+  const curM=today.getMonth(),curY=today.getFullYear();
+  const inCurMonth=d=>{const dt=parseAnyDate(d);return dt&&dt.getMonth()===curM&&dt.getFullYear()===curY;};
+  const totalRecMonth=allS.filter(s=>s.paid&&inCurMonth(s.date)).reduce((a,s)=>a+Number(s.value||0),0)
+    +(Array.isArray(incomes)?incomes:[]).filter(i=>!i.sessRef&&i.status==="Pago"&&inCurMonth(i.date)).reduce((a,i)=>a+Number(i.value||0),0);
+  const prevMNum=curM===0?11:curM-1,prevMYear=curM===0?curY-1:curY;
+  const prevMonthRecDash=allS.filter(s=>s.paid&&(()=>{const dt=parseAnyDate(s.date);return dt&&dt.getMonth()===prevMNum&&dt.getFullYear()===prevMYear;})()).reduce((a,s)=>a+Number(s.value||0),0)
+    +(Array.isArray(incomes)?incomes:[]).filter(i=>!i.sessRef&&i.status==="Pago"&&(()=>{const dt=parseAnyDate(i.date);return dt&&dt.getMonth()===prevMNum&&dt.getFullYear()===prevMYear;})()).reduce((a,i)=>a+Number(i.value||0),0);
   const h=createElement;
   return h("div",null,
     h(SectionHeader,{title:`Olá, ${settings.doctorName||"Dra. Sofia"} 👋`,sub:today.toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long",year:"numeric"}),action:h(Btn,{onClick:()=>onNav("agenda")},"＋ Novo Agendamento")}),
@@ -2442,6 +2529,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,settings,returnRules,i
         h("div",{style:{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:k.c,opacity:.05}})
       ))
     ),
+    setGoals&&h(MetaFaturamento,{received:totalRecMonth,selMonth:curM,selYear:curY,goals:goals||{},setGoals,prevMonthReceived:prevMonthRecDash}),
     h("div",{className:"resp-grid-21",style:{display:"grid",gridTemplateColumns:"2fr 1fr",gap:18,marginBottom:18}},
       h(Card,null,
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:16}},"Receita — Últimos 6 Meses"),
@@ -4896,7 +4984,7 @@ function parseAnyDate(s){
   return null;
 }
 
-function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings}){
+function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings,goals={},setGoals}){
   const[showNewExp,setShowNewExp]=useState(false);
   const[editExp,setEditExp]=useState(null);
   const[showNewInc,setShowNewInc]=useState(false);
@@ -4934,6 +5022,13 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
   const pending=monthSessions.filter(s=>!s.paid).reduce((a,s)=>a+Number(s.value||0),0)
     + monthIncomesExtra.filter(i=>i.status!=="Pago").reduce((a,i)=>a+Number(i.value||0),0);
   const totalExp=monthExpenses.reduce((a,e)=>a+Number(e.value||0),0);
+
+  // ── Receita do mês anterior (para % de variação na meta) ──
+  const prevMNum=selMonth===0?11:selMonth-1;
+  const prevMYear=selMonth===0?selYear-1:selYear;
+  const prevMonthReceived=
+    allS.filter(s=>s.paid&&(()=>{const dt=parseAnyDate(s.date);return dt&&dt.getMonth()===prevMNum&&dt.getFullYear()===prevMYear;})()).reduce((a,s)=>a+Number(s.value||0),0)
+    +incomes.filter(i=>!i.sessRef&&i.status==="Pago"&&(()=>{const dt=parseAnyDate(i.date);return dt&&dt.getMonth()===prevMNum&&dt.getFullYear()===prevMYear;})()).reduce((a,i)=>a+Number(i.value||0),0);
 
   // Histórico de 5 meses terminando no mês selecionado, para o gráfico de barras
   const months=[];
@@ -5012,6 +5107,8 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
       ),
       h("button",{onClick:nextMonth,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"→")
     ),
+
+    setGoals&&h(MetaFaturamento,{received,selMonth,selYear,goals:goals||{},setGoals,prevMonthReceived}),
 
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
       [{l:"Receita do Mês",v:fmtCurr(received),c:P.accent},{l:"Despesas do Mês",v:fmtCurr(totalExp),c:P.red},{l:"Lucro Líquido",v:fmtCurr(received-totalExp),c:P.green},{l:"A Receber",v:fmtCurr(pending),c:P.yellow}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)))
@@ -7144,6 +7241,7 @@ function AppInner({ session, onLogout }) {
     {id:"p5",name:"Profhilo 2ml",cat:"Skinbooster",qty:4,min:3,unit:"sir",expiry:"11/2026",cost:520,emoji:"💧",status:"ok"},
   ]);
   const[settingsData,setSettings,loadingSettings]=useSettings({doctorName:"Dra. Sofia",doctorTitle:"Médica Responsável",clinicName:"HarmonizaPro"});
+  const[goalsData,setGoals]=useGoals();
   const[proceduresRaw,setProcedures,loadingProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
   const[locationsRaw,setLocations,loadingLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
   const[returnRulesRaw,setReturnRules,loadingRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
@@ -7390,7 +7488,7 @@ function AppInner({ session, onLogout }) {
         // Conteúdo principal
         h("div",{style:{flex:1,overflowY:"auto",padding:isMobile?12:24}},
           h(ErrorBoundary,{key:page},
-            page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,settings,returnRules,isMobile,isTablet}),
+            page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,proceduresFull:procedures,locations:locationNames}),
@@ -7398,7 +7496,7 @@ function AppInner({ session, onLogout }) {
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
-            page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings}),
+            page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
             page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings}),
