@@ -328,6 +328,318 @@ async function generatePatientDossier(patient,{products,settings}={}){
   doc.save(fileName);
 }
 
+// ─── HELPER COMPARTILHADO DE PDF (Financeiro / Relatórios) ───────────────────
+// Reaproveita a mesma linguagem visual do dossiê da paciente, mas devolve
+// funções reutilizáveis para montar tabelas, KPIs e seções em outros relatórios.
+function createPdfHelpers(doc,{settings,headerLabel}={}){
+  const PG_W=595.28, PG_H=841.89, MARGIN=42, MAX_W=PG_W-MARGIN*2;
+  const COL={accent:[157,119,97],text:[35,28,30],text2:[90,80,82],text3:[140,130,132],line:[222,212,208],danger:[176,72,72],green:[122,173,138],yellow:[170,140,60]};
+  const ctx={y:MARGIN};
+  function drawPageHeader(){
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...COL.text3);
+    doc.text((settings?.clinicName||"HarmonizaPro")+" · "+headerLabel,MARGIN,24);
+    doc.setDrawColor(...COL.line); doc.line(MARGIN,30,PG_W-MARGIN,30);
+    ctx.y=44;
+  }
+  function ensureSpace(h){ if(ctx.y+h>800){ doc.addPage(); ctx.y=MARGIN; drawPageHeader(); } }
+  function sectionTitle(txt,emoji){
+    ensureSpace(34);
+    doc.setFillColor(247,240,237); doc.rect(MARGIN,ctx.y,MAX_W,24,"F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(...COL.accent);
+    doc.text((emoji?emoji+"  ":"")+txt,MARGIN+8,ctx.y+16);
+    ctx.y+=34;
+  }
+  function kv(label,value,opts={}){
+    if(value===undefined||value===null||value==="")value="—";
+    ensureSpace(16);
+    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(...COL.text2);
+    doc.text(label+":",MARGIN+4,ctx.y);
+    doc.setFont("helvetica","normal"); doc.setTextColor(...(opts.danger?COL.danger:opts.success?COL.green:COL.text));
+    const lines=doc.splitTextToSize(String(value),MAX_W-180);
+    doc.text(lines,MARGIN+180,ctx.y);
+    ctx.y+=Math.max(16,lines.length*12);
+  }
+  function paragraph(text,opts={}){
+    if(!text)return;
+    ensureSpace(14);
+    doc.setFont("helvetica",opts.bold?"bold":"normal"); doc.setFontSize(opts.size||9.5); doc.setTextColor(...(opts.color||COL.text));
+    const lines=doc.splitTextToSize(String(text),MAX_W-8);
+    lines.forEach(ln=>{ ensureSpace(13); doc.text(ln,MARGIN+4,ctx.y); ctx.y+=13; });
+  }
+  function divider(){ ensureSpace(10); doc.setDrawColor(...COL.line); doc.line(MARGIN,ctx.y,PG_W-MARGIN,ctx.y); ctx.y+=12; }
+  function emptyMsg(txt){ doc.setFont("helvetica","italic"); doc.setFontSize(9); doc.setTextColor(...COL.text3); ensureSpace(14); doc.text(txt,MARGIN+4,ctx.y); ctx.y+=16; }
+  // Cabeçalhos/linhas de tabela simples (colunas com largura fixa em pt)
+  function tableHeader(cols){
+    ensureSpace(18);
+    doc.setFillColor(238,228,224); doc.rect(MARGIN,ctx.y,MAX_W,18,"F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(...COL.text2);
+    let x=MARGIN+6;
+    cols.forEach(c=>{ doc.text(c.label,x,ctx.y+12,{align:c.align||"left"}); x+=c.width; });
+    ctx.y+=18;
+  }
+  function tableRow(cols,opts={}){
+    const wrapped=cols.map(c=>doc.splitTextToSize(String(c.text??"—"),c.width-4));
+    const lineCount=Math.max(1,...wrapped.map(w=>w.length));
+    const rowH=lineCount*11+3;
+    ensureSpace(rowH);
+    if(opts.zebra)doc.setFillColor(250,247,245),doc.rect(MARGIN,ctx.y-10,MAX_W,rowH,"F");
+    let x=MARGIN+6;
+    doc.setFont("helvetica",opts.bold?"bold":"normal"); doc.setFontSize(8.5);
+    cols.forEach((c,ci)=>{
+      doc.setTextColor(...(c.color||COL.text));
+      wrapped[ci].forEach((ln,li)=>{
+        doc.text(ln,c.align==="right"?x+c.width-4:x,ctx.y+li*11,{align:c.align||"left"});
+      });
+      x+=c.width;
+    });
+    ctx.y+=rowH;
+  }
+  // Grade de indicadores (estilo "cards" do dashboard) — até 4 por linha
+  function statGrid(items){
+    const n=items.length, gap=10;
+    const boxW=(MAX_W-gap*(n-1))/n, boxH=48;
+    ensureSpace(boxH+12);
+    items.forEach((it,i)=>{
+      const x=MARGIN+i*(boxW+gap);
+      doc.setFillColor(247,240,237); doc.roundedRect(x,ctx.y,boxW,boxH,5,5,"F");
+      doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(...COL.text3);
+      doc.text(String(it.label).toUpperCase(),x+9,ctx.y+16,{maxWidth:boxW-18});
+      doc.setFont("helvetica","bold"); doc.setFontSize(14.5); doc.setTextColor(...(it.color||COL.text));
+      doc.text(String(it.value),x+9,ctx.y+37,{maxWidth:boxW-18});
+    });
+    ctx.y+=boxH+16;
+  }
+  function pageNumbers(){
+    const pageCount=doc.getNumberOfPages();
+    for(let p=2;p<=pageCount;p++){
+      doc.setPage(p);
+      doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...COL.text3);
+      doc.text(`Página ${p-1} de ${pageCount-1}`,PG_W-MARGIN,820,{align:"right"});
+    }
+  }
+  return {PG_W,PG_H,MARGIN,MAX_W,COL,ctx,drawPageHeader,ensureSpace,sectionTitle,kv,paragraph,divider,emptyMsg,tableHeader,tableRow,statGrid,pageNumbers,
+    get y(){return ctx.y;}, set y(v){ctx.y=v;}
+  };
+}
+
+// ─── EXPORTAÇÃO PDF — FINANCEIRO ──────────────────────────────────────────────
+async function generateFinanceiroPDF(data,{settings}={}){
+  const{selMonth,selYear,received,sessionsRec,incomesRec,totalExp,pending,months,monthSessions,monthIncomesExtra,monthExpenses,saldoInicial,saldoFinal,dailyFlow}=data;
+  const jsPDFCtor=await loadJsPDF();
+  const doc=new jsPDFCtor({unit:"pt",format:"a4"});
+  const period=`${MONTH_NAMES[selMonth]} de ${selYear}`;
+  const H=createPdfHelpers(doc,{settings,headerLabel:`Relatório Financeiro — ${period}`});
+  H.drawPageHeader();
+
+  doc.setFont("helvetica","bold"); doc.setFontSize(19); doc.setTextColor(...H.COL.text);
+  doc.text(settings?.clinicName||"HarmonizaPro",H.MARGIN,H.y+12);
+  doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(...H.COL.accent);
+  doc.text("Relatório Financeiro · "+period,H.MARGIN,H.y+30);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...H.COL.text3);
+  doc.text("Gerado em "+new Date().toLocaleDateString("pt-BR")+" às "+new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),H.MARGIN,H.y+44);
+  H.y+=58;
+
+  // ── KPIs do mês ──────────────────────────────────────────────────────────
+  H.statGrid([
+    {label:"Receita do Mês",value:fmtCurr(received),color:H.COL.accent},
+    {label:"Despesas do Mês",value:fmtCurr(totalExp),color:H.COL.danger},
+    {label:"Lucro Líquido",value:fmtCurr(received-totalExp),color:H.COL.green},
+    {label:"A Receber",value:fmtCurr(pending),color:H.COL.yellow},
+  ]);
+
+  // ── Histórico de 5 meses ─────────────────────────────────────────────────
+  H.sectionTitle("Receita vs Despesas (últimos 5 meses)","📊");
+  H.tableHeader([{label:"Mês",width:110},{label:"Receita",width:130},{label:"Despesas",width:130},{label:"Resultado",width:130}]);
+  (months||[]).forEach((m,i)=>H.tableRow([
+    {text:`${m.m} ${m.yy}`,width:110},
+    {text:fmtCurr(m.rec),width:130,color:H.COL.green},
+    {text:fmtCurr(m.exp),width:130,color:H.COL.danger},
+    {text:fmtCurr(m.rec-m.exp),width:130,color:(m.rec-m.exp)>=0?H.COL.green:H.COL.danger},
+  ],{zebra:i%2===1}));
+  H.y+=10;
+
+  // ── Entradas (sessões) ───────────────────────────────────────────────────
+  H.sectionTitle("Entradas — Sessões do Prontuário","💉");
+  if((monthSessions||[]).length===0)H.emptyMsg("Nenhuma sessão registrada neste mês.");
+  else{
+    H.tableHeader([{label:"Data",width:50},{label:"Paciente / Procedimento",width:200},{label:"Pagamento",width:90},{label:"Status",width:60},{label:"Valor",width:100,align:"right"}]);
+    [...monthSessions].sort((a,b)=>(parseAnyDate(a.date)||0)-(parseAnyDate(b.date)||0)).forEach((s,i)=>H.tableRow([
+      {text:s.date,width:50},
+      {text:`${s.pname} — ${s.procedure}`,width:200},
+      {text:s.payMethod||"—",width:90},
+      {text:s.finStatus||(s.paid?"Pago":"Pendente"),width:60,color:s.paid?H.COL.green:H.COL.yellow},
+      {text:fmtCurr(s.value||0),width:100,align:"right",color:s.paid?H.COL.green:H.COL.yellow},
+    ],{zebra:i%2===1}));
+  }
+  H.y+=4;
+  H.kv("Subtotal sessões",fmtCurr(sessionsRec));
+
+  // ── Entradas extras ──────────────────────────────────────────────────────
+  if((monthIncomesExtra||[]).length>0){
+    H.y+=6;
+    doc.setFont("helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(...H.COL.accent);
+    H.ensureSpace(14); doc.text("Entradas extras (não vinculadas a sessões)",H.MARGIN+4,H.y); H.y+=16;
+    H.tableHeader([{label:"Data",width:50},{label:"Descrição",width:200},{label:"Pagamento",width:90},{label:"Status",width:60},{label:"Valor",width:100,align:"right"}]);
+    monthIncomesExtra.forEach((inc,i)=>H.tableRow([
+      {text:inc.date,width:50},
+      {text:inc.desc||inc.patientName||"Entrada",width:200},
+      {text:inc.payMethod||"—",width:90},
+      {text:inc.status,width:60,color:inc.status==="Pago"?H.COL.green:H.COL.yellow},
+      {text:fmtCurr(inc.value||0),width:100,align:"right",color:inc.status==="Pago"?H.COL.green:H.COL.yellow},
+    ],{zebra:i%2===1}));
+    H.y+=4;
+    H.kv("Subtotal entradas extras",fmtCurr(incomesRec));
+  }
+  H.divider();
+  H.kv("Total recebido no mês",fmtCurr(received),{success:true});
+
+  // ── Despesas ─────────────────────────────────────────────────────────────
+  H.sectionTitle("Despesas","💸");
+  if((monthExpenses||[]).length===0)H.emptyMsg("Nenhuma despesa registrada neste mês.");
+  else{
+    H.tableHeader([{label:"Data",width:50},{label:"Descrição",width:200},{label:"Categoria",width:110},{label:"Status",width:60},{label:"Valor",width:80,align:"right"}]);
+    [...monthExpenses].sort((a,b)=>(parseAnyDate(a.date)||0)-(parseAnyDate(b.date)||0)).forEach((e,i)=>H.tableRow([
+      {text:e.date,width:50},
+      {text:e.desc,width:200},
+      {text:e.cat,width:110},
+      {text:e.status,width:60,color:e.status==="Cancelado"?H.COL.text3:H.COL.danger},
+      {text:fmtCurr(e.value||0),width:80,align:"right",color:H.COL.danger},
+    ],{zebra:i%2===1}));
+  }
+  H.y+=4;
+  H.kv("Total de despesas",fmtCurr(totalExp),{danger:true});
+
+  // ── Fluxo de caixa diário ────────────────────────────────────────────────
+  H.sectionTitle("Fluxo de Caixa Diário","📅");
+  H.kv("Saldo inicial do mês",fmtCurr(saldoInicial),{success:saldoInicial>=0,danger:saldoInicial<0});
+  if((dailyFlow||[]).length===0)H.emptyMsg("Sem movimentações registradas neste mês.");
+  else{
+    H.tableHeader([{label:"Dia",width:50},{label:"Movimentações",width:300},{label:"Saldo do Dia",width:150,align:"right"}]);
+    dailyFlow.forEach((df,i)=>{
+      const movResumo=df.events.length===0?"—":df.events.map(ev=>(ev.type==="entrada"?"↑ ":"↓ ")+ev.desc).join("; ");
+      H.tableRow([
+        {text:"Dia "+String(df.day).padStart(2,"0"),width:50},
+        {text:movResumo,width:300},
+        {text:fmtCurr(df.saldo),width:150,align:"right",color:df.saldo>=0?H.COL.text:H.COL.danger},
+      ],{zebra:i%2===1});
+    });
+  }
+  H.divider();
+  H.kv("Saldo final do mês",fmtCurr(saldoFinal),{success:saldoFinal>=0,danger:saldoFinal<0});
+
+  H.pageNumbers();
+  const fileName=`Financeiro_${MONTH_NAMES[selMonth]}_${selYear}.pdf`;
+  doc.save(fileName);
+}
+
+// ─── EXPORTAÇÃO PDF — RELATÓRIOS ──────────────────────────────────────────────
+async function generateRelatoriosPDF(data,{settings}={}){
+  const{selMonth,selYear,allSCount,procCount,fidPct,forecastRev,nextM,procList,catList,totalCat,monthlyData,peakMonths,lowMonths,rankingPatients,paymentMethods}=data;
+  const jsPDFCtor=await loadJsPDF();
+  const doc=new jsPDFCtor({unit:"pt",format:"a4"});
+  const period=`${MONTH_NAMES[selMonth]} de ${selYear}`;
+  const H=createPdfHelpers(doc,{settings,headerLabel:`Relatório Gerencial — ${period}`});
+  H.drawPageHeader();
+
+  doc.setFont("helvetica","bold"); doc.setFontSize(19); doc.setTextColor(...H.COL.text);
+  doc.text(settings?.clinicName||"HarmonizaPro",H.MARGIN,H.y+12);
+  doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(...H.COL.accent);
+  doc.text("Relatório Gerencial · "+period,H.MARGIN,H.y+30);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...H.COL.text3);
+  doc.text("Gerado em "+new Date().toLocaleDateString("pt-BR")+" às "+new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),H.MARGIN,H.y+44);
+  H.y+=58;
+
+  // ── KPIs gerais ──────────────────────────────────────────────────────────
+  H.statGrid([
+    {label:"Total Sessões",value:String(allSCount),color:H.COL.accent},
+    {label:"Procedimentos",value:String(procCount),color:[122,174,212]},
+    {label:"Fidelização",value:fidPct+"%",color:H.COL.green},
+    {label:"Forecast "+MONTH_NAMES[nextM].slice(0,3),value:fmtCurr(forecastRev),color:H.COL.accent},
+  ]);
+
+  // ── Procedimentos realizados ─────────────────────────────────────────────
+  H.sectionTitle("Procedimentos Realizados no Mês","💉");
+  if((procList||[]).length===0)H.emptyMsg("Nenhum procedimento registrado neste mês.");
+  else{
+    H.tableHeader([{label:"Procedimento",width:200},{label:"Qtd.",width:45},{label:"Total",width:105,align:"right"},{label:"Pago",width:85,align:"right"},{label:"Pendente",width:65,align:"right"}]);
+    procList.forEach(([name,d],i)=>H.tableRow([
+      {text:name,width:200},
+      {text:String(d.count),width:45},
+      {text:fmtCurr(d.total),width:105,align:"right"},
+      {text:fmtCurr(d.paid),width:85,align:"right",color:H.COL.green},
+      {text:fmtCurr(d.pending),width:65,align:"right",color:H.COL.yellow},
+    ],{zebra:i%2===1}));
+  }
+  H.y+=8;
+
+  // ── Faturamento por categoria ────────────────────────────────────────────
+  H.sectionTitle("Faturamento por Categoria","🗂");
+  if((catList||[]).length===0)H.emptyMsg("Sem dados de faturamento neste mês.");
+  else{
+    H.tableHeader([{label:"Categoria",width:260},{label:"Total",width:140,align:"right"},{label:"% do Mês",width:90,align:"right"}]);
+    catList.forEach(([cat,val],i)=>H.tableRow([
+      {text:cat,width:260},
+      {text:fmtCurr(val),width:140,align:"right"},
+      {text:Math.round((val/Math.max(totalCat,1))*100)+"%",width:90,align:"right",color:H.COL.accent},
+    ],{zebra:i%2===1}));
+  }
+  H.y+=8;
+
+  // ── Evolução mensal (6 meses) ────────────────────────────────────────────
+  H.sectionTitle("Evolução de Receita (6 meses)","📈");
+  H.tableHeader([{label:"Mês",width:150},{label:"Sessões",width:150},{label:"Receita",width:200,align:"right"}]);
+  (monthlyData||[]).forEach((m,i)=>H.tableRow([
+    {text:m.label,width:150},
+    {text:String(m.count),width:150},
+    {text:fmtCurr(m.rec),width:200,align:"right",color:H.COL.green},
+  ],{zebra:i%2===1}));
+  H.y+=8;
+
+  // ── Sazonalidade ─────────────────────────────────────────────────────────
+  H.sectionTitle("Sazonalidade — Picos e Baixas de Demanda","📅");
+  doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(...H.COL.green);
+  H.ensureSpace(14); doc.text("Períodos de maior movimento:",H.MARGIN+4,H.y); H.y+=14;
+  if((peakMonths||[]).length===0)H.emptyMsg("Sem picos significativos identificados ainda.");
+  else peakMonths.forEach(pm=>H.paragraph(`${pm.label} — média de ${Math.round(pm.avgCount*10)/10} sessões/mês (+${pm.indexPct-100}% vs. média) · ${fmtCurr(pm.avgRev)}`,{size:9}));
+  H.y+=4;
+  doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(140,150,160);
+  H.ensureSpace(14); doc.text("Períodos de menor movimento:",H.MARGIN+4,H.y); H.y+=14;
+  if((lowMonths||[]).length===0)H.emptyMsg("Sem baixas significativas identificadas ainda.");
+  else lowMonths.forEach(lm=>H.paragraph(`${lm.label} — média de ${Math.round(lm.avgCount*10)/10} sessões/mês (${lm.indexPct-100}% vs. média) · ${fmtCurr(lm.avgRev)}`,{size:9}));
+  H.y+=8;
+
+  // ── Ranking de pacientes ─────────────────────────────────────────────────
+  H.sectionTitle("Ranking de Pacientes (Top 5)","🏆");
+  if((rankingPatients||[]).length===0)H.emptyMsg("Sem pacientes com sessões registradas.");
+  else{
+    H.tableHeader([{label:"#",width:30},{label:"Paciente",width:260},{label:"Sessões",width:80},{label:"Total Gasto",width:130,align:"right"}]);
+    rankingPatients.forEach((p,i)=>H.tableRow([
+      {text:String(i+1),width:30},
+      {text:p.name,width:260},
+      {text:String(p.count),width:80},
+      {text:fmtCurr(p.total),width:130,align:"right",color:H.COL.green},
+    ],{zebra:i%2===1}));
+  }
+  H.y+=8;
+
+  // ── Formas de pagamento ──────────────────────────────────────────────────
+  H.sectionTitle("Formas de Pagamento","💳");
+  if((paymentMethods||[]).length===0)H.emptyMsg("Sem dados de pagamento neste período.");
+  else{
+    const pmTotal=paymentMethods.reduce((a,[,v])=>a+v,0)||1;
+    H.tableHeader([{label:"Forma de Pagamento",width:260},{label:"Total",width:140,align:"right"},{label:"%",width:90,align:"right"}]);
+    paymentMethods.forEach(([pm,val],i)=>H.tableRow([
+      {text:pm,width:260},
+      {text:fmtCurr(val),width:140,align:"right"},
+      {text:Math.round((val/pmTotal)*100)+"%",width:90,align:"right",color:H.COL.accent},
+    ],{zebra:i%2===1}));
+  }
+
+  H.pageNumbers();
+  const fileName=`Relatorio_Gerencial_${MONTH_NAMES[selMonth]}_${selYear}.pdf`;
+  doc.save(fileName);
+}
+
 // ─── EVOLUÇÃO POR REGIÃO DA FACE ──────────────────────────────────────────────
 // Regiões-mãe padronizadas com palavras-chave para agrupar o texto livre digitado em "region"
 // e também as chaves usadas no FaceMapEditor (faceMap.points), ex: "glabela_c" → Testa/Glabela
@@ -3719,13 +4031,14 @@ function parseAnyDate(s){
   return null;
 }
 
-function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncomes}){
+function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings}){
   const[showNewExp,setShowNewExp]=useState(false);
   const[editExp,setEditExp]=useState(null);
   const[showNewInc,setShowNewInc]=useState(false);
   const[editInc,setEditInc]=useState(null);
   const[finTab,setFinTab]=useState("entradas");
   const[viewTab,setViewTab]=useState("resumo"); // resumo | fluxo
+  const[exportingPdf,setExportingPdf]=useState(false);
   const now=new Date();
   const[selMonth,setSelMonth]=useState(now.getMonth());
   const[selYear,setSelYear]=useState(now.getFullYear());
@@ -3814,9 +4127,16 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
   function delInc(id){if(window.confirm("Excluir entrada?"))setIncomes(prev=>prev.filter(i=>i.id!==id));}
   function openEditExp(e){setEditExp(e);setForm({...e,value:String(e.value)});setShowNewExp(true);}
   function openEditInc(i){setEditInc(i);setIncForm({...i,value:String(i.value)});setShowNewInc(true);}
+  async function handleExportPDF(){
+    setExportingPdf(true);
+    try{
+      await generateFinanceiroPDF({selMonth,selYear,received,sessionsRec,incomesRec,totalExp,pending,months,monthSessions,monthIncomesExtra,monthExpenses,saldoInicial,saldoFinal,dailyFlow},{settings:settings||{}});
+    }catch(e){ alert(e.message||"Erro ao gerar o PDF. Tente novamente."); }
+    finally{ setExportingPdf(false); }
+  }
 
   return h("div",null,
-    h(SectionHeader,{title:"Fluxo de Caixa",sub:"Resumo financeiro completo"}),
+    h(SectionHeader,{title:"Fluxo de Caixa",sub:"Resumo financeiro completo",action:h(Btn,{variant:"ghost",onClick:handleExportPDF,disabled:exportingPdf,style:{fontSize:12,padding:"8px 16px"}},exportingPdf?"Gerando...":"📄 Exportar PDF")}),
 
     // ── Navegador de mês ──────────────────────────────────────────────────
     h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:20,padding:"10px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12}},
@@ -4071,11 +4391,12 @@ function PagamentosCard({allS}){
   );
 }
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
-function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = []}){
+function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = [], settings}){
   const now=new Date();
   const[selMonth,setSelMonth]=useState(now.getMonth());
   const[selYear,setSelYear]=useState(now.getFullYear());
   const[chartMode,setChartMode]=useState("receita");
+  const[exportingPdf,setExportingPdf]=useState(false);
   const h=createElement;
   // SAFE: sempre array, nunca crasha
   const safePats=Array.isArray(patients)?patients.filter(Boolean):[];
@@ -4143,8 +4464,22 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   function prevMonth(){if(selMonth===0){setSelMonth(11);setSelYear(y=>y-1);}else setSelMonth(m=>m-1);}
   function nextMonth(){if(selMonth===11){setSelMonth(0);setSelYear(y=>y+1);}else setSelMonth(m=>m+1);}
   const maxBarVal=procList.length===0?1:chartMode==="receita"?procList.reduce((a,[,d])=>d.total>a?d.total:a,1):procList.reduce((a,[,d])=>d.count>a?d.count:a,1);
+  // ── Dados para exportação em PDF (ranking de pacientes e formas de pagamento) ──
+  const rankingPatients=[...safePats]
+    .map(p=>({name:p.name,count:(p.sessions||[]).length,total:(p.sessions||[]).reduce((a,s)=>a+(Number(s.value)||0),0)}))
+    .sort((a,b)=>b.total-a.total).slice(0,5);
+  const pmMap={};
+  allS.filter(s=>s.paid).forEach(s=>{const pm=s.payMethod||"Outro";pmMap[pm]=(pmMap[pm]||0)+(Number(s.value)||0);});
+  const paymentMethods=Object.entries(pmMap).sort((a,b)=>b[1]-a[1]);
+  async function handleExportPDF(){
+    setExportingPdf(true);
+    try{
+      await generateRelatoriosPDF({selMonth,selYear,allSCount:allS.length,procCount:[...new Set(allS.map(s=>s.procedure))].length,fidPct,forecastRev,nextM,procList,catList,totalCat,monthlyData,peakMonths,lowMonths,rankingPatients,paymentMethods},{settings:settings||{}});
+    }catch(e){ alert(e.message||"Erro ao gerar o PDF. Tente novamente."); }
+    finally{ setExportingPdf(false); }
+  }
   return h("div",null,
-    h(SectionHeader,{title:"Relatórios",sub:"Análise completa da clínica"}),
+    h(SectionHeader,{title:"Relatórios",sub:"Análise completa da clínica",action:h(Btn,{variant:"ghost",onClick:handleExportPDF,disabled:exportingPdf,style:{fontSize:12,padding:"8px 16px"}},exportingPdf?"Gerando...":"📄 Exportar PDF")}),
     h(OrigemFaturamento,{patients:safePats,selMonth,selYear,parseDMY2}),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
       [{l:"Total Sessões",v:allS.length,c:P.gold},{l:"Procedimentos",v:[...new Set(allS.map(s=>s.procedure))].length,c:"#7aaed4"},{l:"Fidelização",v:fidPct+"%",c:P.green},{l:"Forecast "+MONTH_NAMES[nextM].slice(0,3),v:fmtCurr(forecastRev),c:P.accent}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:k.c}},k.v)))
@@ -5366,10 +5701,10 @@ function AppInner({ session, onLogout }) {
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
-            page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
+            page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
-            page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures}),
+            page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings}),
             page==="config"&&h(Configuracoes,{procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats})
           )
         )
