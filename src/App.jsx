@@ -4984,254 +4984,7 @@ function parseAnyDate(s){
   return null;
 }
 
-// ─── CAIXA DIÁRIO (abertura e fechamento de caixa) ───────────────────────────
-const CAIXA_METHODS=["Dinheiro","Pix","Cartão Débito","Cartão Crédito","Transferência"];
-const DOW_FULL=["Domingo","Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado"];
-
-function CaixaDiario({caixa=[],setCaixa,patients=[],incomes=[],settings}){
-  const h=createElement;
-  const safeCaixa=Array.isArray(caixa)?caixa.filter(Boolean):[];
-  const[selDate,setSelDate]=useState(todayISO());
-  const[showOpen,setShowOpen]=useState(false);
-  const[showClose,setShowClose]=useState(false);
-  const[showMov,setShowMov]=useState(false);
-  const[openForm,setOpenForm]=useState({openingAmount:"",openedBy:settings?.doctorName||"",openingNotes:""});
-  const[closeForm,setCloseForm]=useState(null);
-  const[movForm,setMovForm]=useState({type:"sangria",value:"",desc:""});
-
-  const isToday=selDate===todayISO();
-  const record=safeCaixa.find(c=>c&&c.date===selDate)||null;
-
-  function fmtDateLong(iso){
-    try{const d=new Date(iso+"T12:00:00");return `${DOW_FULL[d.getDay()]}, ${d.getDate()} de ${MONTH_NAMES[d.getMonth()]} de ${d.getFullYear()}`;}catch{return iso;}
-  }
-  function shiftDay(delta){const d=new Date(selDate+"T12:00:00");d.setDate(d.getDate()+delta);setSelDate(d.toISOString().slice(0,10));}
-
-  // ── Esperado pelo sistema no dia selecionado (sessões pagas + entradas extras pagas) ──
-  const allS=patients.flatMap(p=>(p.sessions||[]).filter(Boolean).map(s=>({...s,pname:p.name})));
-  const sameDay=dStr=>{const d=parseAnyDate(dStr);if(!d)return false;return d.getFullYear()===Number(selDate.slice(0,4))&&(d.getMonth()+1)===Number(selDate.slice(5,7))&&d.getDate()===Number(selDate.slice(8,10));};
-  const daySessions=allS.filter(s=>s.paid&&sameDay(s.date));
-  const dayIncomes=(incomes||[]).filter(i=>i&&!i.sessRef&&i.status==="Pago"&&sameDay(i.date));
-  const expectedByMethod={};
-  CAIXA_METHODS.forEach(m=>expectedByMethod[m]=0);
-  daySessions.forEach(s=>{const m=s.payMethod;if(expectedByMethod[m]!=null)expectedByMethod[m]+=Number(s.value)||0;});
-  dayIncomes.forEach(i=>{const m=i.payMethod;if(expectedByMethod[m]!=null)expectedByMethod[m]+=Number(i.value)||0;});
-  const totalRecebidoSistema=CAIXA_METHODS.reduce((a,m)=>a+expectedByMethod[m],0);
-
-  const movements=(record&&record.movements)||[];
-  const totalSuprimentos=movements.filter(m=>m.type==="suprimento").reduce((a,m)=>a+(Number(m.value)||0),0);
-  const totalSangrias=movements.filter(m=>m.type==="sangria").reduce((a,m)=>a+(Number(m.value)||0),0);
-  const saldoEsperadoDinheiro=(record?Number(record.openingAmount)||0:0)+expectedByMethod.Dinheiro+totalSuprimentos-totalSangrias;
-  const expectedFor=m=>m==="Dinheiro"?saldoEsperadoDinheiro:expectedByMethod[m];
-
-  const diffTotal=(record&&record.status==="fechado"&&record.countedByMethod)
-    ?CAIXA_METHODS.reduce((a,m)=>a+((Number(record.countedByMethod[m])||0)-expectedFor(m)),0)
-    :0;
-
-  // ── Ações ──
-  function abrirCaixa(){
-    const valor=Number(openForm.openingAmount)||0;
-    const novo={id:Date.now(),date:selDate,status:"aberto",openedAt:new Date().toISOString(),openedBy:openForm.openedBy||"",openingAmount:valor,openingNotes:openForm.openingNotes||"",movements:[],closedAt:null,closedBy:"",countedByMethod:null,closingNotes:""};
-    setCaixa(prev=>[...(Array.isArray(prev)?prev.filter(c=>c&&c.date!==selDate):[]),novo]);
-    setShowOpen(false);
-    setOpenForm({openingAmount:"",openedBy:settings?.doctorName||"",openingNotes:""});
-  }
-  function abrirFormFechar(){
-    const init={closedBy:settings?.doctorName||"",closingNotes:""};
-    CAIXA_METHODS.forEach(m=>{init[m]=String(Math.round(expectedFor(m)*100)/100);});
-    setCloseForm(init);
-    setShowClose(true);
-  }
-  function fecharCaixa(){
-    if(!record||!closeForm)return;
-    const counted={};
-    CAIXA_METHODS.forEach(m=>counted[m]=Number(closeForm[m])||0);
-    setCaixa(prev=>prev.map(c=>c.id!==record.id?c:{...c,status:"fechado",closedAt:new Date().toISOString(),closedBy:closeForm.closedBy||"",countedByMethod:counted,closingNotes:closeForm.closingNotes||""}));
-    setShowClose(false);
-  }
-  function reabrirCaixa(){
-    if(!record)return;
-    if(!window.confirm("Reabrir este caixa? Isso permite editar movimentos e refazer o fechamento."))return;
-    setCaixa(prev=>prev.map(c=>c.id!==record.id?c:{...c,status:"aberto",closedAt:null,countedByMethod:null}));
-  }
-  function excluirCaixa(){
-    if(!record)return;
-    if(!window.confirm("Excluir este registro de caixa? Essa ação não pode ser desfeita."))return;
-    setCaixa(prev=>prev.filter(c=>c.id!==record.id));
-  }
-  function addMovimento(){
-    if(!record)return;
-    const val=Number(movForm.value)||0;
-    if(val<=0)return;
-    const entry={id:Date.now(),type:movForm.type,value:val,desc:movForm.desc||"",time:new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})};
-    setCaixa(prev=>prev.map(c=>c.id!==record.id?c:{...c,movements:[...(c.movements||[]),entry]}));
-    setMovForm({type:"sangria",value:"",desc:""});
-    setShowMov(false);
-  }
-  function delMovimento(movId){
-    if(!record)return;
-    setCaixa(prev=>prev.map(c=>c.id!==record.id?c:{...c,movements:(c.movements||[]).filter(m=>m.id!==movId)}));
-  }
-
-  const historico=[...safeCaixa].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
-  const statusCfg=!record?{l:"Caixa Não Aberto",c:P.text3,bg:"transparent",icon:"⚪"}
-    :record.status==="aberto"?{l:"Caixa Aberto",c:P.green,bg:"rgba(122,173,138,.08)",icon:"🔓"}
-    :{l:"Caixa Fechado",c:P.gold,bg:"rgba(196,169,106,.08)",icon:"🔒"};
-
-  return h("div",null,
-    // ── Navegador de dia ──
-    h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:20,padding:"10px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12}},
-      h("button",{onClick:()=>shiftDay(-1),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"←"),
-      h("div",{style:{minWidth:240,textAlign:"center"}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},fmtDateLong(selDate)),
-        !isToday&&h("button",{onClick:()=>setSelDate(todayISO()),style:{fontSize:10,color:P.accent,background:"transparent",border:"none",cursor:"pointer",textDecoration:"underline",marginTop:2}},"voltar para hoje")
-      ),
-      h("button",{onClick:()=>shiftDay(1),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"→")
-    ),
-
-    // ── Card de status ──
-    h(Card,{style:{marginBottom:20,border:`1px solid ${statusCfg.c}44`,background:statusCfg.bg}},
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:14}},
-        h("div",{style:{display:"flex",alignItems:"center",gap:12}},
-          h("div",{style:{fontSize:28}},statusCfg.icon),
-          h("div",null,
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:statusCfg.c}},statusCfg.l),
-            record&&record.status==="aberto"&&h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},`Aberto às ${new Date(record.openedAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}${record.openedBy?" por "+record.openedBy:""} · Fundo inicial: ${fmtCurr(record.openingAmount)}`),
-            record&&record.status==="fechado"&&h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},`Fechado às ${new Date(record.closedAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}${record.closedBy?" por "+record.closedBy:""}`),
-            !record&&h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Nenhuma movimentação registrada para este dia ainda.")
-          )
-        ),
-        h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-          !record&&h(Btn,{onClick:()=>setShowOpen(true)},"🔓 Abrir Caixa"),
-          record&&record.status==="aberto"&&h(Btn,{variant:"ghost",onClick:()=>setShowMov(true),style:{fontSize:12}},"＋ Movimento"),
-          record&&record.status==="aberto"&&h(Btn,{onClick:abrirFormFechar},"🔒 Fechar Caixa"),
-          record&&record.status==="fechado"&&h(Btn,{variant:"ghost",onClick:reabrirCaixa,style:{fontSize:12}},"↺ Reabrir"),
-          record&&h(Btn,{variant:"danger",onClick:excluirCaixa,style:{fontSize:12}},"🗑")
-        )
-      )
-    ),
-
-    // ── KPIs ──
-    record&&h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}},
-      [
-        {l:"Fundo de Abertura",v:fmtCurr(record.openingAmount),c:P.accent},
-        {l:"Recebido no Dia",v:fmtCurr(totalRecebidoSistema),c:P.green},
-        {l:"Suprim. / Sangrias",v:`+${fmtCurr(totalSuprimentos)} / −${fmtCurr(totalSangrias)}`,c:P.yellow},
-        {l:"Saldo Esperado (Dinheiro)",v:fmtCurr(saldoEsperadoDinheiro),c:P.gold},
-      ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:k.c}},k.v)))
-    ),
-
-    // ── Conferência por método ──
-    record&&h(Card,{style:{marginBottom:20}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Conferência por Forma de Pagamento"),
-      h("div",{style:{display:"grid",gridTemplateColumns:"1.3fr .8fr .8fr .8fr",gap:8,fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",padding:"0 4px 8px",borderBottom:`1px solid ${P.border}`}},
-        h("div",null,"Método"),h("div",{style:{textAlign:"right"}},"Esperado"),h("div",{style:{textAlign:"right"}},"Contado"),h("div",{style:{textAlign:"right"}},"Diferença")
-      ),
-      CAIXA_METHODS.map(m=>{
-        const esperado=expectedFor(m);
-        const contado=(record.status==="fechado"&&record.countedByMethod)?Number(record.countedByMethod[m])||0:null;
-        const diff=contado!==null?contado-esperado:null;
-        return h("div",{key:m,style:{display:"grid",gridTemplateColumns:"1.3fr .8fr .8fr .8fr",gap:8,fontSize:13,padding:"8px 4px",borderBottom:`1px solid ${P.border}`,alignItems:"center"}},
-          h("div",{style:{color:P.text}},m),
-          h("div",{style:{textAlign:"right",color:P.text2}},fmtCurr(esperado)),
-          h("div",{style:{textAlign:"right",color:P.text2}},contado!==null?fmtCurr(contado):"—"),
-          h("div",{style:{textAlign:"right",fontWeight:600,color:diff===null?P.text3:diff===0?P.green:diff>0?P.accent:P.red}},diff===null?"—":(diff>0?"+":"")+fmtCurr(diff))
-        );
-      }),
-      record.status==="fechado"&&h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:12,paddingTop:12,borderTop:`1px solid ${P.border}`}},
-        h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},"Diferença Total"),
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:diffTotal===0?P.green:diffTotal>0?P.accent:P.red}},(diffTotal>0?"+":"")+fmtCurr(diffTotal))
-      ),
-      record.closingNotes&&h("div",{style:{fontSize:11,color:P.text3,marginTop:10,fontStyle:"italic"}},"📝 "+record.closingNotes)
-    ),
-
-    // ── Movimentos manuais ──
-    record&&h(Card,{style:{marginBottom:20}},
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Movimentos do Caixa"),
-        record.status==="aberto"&&h(Btn,{variant:"ghost",onClick:()=>setShowMov(true),style:{fontSize:12,padding:"6px 14px"}},"＋ Sangria / Suprimento")
-      ),
-      movements.length===0?h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"14px 0"}},"Nenhum movimento manual registrado."):
-      [...movements].sort((a,b)=>a.id-b.id).map(mv=>h("div",{key:mv.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
-        h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-          h("span",{style:{fontSize:15}},mv.type==="suprimento"?"🔺":"🔻"),
-          h("div",null,
-            h("div",{style:{fontSize:13,color:P.text}},mv.type==="suprimento"?"Suprimento":"Sangria"),
-            h("div",{style:{fontSize:10,color:P.text3}},mv.time+(mv.desc?" · "+mv.desc:""))
-          )
-        ),
-        h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:mv.type==="suprimento"?P.green:P.red}},(mv.type==="suprimento"?"+ ":"− ")+fmtCurr(mv.value)),
-          record.status==="aberto"&&h("button",{onClick:()=>delMovimento(mv.id),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:13}},"✕")
-        )
-      ))
-    ),
-
-    // ── Histórico de caixas ──
-    h(Card,null,
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Histórico de Caixas"),
-      historico.length===0?h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"14px 0"}},"Nenhum caixa registrado ainda."):
-      h("div",{style:{maxHeight:340,overflowY:"auto"}},
-        historico.map(c=>{
-          const dt=new Date(c.date+"T12:00:00");
-          const cfg=c.status==="aberto"?{l:"Aberto",col:P.green}:{l:"Fechado",col:P.gold};
-          return h("div",{key:c.id,onClick:()=>setSelDate(c.date),style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 4px",borderBottom:`1px solid ${P.border}`,cursor:"pointer"}},
-            h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-              h("div",{style:{fontSize:13,color:c.date===selDate?P.accent:P.text,fontWeight:c.date===selDate?600:400}},dt.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"})),
-              h("span",{style:{fontSize:10,padding:"1px 8px",borderRadius:10,background:cfg.col+"22",color:cfg.col,fontWeight:600}},cfg.l)
-            ),
-            h("div",{style:{fontSize:12,color:P.text3}},"Fundo: "+fmtCurr(c.openingAmount))
-          );
-        })
-      )
-    ),
-
-    // ── Modal: Abrir Caixa ──
-    h(Modal,{open:showOpen,onClose:()=>setShowOpen(false),title:"🔓 Abrir Caixa",width:460},
-      h("div",{style:{fontSize:12,color:P.text3,marginBottom:16}},fmtDateLong(selDate)),
-      h(Field,{label:"Fundo de Caixa (valor inicial em dinheiro)"},h(Inp,{type:"number",value:openForm.openingAmount,onChange:v=>setOpenForm(p=>({...p,openingAmount:v})),placeholder:"Ex: 100"})),
-      h(Field,{label:"Responsável pela Abertura"},h(Inp,{value:openForm.openedBy,onChange:v=>setOpenForm(p=>({...p,openedBy:v})),placeholder:"Nome"})),
-      h(Field,{label:"Observações"},h(TA,{value:openForm.openingNotes,onChange:v=>setOpenForm(p=>({...p,openingNotes:v})),placeholder:"Opcional",rows:2})),
-      h("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:8}},
-        h(Btn,{variant:"ghost",onClick:()=>setShowOpen(false)},"Cancelar"),
-        h(Btn,{onClick:abrirCaixa},"Confirmar Abertura")
-      )
-    ),
-
-    // ── Modal: Movimento ──
-    h(Modal,{open:showMov,onClose:()=>setShowMov(false),title:"Movimento de Caixa",width:440},
-      h(Field,{label:"Tipo de Movimento"},
-        h("div",{style:{display:"flex",gap:8}},
-          [{k:"sangria",l:"🔻 Sangria (retirada)"},{k:"suprimento",l:"🔺 Suprimento (reforço)"}].map(t=>h("button",{key:t.k,onClick:()=>setMovForm(p=>({...p,type:t.k})),style:{flex:1,padding:"8px 10px",borderRadius:8,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${movForm.type===t.k?P.rose:P.border}`,background:movForm.type===t.k?P.rose:"transparent",color:movForm.type===t.k?P.accent3:P.text2}},t.l))
-        )
-      ),
-      h(Field,{label:"Valor"},h(Inp,{type:"number",value:movForm.value,onChange:v=>setMovForm(p=>({...p,value:v})),placeholder:"Ex: 50"})),
-      h(Field,{label:"Descrição"},h(Inp,{value:movForm.desc,onChange:v=>setMovForm(p=>({...p,desc:v})),placeholder:"Ex: Troco para entregador"})),
-      h("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:8}},
-        h(Btn,{variant:"ghost",onClick:()=>setShowMov(false)},"Cancelar"),
-        h(Btn,{onClick:addMovimento,disabled:!(Number(movForm.value)>0)},"Registrar")
-      )
-    ),
-
-    // ── Modal: Fechar Caixa ──
-    h(Modal,{open:showClose,onClose:()=>setShowClose(false),title:"🔒 Fechar Caixa",width:560},
-      closeForm&&h("div",null,
-        h("div",{style:{fontSize:12,color:P.text3,marginBottom:16}},"Confira os valores esperados pelo sistema e informe o quanto foi efetivamente contado em cada forma de pagamento."),
-        h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
-          CAIXA_METHODS.map(m=>h(Field,{key:m,label:`${m} (esperado ${fmtCurr(expectedFor(m))})`},h(Inp,{type:"number",value:closeForm[m],onChange:v=>setCloseForm(p=>({...p,[m]:v})),placeholder:"0"})))
-        ),
-        h(Field,{label:"Responsável pelo Fechamento"},h(Inp,{value:closeForm.closedBy,onChange:v=>setCloseForm(p=>({...p,closedBy:v})),placeholder:"Nome"})),
-        h(Field,{label:"Observações de Fechamento"},h(TA,{value:closeForm.closingNotes,onChange:v=>setCloseForm(p=>({...p,closingNotes:v})),placeholder:"Opcional — ex: motivo de uma diferença",rows:2})),
-        h("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:8}},
-          h(Btn,{variant:"ghost",onClick:()=>setShowClose(false)},"Cancelar"),
-          h(Btn,{onClick:fecharCaixa},"Confirmar Fechamento")
-        )
-      )
-    )
-  );
-}
-
-function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings,goals={},setGoals,caixa,setCaixa}){
+function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings,goals={},setGoals}){
   const[showNewExp,setShowNewExp]=useState(false);
   const[editExp,setEditExp]=useState(null);
   const[showNewInc,setShowNewInc]=useState(false);
@@ -5337,27 +5090,6 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
     filterStatus?1:0,
   ].reduce((a,b)=>a+b,0);
 
-  // ── Caixa automático ────────────────────────────────────────────────────
-  const todayStr=todayISO();
-  const caixaHoje=Array.isArray(caixa)?caixa.find(c=>c&&c.date===todayStr)||null:null;
-  const todaySessions=allS.filter(s=>s.paid&&parseAnyDate(s.date)&&parseAnyDate(s.date).toDateString()===new Date().toDateString());
-  const todayIncomes=(incomes||[]).filter(i=>i&&!i.sessRef&&i.status==="Pago"&&parseAnyDate(i.date)&&parseAnyDate(i.date).toDateString()===new Date().toDateString());
-  const todayTotalSistema=todaySessions.reduce((a,s)=>a+Number(s.value||0),0)+todayIncomes.reduce((a,i)=>a+Number(i.value||0),0);
-
-  function abrirCaixaAuto(){
-    if(caixaHoje)return;
-    const novo={id:Date.now(),date:todayStr,status:"aberto",openedAt:new Date().toISOString(),openedBy:settings?.doctorName||"",openingAmount:0,openingNotes:"Abertura automática pelo sistema",movements:[],closedAt:null,closedBy:"",countedByMethod:null,closingNotes:""};
-    setCaixa(prev=>[...(Array.isArray(prev)?prev.filter(c=>c&&c.date!==todayStr):[]),novo]);
-  }
-  function fecharCaixaAuto(){
-    if(!caixaHoje||caixaHoje.status==="fechado")return;
-    const byMethod={};
-    CAIXA_METHODS.forEach(m=>byMethod[m]=0);
-    [...todaySessions,...todayIncomes].forEach(s=>{const m=s.payMethod;if(byMethod[m]!=null)byMethod[m]+=Number(s.value||0);});
-    const movs=caixaHoje.movements||[];
-    byMethod.Dinheiro=(byMethod.Dinheiro||0)+(movs.filter(m=>m.type==="suprimento").reduce((a,m)=>a+Number(m.value||0),0))-(movs.filter(m=>m.type==="sangria").reduce((a,m)=>a+Number(m.value||0),0))+Number(caixaHoje.openingAmount||0);
-    setCaixa(prev=>prev.map(c=>c.id!==caixaHoje.id?c:{...c,status:"fechado",closedAt:new Date().toISOString(),closedBy:settings?.doctorName||"",countedByMethod:byMethod,closingNotes:"Fechamento automático pelo sistema"}));
-  }
 
   const sessionsRec=monthSessions.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0);
   const incomesRec=monthIncomesExtra.filter(i=>i.status==="Pago").reduce((a,i)=>a+Number(i.value||0),0);
@@ -5451,24 +5183,6 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
       h("button",{onClick:nextMonth,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"→")
     ),
 
-    // ── Banner status do caixa de hoje ───────────────────────────────────────
-    isCurrentMonth&&h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,padding:"10px 16px",borderRadius:12,marginBottom:16,border:`1px solid ${caixaHoje?.status==="fechado"?P.gold+"55":caixaHoje?.status==="aberto"?P.green+"55":P.border}`,background:caixaHoje?.status==="fechado"?"rgba(196,169,106,.06)":caixaHoje?.status==="aberto"?"rgba(122,173,138,.06)":P.card}},
-      h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-        h("span",{style:{fontSize:20}},caixaHoje?.status==="fechado"?"🔒":caixaHoje?.status==="aberto"?"🔓":"⚪"),
-        h("div",null,
-          h("div",{style:{fontSize:13,fontWeight:600,color:caixaHoje?.status==="fechado"?P.gold:caixaHoje?.status==="aberto"?P.green:P.text3}},
-            caixaHoje?.status==="fechado"?"Caixa de hoje fechado":caixaHoje?.status==="aberto"?"Caixa de hoje aberto":"Caixa de hoje não aberto"
-          ),
-          h("div",{style:{fontSize:11,color:P.text3}},todayTotalSistema>0?`Sistema registrou ${fmtCurr(todayTotalSistema)} hoje`:"Sem entradas registradas hoje")
-        )
-      ),
-      h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-        !caixaHoje&&h("button",{onClick:abrirCaixaAuto,style:{fontSize:12,padding:"6px 14px",borderRadius:8,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:P.rose,border:"none",color:P.accent3,fontWeight:600}},"🔓 Abrir Caixa Hoje"),
-        caixaHoje?.status==="aberto"&&h("button",{onClick:fecharCaixaAuto,style:{fontSize:12,padding:"6px 14px",borderRadius:8,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"rgba(196,169,106,.15)",border:`1px solid ${P.gold}55`,color:P.gold,fontWeight:600}},"🔒 Fechar Caixa Automaticamente"),
-        h("button",{onClick:()=>setViewTab("caixa"),style:{fontSize:12,padding:"6px 14px",borderRadius:8,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid ${P.border}`,color:P.text2}},"Ver detalhes →")
-      )
-    ),
-
     setGoals&&h(MetaFaturamento,{received,selMonth,selYear,goals:goals||{},setGoals,prevMonthReceived}),
 
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
@@ -5492,12 +5206,11 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
     h("div",{style:{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}},
       h("button",{onClick:()=>setViewTab("resumo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="resumo"?P.rose:"transparent",border:`1px solid ${viewTab==="resumo"?P.rose:P.border}`,color:viewTab==="resumo"?P.accent3:P.text2}},"Entradas & Despesas"),
       h("button",{onClick:()=>setViewTab("fluxo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="fluxo"?P.rose:"transparent",border:`1px solid ${viewTab==="fluxo"?P.rose:P.border}`,color:viewTab==="fluxo"?P.accent3:P.text2}},"💵 Fluxo de Caixa"),
-      h("button",{onClick:()=>setViewTab("caixa"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="caixa"?P.rose:"transparent",border:`1px solid ${viewTab==="caixa"?P.rose:P.border}`,color:viewTab==="caixa"?P.accent3:P.text2}},"🗃️ Abertura/Fechamento"),
+
       h("button",{onClick:()=>setViewTab("dre"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="dre"?P.rose:"transparent",border:`1px solid ${viewTab==="dre"?P.rose:P.border}`,color:viewTab==="dre"?P.accent3:P.text2}},"📊 DRE & Pagamentos"),
       h("button",{onClick:()=>setViewTab("inadimplencia"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="inadimplencia"?P.rose:"transparent",border:`1px solid ${viewTab==="inadimplencia"?P.rose:P.border}`,color:viewTab==="inadimplencia"?P.accent3:P.text2}},"⚠ Inadimplência")
     ),
 
-    viewTab==="caixa"?h(CaixaDiario,{caixa,setCaixa,patients,incomes,settings}):
     viewTab==="fluxo"?h(Card,null,
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}},
         h("div",null,
@@ -7803,7 +7516,7 @@ function AppInner({ session, onLogout }) {
   });
   const[vouchersRaw,setVouchers,loadingVouchers]=useSupaTable("vouchers",[]);
   const[voucherTemplatesRaw,setVoucherTemplates,loadingVTpl]=useSupaTable("voucher_templates",DEFAULT_VOUCHER_TEMPLATES);
-  const[caixaRaw,setCaixa,loadingCaixa]=useSupaTable("caixa",[]);
+
 
   // ── Blindagem extra: garante que dados que devem ser array nunca virem outra coisa ──
   // (proteção redundante caso algum dado venha corrompido do Supabase)
@@ -7819,7 +7532,7 @@ function AppInner({ session, onLogout }) {
   const procCats=Array.isArray(procCatsRaw)?procCatsRaw:[];
   const vouchers=Array.isArray(vouchersRaw)?vouchersRaw:[];
   const voucherTemplates=(Array.isArray(voucherTemplatesRaw)&&voucherTemplatesRaw.length)?voucherTemplatesRaw:DEFAULT_VOUCHER_TEMPLATES;
-  const caixa=Array.isArray(caixaRaw)?caixaRaw:[];
+
   // Todos os useState ANTES de qualquer return condicional (regra dos hooks)
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
@@ -8050,7 +7763,7 @@ function AppInner({ session, onLogout }) {
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
-            page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,caixa,setCaixa}),
+            page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
             page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda}),
