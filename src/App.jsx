@@ -864,7 +864,7 @@ function FMPCompare({mapType,plan,realized}){
       h("span",{style:{color:P.text2}},labelOf(r.k)),
       h("span",{style:{textAlign:"right",color:"#7aaed4"}},r.planned>0?`${r.planned}${unit}`:"—"),
       h("span",{style:{textAlign:"right",color:P.green}},r.real>0?`${r.real}${unit}`:"—"),
-      h("span",{style:{textAlign:"right",color:r.diff===0?P.text3:r.diff>0?P.yellow:P.green,fontWeight:r.diff!==0?600:400}},r.diff===0?"="`${r.diff>0?"+":""}${r.diff}`)
+      h("span",{style:{textAlign:"right",color:r.diff===0?P.text3:r.diff>0?P.yellow:P.green,fontWeight:r.diff!==0?600:400}},r.diff===0?"=":(r.diff>0?"+":"")+String(r.diff))
     ))
   );
 }
