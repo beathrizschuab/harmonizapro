@@ -5487,6 +5487,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const[selYear,setSelYear]=useState(now.getFullYear());
   const[chartMode,setChartMode]=useState("receita");
   const[exportingPdf,setExportingPdf]=useState(false);
+  const[relTab,setRelTab]=useState("geral");
   const h=createElement;
   // SAFE: sempre array, nunca crasha
   const safePats=Array.isArray(patients)?patients.filter(Boolean):[];
@@ -5570,6 +5571,19 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   }
   return h("div",null,
     h(SectionHeader,{title:"Relatórios",sub:"Análise completa da clínica",action:h(Btn,{variant:"ghost",onClick:handleExportPDF,disabled:exportingPdf,style:{fontSize:12,padding:"8px 16px"}},exportingPdf?"Gerando...":"📄 Exportar PDF")}),
+
+    // ── Abas de relatório ──────────────────────────────────────────────────
+    h("div",{style:{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}},
+      [
+        {k:"geral",l:"📊 Geral"},
+        {k:"ltv",l:"💎 LTV Pacientes"},
+        {k:"churn",l:"📉 Churn & Retenção"},
+        {k:"unidades",l:"🏢 Por Unidade"},
+      ].map(t=>h("button",{key:t.k,onClick:()=>setRelTab(t.k),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:relTab===t.k?P.rose:"transparent",border:`1px solid ${relTab===t.k?P.rose:P.border}`,color:relTab===t.k?P.accent3:P.text2}},t.l))
+    ),
+
+    // ── ABA GERAL (conteúdo original) ─────────────────────────────────────
+    relTab==="geral"&&h("div",null,
     h(OrigemFaturamento,{patients:safePats,selMonth,selYear,parseDMY2}),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
       [{l:"Total Sessões",v:allS.length,c:P.gold},{l:"Procedimentos",v:[...new Set(allS.map(s=>s.procedure))].length,c:"#7aaed4"},{l:"Fidelização",v:fidPct+"%",c:P.green},{l:"Forecast "+MONTH_NAMES[nextM].slice(0,3),v:fmtCurr(forecastRev),c:P.accent}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:k.c}},k.v)))
@@ -5710,6 +5724,315 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
       h(Card,null,h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Ranking de Pacientes"),[...safePats].sort((a,b)=>(b.sessions||[]).reduce((s,x)=>s+(Number(x.value)||0),0)-(a.sessions||[]).reduce((s,x)=>s+(Number(x.value)||0),0)).slice(0,5).map((p,i)=>h("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:12,padding:"9px 0",borderBottom:"1px solid "+P.border}},h("div",{style:{fontSize:16,color:P.accent,fontFamily:"'Cormorant Garamond',serif",minWidth:22}},(i+1)+"°"),h(Avatar,{name:p.name,size:30,idx:i,src:p.profilePhoto}),h("div",{style:{flex:1}},h("div",{style:{fontSize:13,color:P.text}},p.name),h("div",{style:{fontSize:11,color:P.text3}},(p.sessions||[]).length+" sessões")),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.green}},fmtCurr((p.sessions||[]).reduce((a,s)=>a+(Number(s.value)||0),0)))))),
       h(PagamentosCard,{allS})
     )
+    ), // fim relTab==="geral"
+
+    // ── ABA LTV ───────────────────────────────────────────────────────────
+    relTab==="ltv"&&(()=>{
+      const ltvData=safePats.map(p=>{
+        const sess=p.sessions||[];
+        const totalGasto=sess.reduce((a,s)=>a+(Number(s.value)||0),0);
+        const totalPago=sess.filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0);
+        const ticketMedio=sess.length>0?Math.round(totalPago/Math.max(sess.filter(s=>s.paid).length,1)):0;
+        const datas=sess.map(s=>{const d=parseDMY2(s.date);return d;}).filter(Boolean).sort((a,b)=>a-b);
+        const primeiraSessao=datas[0]||null;
+        const ultimaSessao=datas[datas.length-1]||null;
+        const diasAtivo=primeiraSessao&&ultimaSessao?Math.floor((ultimaSessao-primeiraSessao)/864e5):0;
+        const mesesAtivo=Math.max(diasAtivo/30,1);
+        const freqMensal=sess.length>0?Math.round((sess.length/mesesAtivo)*10)/10:0;
+        // LTV projetado: ticket médio × frequência mensal × 12 meses
+        const ltvProjetado=Math.round(ticketMedio*freqMensal*12);
+        const {tier}=calcLoyalty(p,safePats);
+        return{...p,totalGasto,totalPago,ticketMedio,freqMensal,ltvProjetado,primeiraSessao,ultimaSessao,nSessoes:sess.length,tier};
+      }).filter(p=>p.nSessoes>0).sort((a,b)=>b.ltvProjetado-a.ltvProjetado);
+
+      const totalLTV=ltvData.reduce((a,p)=>a+p.ltvProjetado,0);
+      const avgLTV=ltvData.length>0?Math.round(totalLTV/ltvData.length):0;
+      const topLTV=ltvData[0]?.ltvProjetado||0;
+      const ltvTiers=[
+        {l:"Alto Valor",min:topLTV*0.6,c:"#c4a96a",bg:"rgba(196,169,106,.13)"},
+        {l:"Médio Valor",min:topLTV*0.3,c:"#7aaed4",bg:"rgba(122,174,212,.13)"},
+        {l:"Baixo Valor",min:0,c:P.text3,bg:"rgba(107,77,74,.1)"},
+      ];
+
+      return h("div",null,
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
+          [
+            {l:"Pacientes com histórico",v:String(ltvData.length),c:P.accent},
+            {l:"LTV médio projetado / ano",v:fmtCurr(avgLTV),c:P.gold},
+            {l:"Maior LTV individual",v:fmtCurr(topLTV),c:P.green},
+          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:k.c}},k.v)
+          ))
+        ),
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:14,padding:"10px 14px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
+          "💡 LTV projetado = ticket médio × frequência mensal × 12. Indica o valor anual esperado de cada paciente com base no comportamento atual."
+        ),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+          ltvData.map((p,i)=>{
+            const tier=ltvTiers.find(t=>p.ltvProjetado>=t.min)||ltvTiers[2];
+            const pct=topLTV>0?Math.round((p.ltvProjetado/topLTV)*100):0;
+            const ltvMes=Math.round(p.ltvProjetado/12);
+            return h(Card,{key:p.id,style:{border:`1px solid ${tier.c}33`}},
+              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}},
+                h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                  h("div",{style:{fontSize:15,color:P.accent,fontFamily:"'Cormorant Garamond',serif",minWidth:24,fontWeight:600}},(i+1)+"°"),
+                  h("div",{style:{width:34,height:34,borderRadius:"50%",background:`linear-gradient(135deg,${P.rose},${P.gold})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:P.accent3,flexShrink:0}},
+                    p.name.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()
+                  ),
+                  h("div",null,
+                    h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},p.name),
+                    h("div",{style:{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}},
+                      h("span",{style:{fontSize:10,padding:"1px 8px",borderRadius:10,background:p.tier.bg,color:p.tier.color,fontWeight:600}},p.tier.l),
+                      h("span",{style:{fontSize:10,padding:"1px 8px",borderRadius:10,background:tier.bg,color:tier.c,fontWeight:600}},tier.l)
+                    )
+                  )
+                ),
+                h("div",{style:{textAlign:"right"}},
+                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:tier.c}},fmtCurr(p.ltvProjetado)),
+                  h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},"~"+fmtCurr(ltvMes)+"/mês esperado")
+                )
+              ),
+              h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:10}},
+                [
+                  {l:"Total gasto",v:fmtCurr(p.totalPago)},
+                  {l:"Sessões",v:String(p.nSessoes)},
+                  {l:"Ticket médio",v:fmtCurr(p.ticketMedio)},
+                  {l:"Freq. mensal",v:p.freqMensal+"×"},
+                ].map(k=>h("div",{key:k.l,style:{textAlign:"center",padding:"6px 8px",background:P.bg3,borderRadius:7}},
+                  h("div",{style:{fontSize:9,color:P.text3,marginBottom:2,textTransform:"uppercase",letterSpacing:".06em"}},k.l),
+                  h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},k.v)
+                ))
+              ),
+              h("div",{style:{height:4,borderRadius:2,background:P.border,overflow:"hidden"}},
+                h("div",{style:{height:"100%",width:pct+"%",background:tier.c,borderRadius:2,transition:"width .4s"}})
+              ),
+              onSelectPatient&&h("div",{style:{textAlign:"right",marginTop:8}},
+                h("button",{onClick:()=>{onSelectPatient(p);onNav&&onNav("prontuario");},style:{fontSize:11,padding:"4px 12px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},"Ver prontuário →")
+              )
+            );
+          })
+        )
+      );
+    })(),
+
+    // ── ABA CHURN & RETENÇÃO ──────────────────────────────────────────────
+    relTab==="churn"&&(()=>{
+      const today=new Date();
+      // Classifica cada paciente
+      const CHURN_DIAS=120; // inativa após 4 meses sem sessão
+      const patsComSess=safePats.filter(p=>(p.sessions||[]).length>0);
+      const churnData=patsComSess.map(p=>{
+        const sess=[...(p.sessions||[])].sort((a,b)=>(parseDMY2(b.date)||new Date(0))-(parseDMY2(a.date)||new Date(0)));
+        const ultima=parseDMY2(sess[0]?.date)||null;
+        const diasSemVir=ultima?Math.floor((today-ultima)/864e5):999;
+        const status=diasSemVir>CHURN_DIAS?"churned":diasSemVir>60?"risco":"ativa";
+        const totalPago=sess.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0);
+        return{...p,ultima,diasSemVir,status,totalPago,nSessoes:sess.length};
+      });
+      const ativas=churnData.filter(p=>p.status==="ativa");
+      const risco=churnData.filter(p=>p.status==="risco");
+      const churned=churnData.filter(p=>p.status==="churned");
+      const taxaChurn=patsComSess.length>0?Math.round((churned.length/patsComSess.length)*100):0;
+      const taxaRetencao=100-taxaChurn;
+      // Novas por mês (últimos 6 meses)
+      const last6m=Array.from({length:6},(_,i)=>{
+        const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);
+        return{m:d.getMonth(),y:d.getFullYear(),label:MONTH_NAMES[d.getMonth()].slice(0,3)};
+      });
+      const newPerMonth=last6m.map(({m,y,label})=>{
+        const novas=safePats.filter(p=>{const d=parseDMY2(p.since);return d&&d.getMonth()===m&&d.getFullYear()===y;}).length;
+        return{label,novas};
+      });
+      const maxNovas=Math.max(...newPerMonth.map(x=>x.novas),1);
+
+      const StatusBadge=({status})=>{
+        const cfg={ativa:{l:"Ativa",c:P.green,bg:"rgba(122,173,138,.13)"},risco:{l:"Em risco",c:P.yellow,bg:"rgba(196,169,106,.13)"},churned:{l:"Inativa",c:P.red,bg:"rgba(192,112,112,.14)"}};
+        const s=cfg[status];
+        return h("span",{style:{fontSize:10,padding:"2px 9px",borderRadius:12,background:s.bg,color:s.c,fontWeight:600}},s.l);
+      };
+
+      return h("div",null,
+        // KPIs
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}},
+          [
+            {l:"Ativas",v:String(ativas.length),c:P.green},
+            {l:"Em risco (>60d)",v:String(risco.length),c:P.yellow},
+            {l:"Churned (>120d)",v:String(churned.length),c:P.red},
+            {l:"Taxa de retenção",v:taxaRetencao+"%",c:taxaRetencao>=70?P.green:taxaRetencao>=50?P.yellow:P.red},
+          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:k.c}},k.v)
+          ))
+        ),
+        // Gráfico de novas por mês
+        h(Card,{style:{marginBottom:18}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Novas Pacientes — Últimos 6 Meses"),
+          h("div",{style:{display:"flex",alignItems:"flex-end",gap:10,height:80,marginBottom:8}},
+            newPerMonth.map((m,i)=>{
+              const h2=maxNovas>0?Math.max((m.novas/maxNovas)*100,m.novas>0?10:0):0;
+              return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}},
+                h("div",{style:{fontSize:10,color:P.text3}},m.novas>0?m.novas:"—"),
+                h("div",{style:{width:"100%",height:66,display:"flex",alignItems:"flex-end"}},
+                  h("div",{style:{flex:1,height:h2+"%",background:`linear-gradient(to top,${P.rose2},rgba(92,31,50,.3))`,borderRadius:"3px 3px 0 0"}})
+                ),
+                h("div",{style:{fontSize:9,color:P.text3}},m.label)
+              );
+            })
+          )
+        ),
+        // Pacientes em risco — ação prioritária
+        risco.length>0&&h(Card,{style:{marginBottom:18,border:`1px solid ${P.yellow}44`}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+            h("div",null,
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"⚠ Pacientes em Risco de Churn"),
+              h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},"Sem visita entre 60 e 120 dias — reativar agora")
+            )
+          ),
+          h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+            risco.sort((a,b)=>b.diasSemVir-a.diasSemVir).map(p=>h("div",{key:p.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",borderRadius:9,background:P.bg3,border:`1px solid ${P.border}`}},
+              h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                h("div",{style:{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${P.rose},${P.gold})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:P.accent3}},
+                  p.name.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()
+                ),
+                h("div",null,
+                  h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},p.name),
+                  h("div",{style:{fontSize:11,color:P.text3}},`Última visita: ${p.ultima?p.ultima.toLocaleDateString("pt-BR"):"—"} · ${p.nSessoes} sessões · ${fmtCurr(p.totalPago)} gasto`)
+                )
+              ),
+              h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                h("span",{style:{fontSize:11,color:P.yellow,fontWeight:600}},p.diasSemVir+"d sem vir"),
+                p.pphone&&h("a",{href:`https://wa.me/55${(p.phone||"").replace(/\D/g,"")}?text=Olá ${p.name.split(" ")[0]}! Sentimos sua falta. Que tal agendar um retorno? 🌸`,target:"_blank",rel:"noopener noreferrer",style:{fontSize:11,padding:"5px 12px",borderRadius:8,background:"rgba(122,173,138,.15)",border:"1px solid rgba(122,173,138,.3)",color:P.green,textDecoration:"none",cursor:"pointer"}},"💬 Reativar")
+              )
+            ))
+          )
+        ),
+        // Churned
+        churned.length>0&&h(Card,{style:{border:`1px solid ${P.red}33`}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:4}},"Pacientes Inativas (>120 dias)"),
+          h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},`${churned.length} pacientes · ${fmtCurr(churned.reduce((a,p)=>a+p.totalPago,0))} em LTV histórico`),
+          h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+            churned.sort((a,b)=>b.totalPago-a.totalPago).slice(0,8).map(p=>h("div",{key:p.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderRadius:8,background:P.bg3}},
+              h("div",null,
+                h("div",{style:{fontSize:12,color:P.text}},p.name),
+                h("div",{style:{fontSize:10,color:P.text3}},`${p.diasSemVir}d ausente · ${fmtCurr(p.totalPago)} histórico`)
+              ),
+              h("div",{style:{display:"flex",gap:6,alignItems:"center"}},
+                h(StatusBadge,{status:"churned"}),
+                p.phone&&h("a",{href:`https://wa.me/55${(p.phone||"").replace(/\D/g,"")}?text=Olá ${p.name.split(" ")[0]}! 🌸 Faz um tempinho que não nos vemos. Temos novidades incríveis — que tal marcarmos uma avaliação?`,target:"_blank",rel:"noopener noreferrer",style:{fontSize:11,padding:"4px 10px",borderRadius:7,background:"rgba(122,173,138,.12)",border:"1px solid rgba(122,173,138,.25)",color:P.green,textDecoration:"none"}},"💬 Reconquistar")
+              )
+            ))
+          ),
+          churned.length>8&&h("div",{style:{textAlign:"center",marginTop:10,fontSize:12,color:P.text3}},`... e mais ${churned.length-8} pacientes inativas`)
+        )
+      );
+    })(),
+
+    // ── ABA POR UNIDADE ───────────────────────────────────────────────────
+    relTab==="unidades"&&(()=>{
+      const locationNames=[...new Set(allS.map(s=>s.location).filter(Boolean))];
+      if(locationNames.length===0)return h(Card,{style:{textAlign:"center",padding:40}},
+        h("div",{style:{fontSize:32,marginBottom:12}},"🏢"),
+        h("div",{style:{color:P.text3,fontSize:14}},"Nenhuma unidade registrada nas sessões.")
+      );
+      const unitData=locationNames.map(loc=>{
+        const sess=allS.filter(s=>s.location===loc);
+        const sessMonth=sess.filter(s=>{const d=parseDMY2(s.date);return d&&d.getMonth()===selMonth&&d.getFullYear()===selYear;});
+        const recTotal=sess.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0);
+        const recMes=sessMonth.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0);
+        const patsUnicas=new Set(sess.map(s=>s.pid)).size;
+        const patsUnicasMes=new Set(sessMonth.map(s=>s.pid)).size;
+        const ticketMedio=sessMonth.filter(s=>s.paid).length>0?Math.round(recMes/sessMonth.filter(s=>s.paid).length):0;
+        // procedimentos mais realizados nesta unidade no mês
+        const procMap2={};
+        sessMonth.forEach(s=>{if(s.procedure)procMap2[s.procedure]=(procMap2[s.procedure]||0)+1;});
+        const topProcs=Object.entries(procMap2).sort((a,b)=>b[1]-a[1]).slice(0,3);
+        // evolução 6 meses
+        const evo=last6.map(({m,y,label})=>{
+          const ss=sess.filter(s=>{const d=parseDMY2(s.date);return d&&d.getMonth()===m&&d.getFullYear()===y;});
+          return{label,rec:ss.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0),count:ss.length};
+        });
+        return{loc,sess,sessMonth,recTotal,recMes,patsUnicas,patsUnicasMes,ticketMedio,topProcs,evo};
+      });
+      const totalRecMes=unitData.reduce((a,u)=>a+u.recMes,0)||1;
+      const maxEvo=Math.max(...unitData.flatMap(u=>u.evo.map(e=>e.rec)),1);
+      const uColors=["#7aaed4","#9b7aad","#7aad8a","#c4a96a",P.rose];
+
+      return h("div",null,
+        // Seletor de mês
+        h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:20,padding:"10px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12}},
+          h("button",{onClick:prevMonth,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"←"),
+          h("div",{style:{minWidth:180,textAlign:"center"}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},`${MONTH_NAMES[selMonth]} ${selYear}`)
+          ),
+          h("button",{onClick:nextMonth,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"→")
+        ),
+        // Comparativo lado a lado
+        h("div",{style:{display:"grid",gridTemplateColumns:`repeat(${Math.min(unitData.length,2)},1fr)`,gap:18,marginBottom:18}},
+          unitData.map((u,ui)=>{
+            const col=uColors[ui%uColors.length];
+            const share=Math.round((u.recMes/totalRecMes)*100);
+            const maxUEvo=Math.max(...u.evo.map(e=>e.rec),1);
+            return h(Card,{key:u.loc,style:{border:`1px solid ${col}44`}},
+              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+                h("div",null,
+                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:col}},u.loc),
+                  h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},MONTH_NAMES[selMonth]+" "+selYear)
+                ),
+                h("div",{style:{textAlign:"right"}},
+                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:col}},fmtCurr(u.recMes)),
+                  h("div",{style:{fontSize:11,color:P.text3}},share+"% do faturamento total")
+                )
+              ),
+              // barra de share
+              h("div",{style:{height:4,borderRadius:2,background:P.border,overflow:"hidden",marginBottom:14}},
+                h("div",{style:{height:"100%",width:share+"%",background:col,borderRadius:2,transition:"width .4s"}})
+              ),
+              // métricas
+              h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}},
+                [
+                  {l:"Sessões",v:String(u.sessMonth.length)},
+                  {l:"Pacientes",v:String(u.patsUnicasMes)},
+                  {l:"Ticket médio",v:fmtCurr(u.ticketMedio)},
+                ].map(k=>h("div",{key:k.l,style:{textAlign:"center",padding:"8px",background:P.bg3,borderRadius:8}},
+                  h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}},k.l),
+                  h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},k.v)
+                ))
+              ),
+              // mini gráfico evo
+              h("div",{style:{marginBottom:12}},
+                h("div",{style:{fontSize:10,color:P.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".06em"}},"Últimos 6 meses"),
+                h("div",{style:{display:"flex",alignItems:"flex-end",gap:4,height:48}},
+                  u.evo.map((e,i)=>{
+                    const hPct=maxUEvo>0?Math.max((e.rec/maxUEvo)*100,e.count>0?8:0):0;
+                    const isLast=i===u.evo.length-1;
+                    return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}},
+                      h("div",{style:{width:"100%",height:38,display:"flex",alignItems:"flex-end"}},
+                        h("div",{style:{flex:1,height:hPct+"%",background:isLast?col:`${col}55`,borderRadius:"2px 2px 0 0"}})
+                      ),
+                      h("div",{style:{fontSize:8,color:P.text3}},e.label)
+                    );
+                  })
+                )
+              ),
+              // top procedimentos
+              u.topProcs.length>0&&h("div",null,
+                h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}},"Top procedimentos"),
+                u.topProcs.map(([proc,cnt],i)=>h("div",{key:proc,style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text2,padding:"3px 0"}},
+                  h("span",null,proc),
+                  h("span",{style:{color:col,fontWeight:600}},cnt+"x")
+                ))
+              ),
+              // total histórico
+              h("div",{style:{marginTop:12,paddingTop:10,borderTop:`1px solid ${P.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                h("span",{style:{fontSize:11,color:P.text3}},"Total histórico · "+u.patsUnicas+" pacientes distintas"),
+                h("span",{style:{fontSize:13,color:P.text,fontWeight:500}},fmtCurr(u.recTotal))
+              )
+            );
+          })
+        )
+      );
+    })()
   );
 }
 
