@@ -2279,6 +2279,74 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
     )
   );
 }
+// ─── AGENDA APPT ROW (usado na aba Agenda do prontuário) ─────────────────────
+function AgendaApptRow({a,setAgenda,patient,patients,setPatients,procedures,locations}){
+  const h=createElement;
+  const[open,setOpen]=useState(false);
+  const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
+  const hasHistory=(a.rescheduleHistory||[]).length>0;
+  const apptDate=new Date((a.date||"")+"T"+(a.time||"00:00"));
+  const isUpcoming=apptDate>=new Date();
+
+  function cycleStatus(){
+    if(!setAgenda)return;
+    setAgenda(prev=>prev.map(ap=>{
+      if(ap.id!==a.id)return ap;
+      const i=APPT_STATUS.indexOf(ap.status);
+      return{...ap,status:APPT_STATUS[(i+1)%APPT_STATUS.length]};
+    }));
+  }
+
+  function reschedule(){
+    const novaData=window.prompt("Reagendar para qual data? (AAAA-MM-DD)",a.date);
+    if(!novaData||!novaData.match(/^\d{4}-\d{2}-\d{2}$/))return;
+    const novaHora=window.prompt("Qual horário? (HH:MM)",a.time)||a.time;
+    const entry={from:`${a.date} ${a.time}`,to:`${novaData} ${novaHora}`,at:new Date().toLocaleString("pt-BR")};
+    if(setAgenda){
+      setAgenda(prev=>prev.map(ap=>ap.id!==a.id?ap:{...ap,date:novaData,time:novaHora,status:"Reagendado",rescheduleHistory:[...(ap.rescheduleHistory||[]),entry]}));
+    }
+  }
+
+  return h("div",{style:{marginBottom:10,background:P.bg3,border:`1px solid ${isUpcoming?"rgba(122,174,212,.3)":P.border}`,borderRadius:10,overflow:"hidden"}},
+    // Linha principal
+    h("div",{style:{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",flexWrap:"wrap"}},
+      // Indicador de status
+      h("div",{style:{width:4,alignSelf:"stretch",background:sc.color,borderRadius:2,flexShrink:0}}),
+      // Data/hora
+      h("div",{style:{minWidth:90,flexShrink:0}},
+        h("div",{style:{fontSize:13,color:P.accent,fontWeight:700}},apptDate.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})),
+        h("div",{style:{fontSize:11,color:P.text3}},a.time+(a.duration?" · "+a.duration:""))
+      ),
+      // Procedimento e local
+      h("div",{style:{flex:1,minWidth:120}},
+        h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},a.procedure||"—"),
+        a.location&&h("div",{style:{fontSize:11,color:P.text3}},"📍 "+a.location),
+        a.obs&&h("div",{style:{fontSize:11,color:P.text3,fontStyle:"italic",marginTop:2}},a.obs)
+      ),
+      // Status badge
+      h("button",{onClick:cycleStatus,title:"Clique para mudar status",style:{fontSize:10,padding:"3px 10px",borderRadius:12,color:sc.color,background:sc.bg,border:"none",cursor:setAgenda?"pointer":"default",fontFamily:"'DM Sans',sans-serif",whiteSpace:"nowrap"}},"↻ "+a.status),
+      // Valor (se houver)
+      a.value>0&&h("div",{style:{fontSize:13,color:P.text2,fontFamily:"'Cormorant Garamond',serif",whiteSpace:"nowrap"}},fmtCurr(a.value)),
+      // Ações
+      h("div",{style:{display:"flex",gap:5,flexShrink:0}},
+        setAgenda&&h("button",{onClick:reschedule,title:"Reagendar",style:{fontSize:11,color:"#9b7aad",background:"transparent",border:"1px solid rgba(155,122,173,.3)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"📅"),
+        hasHistory&&h("button",{onClick:()=>setOpen(v=>!v),style:{fontSize:11,color:"#9b7aad",background:"rgba(155,122,173,.08)",border:"1px solid rgba(155,122,173,.25)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},open?"▲ Histórico":"▼ Histórico ("+(a.rescheduleHistory||[]).length+"x)")
+      )
+    ),
+    // Histórico de reagendamentos (expansível)
+    open&&hasHistory&&h("div",{style:{borderTop:`1px solid ${P.border}`,padding:"10px 14px 12px 28px",background:"rgba(155,122,173,.04)"}},
+      h("div",{style:{fontSize:9.5,color:"#9b7aad",textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:8}},"Histórico de Reagendamentos"),
+      (a.rescheduleHistory||[]).map((r,i)=>h("div",{key:i,style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"5px 0",borderBottom:`1px solid ${P.border}`}},
+        h("span",{style:{fontSize:10,color:P.text3,minWidth:30}},"#"+(i+1)),
+        h("span",{style:{fontSize:11,color:P.red,background:"rgba(192,112,112,.1)",padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap"}},"De: "+r.from),
+        h("span",{style:{fontSize:12,color:P.text3}},"→"),
+        h("span",{style:{fontSize:11,color:P.green,background:"rgba(122,173,138,.1)",padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap"}},"Para: "+r.to),
+        h("span",{style:{fontSize:10,color:P.text3,marginLeft:"auto",whiteSpace:"nowrap"}},r.at)
+      ))
+    )
+  );
+}
+
 // ─── PATIENT DETAIL ───────────────────────────────────────────────────────────
 
 // ─── SKINCARE TAB COMPONENT ──────────────────────────────────────────────────
@@ -2427,7 +2495,7 @@ function IndicacoesTab({patient,patients,onSelectPatient,fmtCurr}){
   );
 }
 
-function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings}){
+function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings,agenda,setAgenda}){
   const _vTemplates=Array.isArray(voucherTemplates)&&voucherTemplates.length?voucherTemplates:DEFAULT_VOUCHER_TEMPLATES;
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
@@ -2474,7 +2542,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[icForm,setIcForm]=useState({type:"Edema",notes:"",conduct:"",date:""});
   const[planForm,setPlanForm]=useState({title:"",steps:"",notes:""});
   const totalSpent=(patient.sessions||[]).reduce((a,s)=>a+s.value,0);
-  const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"fichaRapida",l:"⚡ Ficha Rápida"},{k:"orcamentos",l:"💼 Orçamentos"},{k:"mapa",l:"🗺 Mapa"},{k:"porRegiao",l:"🧭 Por Região"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"},{k:"skincare",l:"🧴 Skincare"},{k:"indicacoes",l:"🤝 Indicações"}];
+  const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"fichaRapida",l:"⚡ Ficha Rápida"},{k:"agendaPaciente",l:"📅 Agenda"},{k:"orcamentos",l:"💼 Orçamentos"},{k:"mapa",l:"🗺 Mapa"},{k:"porRegiao",l:"🧭 Por Região"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"},{k:"skincare",l:"🧴 Skincare"},{k:"indicacoes",l:"🤝 Indicações"}];
   function upd(fn){setPatients(prev=>prev.map(p=>p.id===patient.id?fn(p):p));}
   // Sincroniza sessão → incomes (fonte única de verdade)
   function syncIncome(sess,patName){
@@ -3101,6 +3169,76 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     tab==="skincare"&&h(SkincareTab,{patient,upd,skincareConfig}),
         // ─── INDICAÇÕES TAB
     tab==="indicacoes"&&h(IndicacoesTab,{patient,patients,onSelectPatient,fmtCurr}),
+    // ─── ABA AGENDA DA PACIENTE ───────────────────────────────────────────────
+    tab==="agendaPaciente"&&(()=>{
+      const patAppts=(agenda||[])
+        .filter(a=>!a.blocked&&(a.patientName||"").trim().toLowerCase()===patient.name.trim().toLowerCase())
+        .sort((a,b)=>{
+          const da=new Date((a.date||"")+"T"+(a.time||"00:00"));
+          const db=new Date((b.date||"")+"T"+(b.time||"00:00"));
+          return db-da;
+        });
+      const now=new Date();
+      const upcoming=patAppts.filter(a=>new Date(a.date+"T"+(a.time||"00:00"))>=now);
+      const past=patAppts.filter(a=>new Date(a.date+"T"+(a.time||"00:00"))<now);
+      const statusCount={};
+      patAppts.forEach(a=>{statusCount[a.status]=(statusCount[a.status]||0)+1;});
+
+      function ApptRow(a){
+        const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
+        const hasHistory=(a.rescheduleHistory||[]).length>0;
+        return h(AgendaApptRow,{key:a.id,a,setAgenda,patient,patients,setPatients,procedures,locations});
+      }
+
+      const statsStyle={background:P.bg3,borderRadius:10,padding:"10px 14px",border:`1px solid ${P.border}`,textAlign:"center",flex:"1 1 80px"};
+      return h("div",null,
+        // ── Sumário numérico ──
+        h("div",{style:{display:"flex",gap:10,flexWrap:"wrap",marginBottom:18}},
+          h("div",{style:{...statsStyle,borderColor:"rgba(122,174,212,.3)"}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:"#7aaed4"}},upcoming.length),
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginTop:2}},"Próximas")
+          ),
+          h("div",{style:{...statsStyle,borderColor:"rgba(122,173,138,.3)"}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:P.green}},statusCount["Realizado"]||0),
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginTop:2}},"Realizadas")
+          ),
+          h("div",{style:{...statsStyle,borderColor:"rgba(155,122,173,.3)"}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:"#9b7aad"}},statusCount["Reagendado"]||0),
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginTop:2}},"Reagendadas")
+          ),
+          h("div",{style:{...statsStyle,borderColor:"rgba(192,112,112,.3)"}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:P.red}},(statusCount["Cancelado"]||0)+(statusCount["Faltou"]||0)),
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginTop:2}},"Canceladas / Faltou")
+          ),
+          h("div",{style:{...statsStyle}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:P.accent}},patAppts.length),
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginTop:2}},"Total")
+          )
+        ),
+        // ── Próximas consultas ──
+        upcoming.length>0&&h("div",{style:{marginBottom:20}},
+          h("div",{style:{fontSize:10,color:"#7aaed4",textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:10,display:"flex",alignItems:"center",gap:8}},
+            h("div",{style:{width:3,height:14,background:"#7aaed4",borderRadius:2}}),
+            "Próximas Consultas"
+          ),
+          upcoming.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,patient,patients,setPatients,procedures,locations}))
+        ),
+        // ── Histórico ──
+        h("div",null,
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:10,display:"flex",alignItems:"center",gap:8}},
+            h("div",{style:{width:3,height:14,background:P.border,borderRadius:2}}),
+            "Histórico"
+          ),
+          past.length===0
+            ?h("div",{style:{color:P.text3,fontSize:13,padding:"20px 0"}})
+            :past.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,patient,patients,setPatients,procedures,locations}))
+        ),
+        patAppts.length===0&&h(Card,{style:{textAlign:"center",padding:40}},
+          h("div",{style:{fontSize:32,marginBottom:12}},"📅"),
+          h("div",{style:{color:P.text3,fontSize:14}},"Nenhuma consulta registrada na agenda para esta paciente.")
+        )
+      );
+    })(),
         // ─── MODALS
     h(Modal,{open:showNewS,onClose:()=>{setShowNewS(false);setEditSess(null);},title:editSess?"✎ Editar Sessão":"✦ Nova Sessão",width:620},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
@@ -5201,7 +5339,7 @@ function AppInner({ session, onLogout }) {
             page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,proceduresFull:procedures,locations:locationNames}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
-            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData}),
+            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
