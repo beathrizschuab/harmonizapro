@@ -1939,7 +1939,8 @@ function IndicacoesTab({patient,patients,onSelectPatient,fmtCurr}){
   );
 }
 
-function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers}){
+function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates}){
+  const _vTemplates=Array.isArray(voucherTemplates)&&voucherTemplates.length?voucherTemplates:DEFAULT_VOUCHER_TEMPLATES;
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
   const[editSess,setEditSess]=useState(null);
@@ -2634,7 +2635,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       h("div",{style:{marginBottom:16}},
         h("div",{style:{fontSize:11,color:P.text3,marginBottom:8,textTransform:"uppercase",letterSpacing:".08em"}},"Escolha o template"),
         h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-          VOUCHER_TEMPLATES.map(t=>h("button",{key:t.k,onClick:()=>qvfv("template")(t.k),style:{padding:"8px 14px",borderRadius:10,fontSize:12,cursor:"pointer",border:`2px solid ${qvForm.template===t.k?P.accent:"transparent"}`,background:t.grad,color:"#fff",fontFamily:"'DM Sans',sans-serif"}},t.l))
+          _vTemplates.map(t=>h("button",{key:t.k,onClick:()=>qvfv("template")(t.k),style:{padding:"8px 14px",borderRadius:10,fontSize:12,cursor:"pointer",border:`2px solid ${qvForm.template===t.k?P.accent:"transparent"}`,background:t.grad,color:"#fff",fontFamily:"'DM Sans',sans-serif"}},t.l))
         )
       ),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
@@ -3895,11 +3896,12 @@ function App(){
 }
 
 // ─── VOUCHER / GIFT CARD ──────────────────────────────────────────────────────
-const VOUCHER_TEMPLATES=[
+const DEFAULT_VOUCHER_TEMPLATES=[
   {k:"aniversario",l:"🎂 Aniversário",grad:"linear-gradient(135deg,#d88aa8,#f0c987)"},
   {k:"namorados",l:"💕 Dia dos Namorados",grad:"linear-gradient(135deg,#c0617e,#e0937a)"},
   {k:"natal",l:"🎄 Natal",grad:"linear-gradient(135deg,#3f7a5e,#c0617e)"},
   {k:"maes",l:"💐 Dia das Mães",grad:"linear-gradient(135deg,#d49bc4,#f3d39e)"},
+  {k:"indicacao",l:"🤝 Indicação",grad:"linear-gradient(135deg,#7aaed4,#9b7aad)"},
   {k:"classico",l:"✦ Clássico HarmonizaPro",grad:`linear-gradient(135deg,${P.rose},${P.gold})`},
 ];
 function genVoucherCode(){
@@ -3930,11 +3932,12 @@ const VOUCHER_STATUS_CFG={
   cancelado:{l:"Cancelado",color:P.red,bg:"rgba(192,112,112,.08)"},
 };
 
-function VoucherCard({v,onClick}){
+function VoucherCard({v,onClick,templates}){
   const h=createElement;
   const st=voucherStatus(v);
   const cfg=VOUCHER_STATUS_CFG[st];
-  const tpl=VOUCHER_TEMPLATES.find(t=>t.k===v.template)||VOUCHER_TEMPLATES[4];
+  const tplList=Array.isArray(templates)&&templates.length?templates:DEFAULT_VOUCHER_TEMPLATES;
+  const tpl=tplList.find(t=>t.k===v.template)||tplList[tplList.length-1];
   const saldo=v.type==="valor"?Number(v.value)-Number(v.usedValue||0):null;
   return h(Card,{onClick,style:{cursor:"pointer",padding:0,overflow:"hidden",opacity:(st==="usado"||st==="cancelado")?.65:1}},
     h("div",{style:{background:tpl.grad,padding:"14px 16px",color:"#fff"}},
@@ -3962,7 +3965,8 @@ function VoucherCard({v,onClick}){
   );
 }
 
-function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav}){
+function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav,voucherTemplates,setVoucherTemplates}){
+  const templates=Array.isArray(voucherTemplates)&&voucherTemplates.length?voucherTemplates:DEFAULT_VOUCHER_TEMPLATES;
   const h=createElement;
   const[showNew,setShowNew]=useState(false);
   const[viewing,setViewing]=useState(null);
@@ -3971,6 +3975,29 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav}){
   const[redeemValue,setRedeemValue]=useState("");
   const[filterStatus,setFilterStatus]=useState("todos");
   const[search,setSearch]=useState("");
+  const[showTplMgr,setShowTplMgr]=useState(false);
+  const TPL_COLORS=[
+    "linear-gradient(135deg,#7aaed4,#9b7aad)","linear-gradient(135deg,#d88aa8,#f0c987)",
+    "linear-gradient(135deg,#c0617e,#e0937a)","linear-gradient(135deg,#3f7a5e,#c0617e)",
+    "linear-gradient(135deg,#d49bc4,#f3d39e)","linear-gradient(135deg,#7aad8a,#c4a96a)",
+    `linear-gradient(135deg,${P.rose},${P.gold})`,"linear-gradient(135deg,#9b7aad,#d88aa8)",
+  ];
+  const blankTpl={emoji:"🎁",label:"",grad:TPL_COLORS[0]};
+  const[tplForm,setTplForm]=useState(blankTpl);
+  const tplfv=k=>v=>setTplForm(p=>({...p,[k]:v}));
+  function addTemplate(){
+    if(!tplForm.label.trim()){alert("Dê um nome para o tipo de voucher.");return;}
+    const k=tplForm.label.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"")||("tipo_"+Date.now());
+    if(templates.some(t=>t.k===k)){alert("Já existe um tipo com esse nome.");return;}
+    const nt={k,l:(tplForm.emoji?tplForm.emoji+" ":"")+tplForm.label.trim(),grad:tplForm.grad};
+    setVoucherTemplates(prev=>[...(Array.isArray(prev)&&prev.length?prev:DEFAULT_VOUCHER_TEMPLATES),nt]);
+    setTplForm(blankTpl);
+  }
+  function removeTemplate(k){
+    if(templates.length<=1){alert("É preciso manter ao menos um tipo de voucher.");return;}
+    if(!window.confirm("Remover este tipo de voucher? Vouchers já criados com ele continuarão existindo."))return;
+    setVoucherTemplates(prev=>(Array.isArray(prev)&&prev.length?prev:DEFAULT_VOUCHER_TEMPLATES).filter(t=>t.k!==k));
+  }
 
   const blank={template:"classico",toName:"",fromName:"",message:"",validUntil:"",type:"valor",value:"",procedures:[],procInput:""};
   const[form,setForm]=useState(blank);
@@ -4051,7 +4078,10 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav}){
   const filterBtns=[{k:"todos",l:"Todos"},{k:"ativo",l:"Ativos"},{k:"parcial",l:"Parciais"},{k:"usado",l:"Utilizados"},{k:"expirado",l:"Expirados"},{k:"cancelado",l:"Cancelados"}];
 
   return h("div",null,
-    h(SectionHeader,{title:"Vouchers / Gift Cards",sub:`${stats.total} vouchers criados`,action:h(Btn,{onClick:()=>setShowNew(true)},"🎁 Novo Voucher")}),
+    h(SectionHeader,{title:"Vouchers / Gift Cards",sub:`${stats.total} vouchers criados`,action:h("div",{style:{display:"flex",gap:8}},
+      h(Btn,{variant:"ghost",onClick:()=>setShowTplMgr(true)},"🎨 Tipos de Voucher"),
+      h(Btn,{onClick:()=>setShowNew(true)},"🎁 Novo Voucher")
+    )}),
 
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
       [{l:"Total Emitidos",v:stats.total,c:P.accent},{l:"Ativos",v:stats.ativos,c:P.green},{l:"Utilizados",v:stats.usados,c:P.text3},{l:"Em Circulação",v:fmtCurr(stats.valorEmCirculacao),c:P.gold}].map(k=>
@@ -4103,7 +4133,7 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav}){
       h("div",{style:{marginBottom:16}},
         h("div",{style:{fontSize:11,color:P.text3,marginBottom:8,textTransform:"uppercase",letterSpacing:".08em"}},"Escolha o template"),
         h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-          VOUCHER_TEMPLATES.map(t=>h("button",{key:t.k,onClick:()=>fv("template")(t.k),style:{padding:"8px 14px",borderRadius:10,fontSize:12,cursor:"pointer",border:`2px solid ${form.template===t.k?P.accent:"transparent"}`,background:t.grad,color:"#fff",fontFamily:"'DM Sans',sans-serif"}},t.l))
+          templates.map(t=>h("button",{key:t.k,onClick:()=>fv("template")(t.k),style:{padding:"8px 14px",borderRadius:10,fontSize:12,cursor:"pointer",border:`2px solid ${form.template===t.k?P.accent:"transparent"}`,background:t.grad,color:"#fff",fontFamily:"'DM Sans',sans-serif"}},t.l))
         )
       ),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
@@ -4142,7 +4172,7 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav}){
     viewing&&h(Modal,{open:!!viewing,onClose:()=>setViewing(null),title:"Detalhes do Voucher",width:480},
       (()=>{
         const v=enriched.find(x=>x.id===viewing.id)||viewing;
-        const tpl=VOUCHER_TEMPLATES.find(t=>t.k===v.template)||VOUCHER_TEMPLATES[4];
+        const tpl=templates.find(t=>t.k===v.template)||templates[templates.length-1];
         const st=voucherStatus(v); const cfg=VOUCHER_STATUS_CFG[st];
         return h("div",null,
           h("div",{style:{background:tpl.grad,borderRadius:12,padding:20,color:"#fff",marginBottom:16,textAlign:"center"}},
@@ -4194,6 +4224,33 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav}){
         h(Btn,{variant:"ghost",onClick:()=>setRedeemTarget(null)},"Cancelar"),
         h(Btn,{onClick:confirmRedeem},"Confirmar Resgate")
       )
+    ),
+
+    // ── Modal: Gerenciar Tipos de Voucher ───────────────────────────────────
+    setVoucherTemplates&&h(Modal,{open:showTplMgr,onClose:()=>setShowTplMgr(false),title:"🎨 Tipos de Voucher",width:520},
+      h("div",{style:{fontSize:12,color:P.text3,marginBottom:16}},"Crie novos tipos de voucher (ex: Indicação, Black Friday, Boas-vindas) além dos modelos padrão."),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:20,maxHeight:240,overflowY:"auto"}},
+        templates.map(t=>h("div",{key:t.k,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+            h("div",{style:{width:28,height:28,borderRadius:6,background:t.grad,flexShrink:0}}),
+            h("span",{style:{fontSize:13,color:P.text}},t.l)
+          ),
+          h("button",{onClick:()=>removeTemplate(t.k),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.25)",borderRadius:6,padding:"3px 9px",cursor:"pointer"}},"Remover")
+        ))
+      ),
+      h("div",{style:{paddingTop:14,borderTop:`1px solid ${P.border}`}},
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:8,textTransform:"uppercase",letterSpacing:".08em"}},"Novo tipo"),
+        h("div",{style:{display:"flex",gap:8,marginBottom:10}},
+          h("div",{style:{width:60,flexShrink:0}},h(Inp,{value:tplForm.emoji,onChange:tplfv("emoji"),placeholder:"🎁"})),
+          h("div",{style:{flex:1}},h(Inp,{value:tplForm.label,onChange:tplfv("label"),placeholder:"Ex: Indicação, Black Friday, Boas-vindas..."}))
+        ),
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:6}},"Cor do template"),
+        h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}},
+          TPL_COLORS.map((g,i)=>h("button",{key:i,onClick:()=>tplfv("grad")(g),style:{width:32,height:32,borderRadius:8,background:g,border:`2px solid ${tplForm.grad===g?P.accent:"transparent"}`,cursor:"pointer"}}))
+        ),
+        h("div",{style:{display:"flex",justifyContent:"flex-end"}},h(Btn,{onClick:addTemplate},"＋ Adicionar Tipo"))
+      ),
+      h("div",{style:{display:"flex",justifyContent:"flex-end",marginTop:18}},h(Btn,{variant:"ghost",onClick:()=>setShowTplMgr(false)},"Fechar"))
     )
   );
 }
@@ -4220,6 +4277,7 @@ function AppInner({ session, onLogout }) {
     frequencias:["Diário","Noturno","2x por semana","Semanal","Mensal","Conforme necessário"]
   });
   const[vouchersRaw,setVouchers,loadingVouchers]=useSupaTable("vouchers",[]);
+  const[voucherTemplatesRaw,setVoucherTemplates,loadingVTpl]=useSupaTable("voucher_templates",DEFAULT_VOUCHER_TEMPLATES);
 
   // ── Blindagem extra: garante que dados que devem ser array nunca virem outra coisa ──
   // (proteção redundante caso algum dado venha corrompido do Supabase)
@@ -4234,6 +4292,7 @@ function AppInner({ session, onLogout }) {
   const returnRules=Array.isArray(returnRulesRaw)?returnRulesRaw:[];
   const procCats=Array.isArray(procCatsRaw)?procCatsRaw:[];
   const vouchers=Array.isArray(vouchersRaw)?vouchersRaw:[];
+  const voucherTemplates=(Array.isArray(voucherTemplatesRaw)&&voucherTemplatesRaw.length)?voucherTemplatesRaw:DEFAULT_VOUCHER_TEMPLATES;
   // Todos os useState ANTES de qualquer return condicional (regra dos hooks)
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
@@ -4460,11 +4519,11 @@ function AppInner({ session, onLogout }) {
             page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,proceduresFull:procedures,locations:locationNames}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
-            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers")}),
+            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
-            page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav}),
+            page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
             page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures}),
             page==="config"&&h(Configuracoes,{procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats})
           )
