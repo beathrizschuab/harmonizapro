@@ -5578,13 +5578,15 @@ function PagamentosCard({allS}){
   );
 }
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
-function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = [], settings}){
+function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = [], settings, agenda = []}){
   const now=new Date();
   const[selMonth,setSelMonth]=useState(now.getMonth());
   const[selYear,setSelYear]=useState(now.getFullYear());
   const[chartMode,setChartMode]=useState("receita");
   const[exportingPdf,setExportingPdf]=useState(false);
   const[relTab,setRelTab]=useState("geral");
+  const[hmPeriod,setHmPeriod]=useState("6m");
+  const[hmMetric,setHmMetric]=useState("atend");
   const h=createElement;
   // SAFE: sempre array, nunca crasha
   const safePats=Array.isArray(patients)?patients.filter(Boolean):[];
@@ -5673,6 +5675,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     h("div",{style:{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}},
       [
         {k:"geral",l:"📊 Geral"},
+        {k:"horarios",l:"🗓️ Horários"},
         {k:"ltv",l:"💎 LTV Pacientes"},
         {k:"churn",l:"📉 Churn & Retenção"},
         {k:"unidades",l:"🏢 Por Unidade"},
@@ -5822,6 +5825,144 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
       h(PagamentosCard,{allS})
     )
     ), // fim relTab==="geral"
+
+    // ── ABA HORÁRIOS (Mapa de Horários Mais Produtivos) ─────────────────────
+    relTab==="horarios"&&(()=>{
+      const safeAgenda=Array.isArray(agenda)?agenda.filter(Boolean):[];
+      const HM_PERIODS=[{k:"3m",l:"3 meses",days:90},{k:"6m",l:"6 meses",days:180},{k:"12m",l:"12 meses",days:365},{k:"all",l:"Todo período",days:null}];
+      const DOW_LABELS=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+      const HM_HOURS=[7,8,9,10,11,12,13,14,15,16,17,18,19,20];
+
+      const period=HM_PERIODS.find(p=>p.k===hmPeriod)||HM_PERIODS[1];
+      const cutoff=period.days?(()=>{const d=new Date();d.setDate(d.getDate()-period.days);return d;})():null;
+
+      const hmAppts=safeAgenda.filter(a=>{
+        if(!a||a.blocked||!a.date||!a.time)return false;
+        if(a.status==="Cancelado")return false;
+        if(cutoff){try{const d=new Date(a.date+"T12:00");if(isNaN(d)||d<cutoff)return false;}catch{return false;}}
+        return true;
+      });
+
+      // matriz dia da semana (0=Dom..6=Sáb) x hora
+      const matrix={};
+      DOW_LABELS.forEach((_,dow)=>{matrix[dow]={};HM_HOURS.forEach(hr=>{matrix[dow][hr]={count:0,revenue:0};});});
+      hmAppts.forEach(a=>{
+        try{
+          const d=new Date(a.date+"T12:00");
+          if(isNaN(d))return;
+          const dow=d.getDay();
+          const hr=parseInt(String(a.time).split(":")[0],10);
+          if(isNaN(hr)||!matrix[dow][hr])return;
+          matrix[dow][hr].count+=1;
+          if(a.status==="Realizado")matrix[dow][hr].revenue+=(Number(a.value)||0);
+        }catch{}
+      });
+
+      let maxCount=0,maxRevenue=0;
+      DOW_LABELS.forEach((_,dow)=>HM_HOURS.forEach(hr=>{const c=matrix[dow][hr];if(c.count>maxCount)maxCount=c.count;if(c.revenue>maxRevenue)maxRevenue=c.revenue;}));
+
+      const dowAgg=DOW_LABELS.map((label,dow)=>{
+        let count=0,revenue=0;
+        HM_HOURS.forEach(hr=>{count+=matrix[dow][hr].count;revenue+=matrix[dow][hr].revenue;});
+        return{dow,label,count,revenue};
+      });
+      const hourAgg=HM_HOURS.map(hr=>{
+        let count=0,revenue=0;
+        DOW_LABELS.forEach((_,dow)=>{count+=matrix[dow][hr].count;revenue+=matrix[dow][hr].revenue;});
+        return{hr,count,revenue};
+      });
+      const bestDow=[...dowAgg].sort((a,b)=>b.count-a.count)[0];
+      const bestHour=[...hourAgg].sort((a,b)=>b.count-a.count)[0];
+
+      const hmFlat=[];
+      DOW_LABELS.forEach((label,dow)=>HM_HOURS.forEach(hr=>{const c=matrix[dow][hr];if(c.count>0)hmFlat.push({dow,label,hr,count:c.count,revenue:c.revenue});}));
+      const weakSlots=[...hmFlat].sort((a,b)=>a.count-b.count).slice(0,5);
+      const topSlots=[...hmFlat].sort((a,b)=>hmMetric==="receita"?b.revenue-a.revenue:b.count-a.count).slice(0,5);
+
+      const totalCount=hmAppts.length;
+      const totalRevenue=hmAppts.filter(a=>a.status==="Realizado").reduce((a,x)=>a+(Number(x.value)||0),0);
+
+      return h("div",null,
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18,flexWrap:"wrap",gap:12}},
+          h("div",null,
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text}},"Mapa de Horários Mais Produtivos"),
+            h("div",{style:{fontSize:12,color:P.text3,marginTop:2,maxWidth:480}},"Atendimentos e receita por dia da semana e horário — use para decidir quando abrir mais vagas na agenda ou fazer promoções nos horários mais vazios.")
+          ),
+          h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+            h("div",{style:{display:"flex",gap:6}},HM_PERIODS.map(p=>h("button",{key:p.k,onClick:()=>setHmPeriod(p.k),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${hmPeriod===p.k?P.rose:P.border}`,background:hmPeriod===p.k?P.rose:"transparent",color:hmPeriod===p.k?P.accent3:P.text2}},p.l))),
+            h("div",{style:{display:"flex",gap:6}},[{k:"atend",l:"📅 Atendimentos"},{k:"receita",l:"💰 Receita"}].map(m=>h("button",{key:m.k,onClick:()=>setHmMetric(m.k),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontWeight:hmMetric===m.k?600:400,border:`1px solid ${hmMetric===m.k?P.gold:P.border}`,background:hmMetric===m.k?P.gold:"transparent",color:hmMetric===m.k?P.bg:P.text2}},m.l)))
+          )
+        ),
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}},
+          [
+            {l:"Atendimentos no período",v:String(totalCount),c:P.accent},
+            {l:"Receita realizada",v:fmtCurr(totalRevenue),c:P.green},
+            {l:"Dia mais procurado",v:bestDow&&bestDow.count>0?bestDow.label:"—",c:P.gold},
+            {l:"Horário mais procurado",v:bestHour&&bestHour.count>0?bestHour.hr+"h":"—",c:"#7aaed4"},
+          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:k.c}},k.v)))
+        ),
+        hmFlat.length===0?h(Card,{style:{textAlign:"center",padding:40,marginBottom:22}},
+          h("div",{style:{fontSize:32,marginBottom:12}},"🗓️"),
+          h("div",{style:{color:P.text3,fontSize:14}},"Nenhum agendamento registrado no período selecionado.")
+        ):
+        h(Card,{style:{marginBottom:22,overflowX:"auto"}},
+          h("div",{style:{minWidth:760}},
+            h("div",{style:{display:"grid",gridTemplateColumns:`56px repeat(${HM_HOURS.length},1fr)`,gap:3,marginBottom:4}},
+              h("div",null),
+              HM_HOURS.map(hr=>h("div",{key:hr,style:{textAlign:"center",fontSize:10,color:P.text3}},hr+"h"))
+            ),
+            DOW_LABELS.map((label,dow)=>h("div",{key:dow,style:{display:"grid",gridTemplateColumns:`56px repeat(${HM_HOURS.length},1fr)`,gap:3,marginBottom:3}},
+              h("div",{style:{fontSize:11,color:P.text2,display:"flex",alignItems:"center",fontWeight:500}},label),
+              HM_HOURS.map(hr=>{
+                const cell=matrix[dow][hr];
+                const max=hmMetric==="receita"?maxRevenue:maxCount;
+                const val=hmMetric==="receita"?cell.revenue:cell.count;
+                const intensity=max>0?val/max:0;
+                const baseColor=hmMetric==="receita"?"196,169,106":"92,31,50";
+                const bg=val>0?`rgba(${baseColor},${(0.12+intensity*0.78).toFixed(2)})`:P.bg3;
+                const isBest=max>0&&val===max&&val>0;
+                return h("div",{key:hr,title:`${label} ${hr}h — ${cell.count} atendimento(s) · ${fmtCurr(cell.revenue)}`,style:{height:30,borderRadius:5,background:bg,border:isBest?`1px solid ${P.accent3}`:"1px solid transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9.5,color:intensity>0.45?P.bg:P.text3,fontWeight:intensity>0.45?700:400}},
+                  val>0?(hmMetric==="receita"?(val>=1000?Math.round(val/1000)+"k":String(Math.round(val))):String(val)):""
+                );
+              })
+            )),
+            h("div",{style:{display:"flex",alignItems:"center",gap:10,marginTop:14,fontSize:10,color:P.text3,flexWrap:"wrap"}},
+              h("span",null,"Menos"),
+              h("div",{style:{display:"flex",gap:2}},[0.12,0.3,0.5,0.7,0.9].map((op,i)=>h("span",{key:i,style:{width:16,height:10,borderRadius:2,display:"inline-block",background:`rgba(${hmMetric==="receita"?"196,169,106":"92,31,50"},${op})`}}))),
+              h("span",null,"Mais"),
+              h("span",{style:{marginLeft:"auto",fontStyle:"italic"}},hmMetric==="receita"?"Receita considera apenas atendimentos com status Realizado":"Atendimentos = agendamentos não cancelados no período")
+            )
+          )
+        ),
+        h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
+          h(Card,null,
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:4}},"🔥 Top 5 Horários"),
+            h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},hmMetric==="receita"?"Maior receita realizada por dia/horário":"Maior volume de atendimentos por dia/horário"),
+            topSlots.length===0?h("div",{style:{fontSize:12,color:P.text3,textAlign:"center",padding:"16px 0"}},"Sem dados suficientes."):
+            topSlots.map((s,i)=>h("div",{key:s.dow+"_"+s.hr,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<topSlots.length-1?"1px solid "+P.border:"none"}},
+              h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.gold,minWidth:22,textAlign:"center"}},(i+1)+"°"),
+              h("div",{style:{flex:1}},
+                h("div",{style:{fontSize:13,color:P.text}},s.label+" · "+s.hr+"h"),
+                h("div",{style:{fontSize:10,color:P.text3}},s.count+" atendimento(s)")
+              ),
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green}},fmtCurr(s.revenue))
+            ))
+          ),
+          h(Card,null,
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:4}},"💡 Oportunidades de Promoção"),
+            h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},"Horários com pouco movimento — bons candidatos a descontos ou campanhas para preencher a agenda"),
+            weakSlots.length===0?h("div",{style:{fontSize:12,color:P.text3,textAlign:"center",padding:"16px 0"}},"Sem dados suficientes."):
+            weakSlots.map((s,i)=>h("div",{key:s.dow+"_"+s.hr,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<weakSlots.length-1?"1px solid "+P.border:"none"}},
+              h("span",{style:{fontSize:16}},"🪙"),
+              h("div",{style:{flex:1}},
+                h("div",{style:{fontSize:13,color:P.text}},s.label+" · "+s.hr+"h"),
+                h("div",{style:{fontSize:10,color:P.text3}},"apenas "+s.count+" atendimento(s) no período")
+              )
+            ))
+          )
+        )
+      );
+    })(),
 
     // ── ABA LTV ───────────────────────────────────────────────────────────
     relTab==="ltv"&&(()=>{
@@ -7499,7 +7640,7 @@ function AppInner({ session, onLogout }) {
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
-            page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings}),
+            page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda}),
             page==="intercorrencias_global"&&h(IntercorrenciasGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures:procedureNames,products:products.map(p=>typeof p==="string"?p:(p.name||p))}),
             page==="config"&&h(Configuracoes,{procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats})
           )
