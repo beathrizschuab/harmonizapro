@@ -702,7 +702,7 @@ function getAvailableLotes(products, productName) {
   if (!prod || !Array.isArray(prod.lotes)) return [];
   return prod.lotes.filter(l => l.qtd > 0);
 }
-function debitarLote(setProducts, productName, loteId, qtdUsada) {
+function debitarLote(setProducts, productName, loteId, qtdUsada, obs) {
   if (!productName || !loteId || !(Number(qtdUsada) > 0)) return;
   setProducts(prev => prev.map(p => {
     const pname = typeof p === "string" ? p : (p.name||p);
@@ -714,9 +714,47 @@ function debitarLote(setProducts, productName, loteId, qtdUsada) {
     const totalQty = lotes.reduce((a, l) => a + l.qtd, 0);
     const min = p.min || 0;
     const status = totalQty === 0 ? "critical" : totalQty < min ? "low" : "ok";
-    const mov = { id: Date.now(), tipo: "saida", qtd: Number(qtdUsada), loteId: String(loteId), data: new Date().toLocaleDateString("pt-BR"), obs: "Uso em sessão" };
+    const mov = { id: Date.now()+Math.random(), tipo: "saida", qtd: Number(qtdUsada), loteId: String(loteId), data: new Date().toLocaleDateString("pt-BR"), obs: obs||"Uso em sessão" };
     return { ...p, lotes, qty: totalQty, status, movimentacoes: [...(p.movimentacoes || []), mov] };
   }));
+}
+// Estorna (devolve) ao lote uma quantidade debitada anteriormente — usado quando uma sessão/marcador
+// já debitado é editado (troca de lote/quantidade) ou excluído, para nunca deixar o estoque desatualizado
+// nem permitir débito duplicado: o caller sempre estorna o valor antigo antes de debitar o novo.
+function estornarLote(setProducts, productName, loteId, qtdDevolver, obs) {
+  if (!productName || !loteId || !(Number(qtdDevolver) > 0)) return;
+  setProducts(prev => prev.map(p => {
+    const pname = typeof p === "string" ? p : (p.name||p);
+    if (pname !== productName) return p;
+    const lotes = (p.lotes || []).map(l => {
+      if (String(l.id) !== String(loteId)) return l;
+      return { ...l, qtd: l.qtd + Number(qtdDevolver) };
+    });
+    const totalQty = lotes.reduce((a, l) => a + l.qtd, 0);
+    const min = p.min || 0;
+    const status = totalQty === 0 ? "critical" : totalQty < min ? "low" : "ok";
+    const mov = { id: Date.now()+Math.random(), tipo: "entrada", qtd: Number(qtdDevolver), loteId: String(loteId), data: new Date().toLocaleDateString("pt-BR"), obs: obs||"Estorno de ajuste" };
+    return { ...p, lotes, qty: totalQty, status, movimentacoes: [...(p.movimentacoes || []), mov] };
+  }));
+}
+// Ajusta o débito de um item (sessão ou marcador) que pode já ter sido debitado antes.
+// `prevDebit` = {product, loteId, qty} do que já foi debitado (ou null se nunca debitou).
+// `nextDebit` = {product, loteId, qty} do que deveria estar debitado agora (ou null se não deve debitar).
+// Só mexe no estoque se algo realmente mudou — evita estornar+debitar à toa quando nada foi alterado.
+function ajustarDebitoLote(setProducts, prevDebit, nextDebit, obs) {
+  const same = prevDebit && nextDebit
+    && String(prevDebit.product)===String(nextDebit.product)
+    && String(prevDebit.loteId)===String(nextDebit.loteId)
+    && Number(prevDebit.qty)===Number(nextDebit.qty);
+  if (same) return prevDebit; // nada mudou, não mexe no estoque, mantém o registro de débito atual
+  if (prevDebit && Number(prevDebit.qty) > 0) {
+    estornarLote(setProducts, prevDebit.product, prevDebit.loteId, prevDebit.qty, obs||"Estorno por edição");
+  }
+  if (nextDebit && nextDebit.product && nextDebit.loteId && Number(nextDebit.qty) > 0) {
+    debitarLote(setProducts, nextDebit.product, nextDebit.loteId, nextDebit.qty, obs||"Uso em sessão");
+    return { product: nextDebit.product, loteId: nextDebit.loteId, qty: Number(nextDebit.qty) };
+  }
+  return null;
 }
 
 
@@ -1103,17 +1141,24 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
     const id=Date.now()+Math.random();
     const novo={id,xPct:Math.max(1.5,Math.min(98.5,xPct)),yPct:Math.max(1.5,Math.min(98.5,yPct)),
       plannedProduct:"",plannedQty:"",plannedUnit:"U",plannedLoteId:"",
-      actualProduct:"",actualQty:"",actualUnit:"",actualLoteId:"",loteDebitado:false,
+      actualProduct:"",actualQty:"",actualUnit:"",actualLoteId:"",stockDebit:null,
       done:false,notes:""};
     setMarkers(m=>[...m,novo]);
     setSelectedId(id);
   }
   function updateMarker(id,patch){setMarkers(m=>m.map(mk=>mk.id===id?{...mk,...patch}:mk));}
-  function removeMarker(id){setMarkers(m=>m.filter(mk=>mk.id!==id));if(selectedId===id)setSelectedId(null);}
+  function removeMarker(id){
+    const m=markers.find(mk=>mk.id===id);
+    if(m?.stockDebit&&setProducts&&Number(m.stockDebit.qty)>0){
+      estornarLote(setProducts,m.stockDebit.product,m.stockDebit.loteId,m.stockDebit.qty,"Estorno · marcador removido");
+    }
+    setMarkers(m=>m.filter(mk=>mk.id!==id));if(selectedId===id)setSelectedId(null);
+  }
   function removeShape(id){setShapes(s=>s.filter(sh=>sh.id!==id));}
 
-  // Marca/desmarca como realizado. O débito real do lote só acontece ao Salvar (handleSave),
-  // para evitar debitar estoque de um marcador cuja alteração acabe sendo descartada (modal fechado sem salvar).
+  // Marca/desmarca como realizado. O ajuste real do estoque (debitar, estornar ou corrigir
+  // quantidade/lote) só acontece ao clicar em "Salvar" (handleSave), comparando o estado atual
+  // de cada marcador com o que já estava debitado — por isso fechar sem salvar não afeta o estoque.
   function toggleDone(m){
     if(!m.done){
       updateMarker(m.id,{
@@ -1124,21 +1169,27 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
         actualLoteId:m.actualLoteId||m.plannedLoteId
       });
     } else {
-      // Desmarcar não devolve o lote automaticamente (evita inconsistência); apenas reabre o status.
+      // Desmarcar: ao salvar, ajustarDebitoLote vai notar que não há mais débito esperado
+      // (done:false) e estornar automaticamente o que estava debitado para este marcador.
       updateMarker(m.id,{done:false});
     }
   }
 
   function handleSave(){
-    // Debita do estoque os marcadores recém-marcados como "Realizado" que ainda não foram debitados.
+    // Para cada marcador, ajusta o débito de estoque conforme o estado atual:
+    // - "done" com lote/qtd válidos → garante que o estoque reflita exatamente esse lote/qtd
+    //   (debita se nunca debitou, ou estorna+redebita se mudou desde a última vez).
+    // - não "done" (ou sem lote/qtd) → garante que nada fique debitado (estorna se havia débito).
+    // ajustarDebitoLote só mexe no estoque quando algo de fato mudou, então salvar de novo sem
+    // alterar nada não duplica nem estorna à toa.
     let finalMarkers=markers;
     if(setProducts){
       finalMarkers=markers.map(m=>{
-        if(m.done&&!m.loteDebitado&&m.actualLoteId&&Number(m.actualQty)>0){
-          debitarLote(setProducts,m.actualProduct||m.plannedProduct,m.actualLoteId,m.actualQty);
-          return{...m,loteDebitado:true};
-        }
-        return m;
+        const nextDebit=(m.done&&m.actualLoteId&&Number(m.actualQty)>0)
+          ?{product:m.actualProduct||m.plannedProduct,loteId:m.actualLoteId,qty:Number(m.actualQty)}
+          :null;
+        const stockDebit=ajustarDebitoLote(setProducts,m.stockDebit||null,nextDebit,"Mapa facial · marcador");
+        return{...m,stockDebit};
       });
     }
     onSave({baseImage,markers:finalMarkers,shapes});
@@ -1345,12 +1396,13 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
                   ),
                   actualLotes.length>0&&h("div",null,
                     h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Lote utilizado"),
-                    h("select",{value:selected.actualLoteId||"",onChange:e=>updateMarker(selected.id,{actualLoteId:e.target.value}),style:IS,disabled:selected.loteDebitado},
+                    h("select",{value:selected.actualLoteId||"",onChange:e=>updateMarker(selected.id,{actualLoteId:e.target.value}),style:IS},
                       h("option",{value:""},"Selecionar lote..."),
                       actualLotes.map(l=>h("option",{key:l.id,value:String(l.id)},l.codigo+" — "+l.qtd+" disponível"+(l.validade?" · val "+l.validade:"")))
                     ),
-                    selected.loteDebitado&&h("div",{style:{fontSize:10,color:P.green,marginTop:4}},"✓ Estoque já debitado deste lote"),
-                    !selected.loteDebitado&&selected.actualLoteId&&h("div",{style:{fontSize:10,color:P.yellow,marginTop:4}},"⚠ Salve para debitar do estoque")
+                    selected.stockDebit&&h("div",{style:{fontSize:10,color:P.green,marginTop:4}},`✓ Estoque debitado: ${selected.stockDebit.qty}${selected.actualUnit||selected.plannedUnit||""} do lote selecionado`),
+                    !selected.stockDebit&&selected.actualLoteId&&h("div",{style:{fontSize:10,color:P.yellow,marginTop:4}},"⚠ Salve para debitar do estoque"),
+                    selected.stockDebit&&(String(selected.stockDebit.loteId)!==String(selected.actualLoteId)||Number(selected.stockDebit.qty)!==Number(selected.actualQty))&&h("div",{style:{fontSize:10,color:P.yellow,marginTop:4}},"⚠ Lote/quantidade alterados — salve para corrigir o estoque")
                   ),
                   h("div",{style:{fontSize:11,color:P.text3}},"Custo real: "+fmtCurr((Number(selected.actualQty)||0)*cu(selected.actualProduct||selected.plannedProduct)))
                 )
@@ -3192,7 +3244,8 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
   const[editSess,setEditSess]=useState(null);
-  const[sessionFaceMap,setSessionFaceMap]=useState(null);
+  const[editingMapSessId,setEditingMapSessId]=useState(null); // id da sessão cujo mapa simples está sendo editado fora do form da sessão
+  const editingMapSess=useMemo(()=>editingMapSessId?(patient.sessions||[]).find(s=>s.id===editingMapSessId)||null:null,[editingMapSessId,patient.sessions]);
   const[editPat,setEditPat]=useState(false);
   const[showIntercorr,setShowIntercorr]=useState(null);
   const[showPlan,setShowPlan]=useState(false);
@@ -3222,7 +3275,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const qvfv=k=>v=>setQvForm(p=>({...p,[k]:v}));
   const h=createElement;
   const today=new Date();
-  const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",finStatus:"Pendente",paid:false,notes:"",evolution:"",useFaceMap:false,returnReminderDays:14,loteId:"",qtdUsada:""};
+  const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",finStatus:"Pendente",paid:false,notes:"",evolution:"",returnReminderDays:14,loteId:"",qtdUsada:""};
   const[sForm,setSForm]=useState(blankS);
   const sfv=k=>v=>setSForm(p=>({...p,[k]:v}));
   // Auto-preenche prazo de retorno e valor ao trocar procedimento
@@ -3275,15 +3328,27 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   }
   function saveSession(){
     const _loteSel=(allProducts||[]).flatMap(p=>p.lotes||[]).find(l=>String(l.id)===String(sForm.loteId));
-    const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,loteId:sForm.loteId||"",loteCodigo:_loteSel?.codigo||"",qtdUsada:sForm.qtdUsada||"",dose:sForm.dose,region:sForm.region,location:sForm.location,value:Number(sForm.value)||0,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1,notes:sForm.notes,evolution:sForm.evolution,faceMap:sForm.useFaceMap?sessionFaceMap:null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90};
+    const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,loteId:sForm.loteId||"",loteCodigo:_loteSel?.codigo||"",qtdUsada:sForm.qtdUsada||"",dose:sForm.dose,region:sForm.region,location:sForm.location,value:Number(sForm.value)||0,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1,notes:sForm.notes,evolution:sForm.evolution,faceMap:editSess?editSess.faceMap:null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90,stockDebit:editSess?editSess.stockDebit:null};
+    // Ajusta o débito de estoque com base no que JÁ foi debitado para esta sessão (s.stockDebit) vs o que
+    // deveria estar debitado agora (lote/produto/qtd do formulário). Cobre 3 casos sem nunca duplicar:
+    // 1) sessão nova → debita 1x e grava o registro do débito na própria sessão.
+    // 2) edição mudando lote/qtd → estorna o valor antigo e debita o novo (estoque sempre correto).
+    // 3) clique duplicado no salvar → nada muda entre as duas chamadas, então ajustarDebitoLote não mexe no estoque de novo.
+    const nextDebit=(sForm.loteId&&Number(sForm.qtdUsada)>0)?{product:sForm.product,loteId:sForm.loteId,qty:Number(sForm.qtdUsada)}:null;
+    s.stockDebit=ajustarDebitoLote(setProducts,s.stockDebit,nextDebit,`Sessão ${s.procedure} · ${patient.name}`);
     upd(p=>editSess?{...p,sessions:(p.sessions||[]).map(x=>x.id===s.id?s:x),lastVisit:s.date}:{...p,sessions:[s,...(p.sessions||[])],lastVisit:s.date});
     // Sincronizar com Financeiro automaticamente
     const patName=patient.name;
     if(s.finStatus!=="Cancelado"){
       setTimeout(()=>syncIncome(s,patName),0);
     }
-    if(!editSess&&sForm.loteId&&Number(sForm.qtdUsada)>0){debitarLote(setProducts,sForm.product,sForm.loteId,sForm.qtdUsada);}
-    setShowNewS(false);setEditSess(null);setSForm(blankS);setSessionFaceMap(null);
+    setShowNewS(false);setEditSess(null);setSForm(blankS);
+  }
+  // Salva o mapa facial (FaceMap simples) de uma sessão já existente, sem mexer em nenhum outro
+  // campo da sessão (produto, valor, estoque, etc) — permite registrar o mapa depois, no dia a dia,
+  // sem precisar reabrir o cadastro completo da sessão.
+  function saveSessionFaceMap(sessId,faceMapData){
+    upd(p=>({...p,sessions:(p.sessions||[]).map(x=>x.id===sessId?{...x,faceMap:faceMapData}:x)}));
   }
   function toggleFinStatus(sessId,newSt){
     upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,finStatus:newSt,paid:newSt==="Pago"}:s)}));
@@ -3291,7 +3356,14 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     const sess=(patient.sessions||[]).find(s=>s.id===sessId);
     if(sess)setTimeout(()=>syncIncome({...sess,finStatus:newSt,paid:newSt==="Pago"},patient.name),0);
   }
-  function delSession(id){if(window.confirm("Excluir sessão?"))upd(p=>({...p,sessions:(p.sessions||[]).filter(s=>s.id!==id)}));}
+  function delSession(id){
+    if(!window.confirm("Excluir sessão?"))return;
+    const sess=(patient.sessions||[]).find(s=>s.id===id);
+    if(sess?.stockDebit&&Number(sess.stockDebit.qty)>0){
+      estornarLote(setProducts,sess.stockDebit.product,sess.stockDebit.loteId,sess.stockDebit.qty,`Estorno · sessão excluída (${patient.name})`);
+    }
+    upd(p=>({...p,sessions:(p.sessions||[]).filter(s=>s.id!==id)}));
+  }
   function addMedia(sessId,files,type){
     const readers=files.map(f=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,type:f.type,url:e.target.result,date:new Date().toLocaleDateString("pt-BR")});r.readAsDataURL(f);}));
     Promise.all(readers).then(news=>{upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,[type]:[...(s[type]||[]),...news]}:s)}));});
@@ -3316,7 +3388,17 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
     setPlanAnnotating(null);setShowPlan(false);setPlanForm({title:"",steps:"",notes:""});
   }
-  function deletePlan(id){if(window.confirm("Excluir planejamento?"))upd(p=>({...p,planejamento:(p.planejamento||[]).filter(pl=>pl.id!==id)}));}
+  function deletePlan(id){
+    if(!window.confirm("Excluir planejamento?"))return;
+    const pl=(patient.planejamento||[]).find(p=>p.id===id);
+    const markers=pl?.markerPlan?.markers||[];
+    markers.forEach(m=>{
+      if(m.stockDebit&&Number(m.stockDebit.qty)>0){
+        estornarLote(setProducts,m.stockDebit.product,m.stockDebit.loteId,m.stockDebit.qty,"Estorno · mapa excluído");
+      }
+    });
+    upd(p=>({...p,planejamento:(p.planejamento||[]).filter(pl=>pl.id!==id)}));
+  }
   function saveMarkerPlanNew(data){
     const pl={id:Date.now(),title:"Mapa Facial",steps:[],notes:"",done:false,created:new Date().toLocaleDateString("pt-BR"),markerPlan:data};
     upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
@@ -3588,7 +3670,8 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:s.finStatus==="Pago"?P.green:s.finStatus==="Pendente"?P.yellow:P.red}},fmtCurr(s.value)),
             s.payMethod==="Cartão Crédito"&&s.parcelas>1&&h("div",{style:{fontSize:11,color:P.accent,background:"rgba(157,119,97,.1)",borderRadius:8,padding:"2px 8px",fontWeight:600}},`${s.parcelas}x ${fmtCurr(s.value/s.parcelas)}`),
             h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.id,e.target.value),style:{fontSize:11,padding:"3px 8px",borderRadius:12,color:s.finStatus==="Pago"?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st))),
-            h("button",{onClick:()=>{setEditSess(s);setSForm({...s,value:String(s.value),useFaceMap:!!s.faceMap,finStatus:s.finStatus||"Pendente"});setSessionFaceMap(s.faceMap);setShowNewS(true);},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"✎"),
+            h("button",{onClick:()=>setEditingMapSessId(s.id),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"🗺 Mapa"),
+            h("button",{onClick:()=>{setEditSess(s);setSForm({...s,value:String(s.value),finStatus:s.finStatus||"Pendente"});setShowNewS(true);},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"✎"),
             h("button",{onClick:()=>delSession(s.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"🗑")
           )
         ),
@@ -3596,7 +3679,9 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         s.notes&&h("div",{style:{background:P.bg3,borderRadius:8,padding:"10px 14px",marginBottom:8}},h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"Notas"),h("div",{style:{fontSize:13,color:P.text2,lineHeight:1.6}},s.notes)),
         s.evolution&&h("div",{style:{background:`rgba(92,31,50,.06)`,borderRadius:8,padding:"10px 14px",border:`1px solid rgba(92,31,50,.15)`,marginBottom:8}},h("div",{style:{fontSize:9.5,color:P.accent,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"Evolução / Retorno"),h("div",{style:{fontSize:13,color:P.text2,lineHeight:1.6}},s.evolution)),
         s.returnReminderDays&&h("div",{style:{fontSize:11,color:P.text3,marginBottom:8}},`⏰ Lembrete de retorno: ${s.returnReminderDays} dias após procedimento`),
-        s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)&&h("div",{style:{padding:"8px 12px",background:P.bg3,borderRadius:8,marginBottom:8}},h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},`Mapa · ${s.faceMap.type}`),h("div",{style:{display:"flex",gap:5,flexWrap:"wrap"}},Object.entries(s.faceMap.points||{}).filter(([,v])=>v>0).map(([k,v])=>h("span",{key:k,style:{fontSize:11,padding:"3px 9px",borderRadius:20,background:`rgba(92,31,50,.1)`,color:P.accent}},`${k.replace(/_/g," ")}: ${v}${s.faceMap.type==="botox"?"U":"ml"}`)))),
+        s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)
+          ?h("div",{onClick:()=>setEditingMapSessId(s.id),style:{padding:"8px 12px",background:P.bg3,borderRadius:8,marginBottom:8,cursor:"pointer"},title:"Clique para editar o mapa"},h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},`Mapa · ${s.faceMap.type}`),h("div",{style:{display:"flex",gap:5,flexWrap:"wrap"}},Object.entries(s.faceMap.points||{}).filter(([,v])=>v>0).map(([k,v])=>h("span",{key:k,style:{fontSize:11,padding:"3px 9px",borderRadius:20,background:`rgba(92,31,50,.1)`,color:P.accent}},`${k.replace(/_/g," ")}: ${v}${s.faceMap.type==="botox"?"U":"ml"}`))))
+          :h("div",{onClick:()=>setEditingMapSessId(s.id),style:{padding:"8px 12px",background:"transparent",border:`1px dashed ${P.border}`,borderRadius:8,marginBottom:8,cursor:"pointer",fontSize:11.5,color:P.text3,textAlign:"center"}},"🗺 Mapa facial ainda não preenchido — clique para registrar"),
         (s.intercorrencias||[]).length>0&&h("div",{style:{marginBottom:8,padding:"8px 12px",background:"rgba(192,112,112,.06)",borderRadius:8,border:"1px solid rgba(192,112,112,.18)"}},h("div",{style:{fontSize:10,color:P.red,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"⚠ Intercorrências"),(s.intercorrencias||[]).map((ic,i)=>h("div",{key:i,style:{fontSize:12,color:P.text2}},`${ic.date} · ${ic.type}: ${ic.notes}`))),
         (s.photos||[]).length>0&&h("div",{style:{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}},(s.photos||[]).slice(0,4).map(ph=>h("img",{key:ph.id,src:ph.url,alt:ph.name,style:{width:58,height:58,objectFit:"cover",borderRadius:6,border:`1px solid ${P.border}`}})),(s.photos||[]).length>4&&h("div",{style:{width:58,height:58,borderRadius:6,background:P.card2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:P.text3}},`+${(s.photos||[]).length-4}`)),
         h("div",{style:{display:"flex",gap:8,marginTop:10}},
@@ -4120,12 +4205,18 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         ),
         h(Field,{label:"Notas"},h(TA,{value:sForm.notes,onChange:sfv("notes"),placeholder:"Detalhes técnicos...",rows:3})),
         h(Field,{label:"Evolução"},h(TA,{value:sForm.evolution,onChange:sfv("evolution"),placeholder:"Próximos passos...",rows:2})),
-        h(Field,{label:"Mapa de Aplicação"},
-          h("button",{onClick:()=>sfv("useFaceMap")(!sForm.useFaceMap),style:{padding:"7px 16px",borderRadius:8,cursor:"pointer",fontSize:12,fontFamily:"'DM Sans',sans-serif",background:sForm.useFaceMap?P.rose:"transparent",border:`1px solid ${sForm.useFaceMap?P.rose:P.border}`,color:sForm.useFaceMap?P.accent3:P.text3,marginBottom:sForm.useFaceMap?14:0}},sForm.useFaceMap?"✓ Incluindo Mapa":"＋ Incluir Mapa"),
-          sForm.useFaceMap&&h("div",{style:{paddingBottom:64}},h(FaceMapEditor,{sessionMap:sessionFaceMap,onChange:setSessionFaceMap}))
+        editSess&&h(Field,{label:"Mapa de Aplicação"},
+          h("div",{style:{fontSize:12,color:P.text3,padding:"10px 12px",background:P.bg3,borderRadius:8}},"O mapa facial desta sessão é registrado separadamente. Feche este formulário e clique em \"🗺 Mapa\" no card da sessão para preencher ou editar.")
         )
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},h(Btn,{variant:"ghost",onClick:()=>{setShowNewS(false);setEditSess(null);}},"Cancelar"),!editSess&&h("button",{onClick:()=>{saveSession();setTimeout(()=>{setPkgForm(p=>({...p,procedure:sForm.procedure}));setShowNewPkg(true);setTab("pacotes");},100);},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:"1px solid "+P.gold,color:P.gold}},"📦 Salvar e Criar Pacote"),h(Btn,{onClick:saveSession},editSess?"Salvar":"Salvar Sessão"))
+    ),
+    // ─── MODAL DEDICADO AO MAPA FACIAL DE UMA SESSÃO ──────────────────────────
+    // Independente do form de sessão: pode ser aberto a qualquer momento (mesmo dias depois),
+    // edita só faceMap, nunca mexe em produto/valor/estoque/etc da sessão.
+    editingMapSess&&h(Modal,{open:true,onClose:()=>setEditingMapSessId(null),title:`🗺 Mapa Facial · ${editingMapSess.procedure} (${editingMapSess.date})`,width:640},
+      h(FaceMapEditor,{sessionMap:editingMapSess.faceMap,onChange:fm=>saveSessionFaceMap(editingMapSess.id,fm)}),
+      h("div",{style:{display:"flex",justifyContent:"flex-end",marginTop:12}},h(Btn,{variant:"ghost",onClick:()=>setEditingMapSessId(null)},"Fechar"))
     ),
     showIntercorr&&h(Modal,{open:true,onClose:()=>setShowIntercorr(null),title:"⚠ Registrar Intercorrência",width:480},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
