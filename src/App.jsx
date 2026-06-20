@@ -2152,7 +2152,9 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       const _last=_sorted[0]||null;
       const _ret=(()=>{if(!_last||!Number(_last.returnReminderDays))return null;const sd=parseDMY(_last.date);if(!sd)return null;const rd=new Date(sd);rd.setDate(rd.getDate()+Number(_last.returnReminderDays));const dias=Math.ceil((rd-new Date())/(1000*60*60*24));return{date:rd.toLocaleDateString("pt-BR"),dias,procedure:_last.procedure};})();
       const _pkgs=(patient.sessions_packages||[]).filter(pkg=>pkg.active!==false&&pkg.done<pkg.total);
-      const _vouchers=(Array.isArray(vouchers)?vouchers:[]).filter(v=>v.toName&&v.toName.trim().toLowerCase()===patient.name.trim().toLowerCase()).filter(v=>{const st=voucherStatus(v);return st==="ativo"||st==="parcial";});
+      const _allVouchers=(Array.isArray(vouchers)?vouchers:[]).filter(v=>v.toName&&v.toName.trim().toLowerCase()===patient.name.trim().toLowerCase()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+      const _vouchers=_allVouchers.filter(v=>{const st=voucherStatus(v);return st==="ativo"||st==="parcial";});
+      const _usedVouchers=_allVouchers.filter(v=>{const st=voucherStatus(v);return st!=="ativo"&&st!=="parcial";});
       const _pending=(patient.sessions||[]).filter(s=>!s.paid).reduce((a,s)=>a+s.value,0);
       return h("div",null,
         h(Card,{style:{marginBottom:14,border:"1px solid rgba(192,112,112,.35)",background:"rgba(192,112,112,.04)"}},
@@ -2183,31 +2185,53 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},_pkgs.map(pkg=>{const pct=Math.round((pkg.done/pkg.total)*100);return h("div",{key:pkg.id,style:{padding:"12px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}},h("div",null,h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},pkg.name),h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},pkg.procedure)),h("div",{style:{textAlign:"right"}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent}},pkg.done+"/"+pkg.total),h("div",{style:{fontSize:10,color:P.text3}},"sessões"))),h("div",{style:{height:5,borderRadius:3,background:P.border,overflow:"hidden"}},h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:3}})),h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:5}},h("span",{style:{fontSize:10,color:P.text3}},(pkg.total-pkg.done)+" restante(s)"),pkg.price>0&&h("span",{style:{fontSize:10,color:P.accent}},fmtCurr(pkg.price))));})
           )
         ),
-        h(Card,{style:{border:`1px solid ${_vouchers.length>0?"rgba(155,122,173,.4)":P.border}`}},
-          h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:_vouchers.length>0?14:0,flexWrap:"wrap",gap:8}},
-            h("div",{style:{display:"flex",alignItems:"center",gap:10}},h("span",{style:{fontSize:20}},"🎟️"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Vouchers Ativos"),_vouchers.length>0&&h("span",{style:{fontSize:11,fontWeight:700,color:"#fff",background:"#9b7aad",padding:"2px 8px",borderRadius:20}},_vouchers.length)),
+        h(Card,{style:{border:`1px solid ${_allVouchers.length>0?"rgba(155,122,173,.4)":P.border}`}},
+          h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:_allVouchers.length>0?14:0,flexWrap:"wrap",gap:8}},
+            h("div",{style:{display:"flex",alignItems:"center",gap:10}},h("span",{style:{fontSize:20}},"🎟️"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Vouchers"),_allVouchers.length>0&&h("span",{style:{fontSize:11,fontWeight:700,color:"#fff",background:"#9b7aad",padding:"2px 8px",borderRadius:20}},_allVouchers.length)),
             h("div",{style:{display:"flex",gap:6}},
               setVouchers&&h("button",{onClick:()=>setShowQuickVoucher(true),style:{fontSize:11,color:"#fff",background:"#9b7aad",border:"none",borderRadius:8,padding:"5px 12px",cursor:"pointer",fontWeight:600}},"＋ Presentear"),
               onNavVouchers&&h("button",{onClick:onNavVouchers,style:{fontSize:11,color:"#9b7aad",background:"transparent",border:"1px solid rgba(155,122,173,.35)",borderRadius:8,padding:"4px 12px",cursor:"pointer"}},"Ver todos →")
             )
           ),
-          _vouchers.length===0?h("div",{style:{fontSize:13,color:P.text3}},"Nenhum voucher ativo.")
-          :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},_vouchers.map((v,i)=>{
-            const saldo=v.type==="valor"?Number(v.value)-Number(v.usedValue||0):null;
-            return h("div",{key:i,style:{padding:"12px 14px",background:"rgba(155,122,173,.07)",borderRadius:10,border:"1px solid rgba(155,122,173,.25)"}},
-              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-                h("div",null,
-                  h("div",{style:{fontSize:13,color:P.text,fontWeight:600,fontFamily:"monospace"}},v.code),
-                  h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},v.type==="valor"?"De "+(v.fromName||"—"):"🎁 "+(v.procedures||[]).join(", "))
-                ),
-                h("div",{style:{textAlign:"right"}},
-                  v.type==="valor"&&h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:"#9b7aad"}},fmtCurr(saldo)),
-                  v.validUntil&&h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},"Válido até "+new Date(v.validUntil+"T12:00").toLocaleDateString("pt-BR"))
-                )
-              ),
-              onNavVouchers&&h("button",{onClick:onNavVouchers,style:{marginTop:8,fontSize:11,color:"#9b7aad",background:"rgba(155,122,173,.12)",border:"1px solid rgba(155,122,173,.3)",borderRadius:6,padding:"4px 10px",cursor:"pointer"}},"Resgatar voucher →")
-            );
-          }))
+          _allVouchers.length===0?h("div",{style:{fontSize:13,color:P.text3}},"Nenhum voucher registrado para esta paciente."):h("div",null,
+            _vouchers.length>0&&h("div",{style:{marginBottom:_usedVouchers.length>0?16:0}},
+              h("div",{style:{fontSize:10,color:P.green,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8,fontWeight:600}},"● Ativos"),
+              h("div",{style:{display:"flex",flexDirection:"column",gap:8}},_vouchers.map((v,i)=>{
+                const saldo=v.type==="valor"?Number(v.value)-Number(v.usedValue||0):null;
+                return h("div",{key:i,style:{padding:"12px 14px",background:"rgba(155,122,173,.07)",borderRadius:10,border:"1px solid rgba(155,122,173,.25)"}},
+                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                    h("div",null,
+                      h("div",{style:{fontSize:13,color:P.text,fontWeight:600,fontFamily:"monospace"}},v.code),
+                      h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},v.type==="valor"?"De "+(v.fromName||"—"):"🎁 "+(v.procedures||[]).join(", "))
+                    ),
+                    h("div",{style:{textAlign:"right"}},
+                      v.type==="valor"&&h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:"#9b7aad"}},fmtCurr(saldo)),
+                      v.validUntil&&h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},"Válido até "+new Date(v.validUntil+"T12:00").toLocaleDateString("pt-BR"))
+                    )
+                  ),
+                  onNavVouchers&&h("button",{onClick:onNavVouchers,style:{marginTop:8,fontSize:11,color:"#9b7aad",background:"rgba(155,122,173,.12)",border:"1px solid rgba(155,122,173,.3)",borderRadius:6,padding:"4px 10px",cursor:"pointer"}},"Resgatar voucher →")
+                );
+              }))
+            ),
+            _usedVouchers.length>0&&h("div",null,
+              h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8,fontWeight:600}},"○ Histórico (resgatados / expirados / cancelados)"),
+              h("div",{style:{display:"flex",flexDirection:"column",gap:8}},_usedVouchers.map((v,i)=>{
+                const st=voucherStatus(v); const cfg=VOUCHER_STATUS_CFG[st];
+                return h("div",{key:i,style:{padding:"12px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`,opacity:.8}},
+                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                    h("div",null,
+                      h("div",{style:{fontSize:13,color:P.text2,fontWeight:600,fontFamily:"monospace"}},v.code),
+                      h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},v.type==="valor"?"De "+(v.fromName||"—")+" · "+fmtCurr(v.value):"🎁 "+(v.procedures||[]).join(", "))
+                    ),
+                    h("span",{style:{fontSize:10,padding:"2px 9px",borderRadius:12,background:cfg.bg,color:cfg.color,fontWeight:600,whiteSpace:"nowrap"}},cfg.l)
+                  ),
+                  (v.redemptions||[]).length>0&&h("div",{style:{marginTop:6,paddingTop:6,borderTop:`1px solid ${P.border}`}},
+                    v.redemptions.map((r,ri)=>h("div",{key:ri,style:{fontSize:11,color:P.text3}},"Usado em "+r.date+(r.value>0?" · "+fmtCurr(r.value):"")))
+                  )
+                );
+              }))
+            )
+          )
         )
       );
     })(),
