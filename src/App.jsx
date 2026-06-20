@@ -721,6 +721,227 @@ function FaceMapEditor({sessionMap,onChange,readOnly=false}){
     )
   );
 }
+// ─── FACE MAP PLANNER ─────────────────────────────────────────────────────────
+// Versão evoluída do FaceMap: por zona marca dose + produto + notas,
+// exibe custo estimado e compara planejado × realizado.
+const TYPE_CFG_FMP={botox:{label:"💉 Toxina",unit:"U",color:P.rose},filler:{label:"✨ Preenchimento",unit:"ml",color:"#7a5590"},thread:{label:"🧵 Fios",unit:"un",color:P.gold}};
+const fmtCurrFMP=v=>"R$ "+Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2});
+
+function FaceSilhouetteFMP(){
+  const h=createElement;
+  return h(Fragment,null,
+    h("path",{d:"M108 235 Q108 268 130 272 Q152 268 152 235",fill:P.bg3,stroke:P.border,strokeWidth:"1"}),
+    h("ellipse",{cx:130,cy:148,rx:82,ry:110,fill:P.bg3,stroke:P.border,strokeWidth:"1.5"}),
+    h("ellipse",{cx:130,cy:40,rx:82,ry:32,fill:P.card2,stroke:P.border,strokeWidth:"1"}),
+    h("path",{d:"M95 100 Q105 95 118 98",fill:"none",stroke:P.text3,strokeWidth:"1.5",strokeLinecap:"round"}),
+    h("path",{d:"M142 98 Q155 95 165 100",fill:"none",stroke:P.text3,strokeWidth:"1.5",strokeLinecap:"round"}),
+    h("ellipse",{cx:107,cy:110,rx:13,ry:6,fill:"none",stroke:P.accent2,strokeWidth:"1.2"}),
+    h("circle",{cx:107,cy:110,r:3.5,fill:P.border}),
+    h("ellipse",{cx:153,cy:110,rx:13,ry:6,fill:"none",stroke:P.accent2,strokeWidth:"1.2"}),
+    h("circle",{cx:153,cy:110,r:3.5,fill:P.border}),
+    h("path",{d:"M122 128 L117 155 Q130 160 143 155 L138 128",fill:"none",stroke:P.text3,strokeWidth:"1"}),
+    h("path",{d:"M112 182 Q122 177 130 178 Q138 177 148 182 Q138 190 130 190 Q122 190 112 182Z",fill:P.border,stroke:P.accent2,strokeWidth:"1"}),
+    h("path",{d:"M112 182 Q130 186 148 182",fill:"none",stroke:P.accent2,strokeWidth:"1"}),
+    h("path",{d:"M110 205 Q130 225 150 205",fill:"none",stroke:P.text3,strokeWidth:"1"})
+  );
+}
+
+function FMPZonePopup({zone,mapType,plan,products,onSave,onClear,onClose}){
+  const unit=TYPE_CFG_FMP[mapType]?.unit||"U";
+  const existing=plan[zone.k]||{};
+  const[dose,setDose]=useState(String(existing.dose||""));
+  const[product,setProduct]=useState(existing.product||"");
+  const[notes,setNotes]=useState(existing.notes||"");
+  const h=createElement;
+  const isLeft=zone.cx>130;
+  const IS2={width:"100%",background:P.bg3,border:`1px solid ${P.border}`,borderRadius:6,padding:"5px 8px",color:P.text,fontSize:12,outline:"none",fontFamily:"'DM Sans',sans-serif",boxSizing:"border-box"};
+  return h("div",{style:{position:"absolute",top:Math.max(0,zone.cy-60),left:isLeft?zone.cx-zone.r-190:zone.cx+zone.r+8,width:196,background:P.card2,border:`1px solid ${P.border}`,borderRadius:10,padding:"10px 12px",zIndex:50,boxShadow:"0 6px 28px rgba(0,0,0,.7)",fontFamily:"'DM Sans',sans-serif"}},
+    h("div",{style:{fontSize:11,color:P.accent,fontWeight:600,marginBottom:8,textTransform:"uppercase",letterSpacing:".08em"}},zone.label),
+    h("div",{style:{marginBottom:7}},
+      h("label",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",display:"block",marginBottom:3}},`Dose (${unit})`),
+      h("input",{value:dose,onChange:e=>setDose(e.target.value),onKeyDown:e=>e.key==="Enter"&&onSave({dose:Number(dose)||0,product,notes}),autoFocus:true,type:"number",min:"0",step:mapType==="botox"?"1":"0.1",style:IS2})
+    ),
+    h("div",{style:{marginBottom:7}},
+      h("label",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",display:"block",marginBottom:3}},"Produto"),
+      h("select",{value:product,onChange:e=>setProduct(e.target.value),style:{...IS2,color:product?P.text:P.text3}},
+        h("option",{value:""},"— selecionar —"),
+        (products||[]).map(p=>{const name=typeof p==="string"?p:(p.name||p);return h("option",{key:name,value:name},name);})
+      )
+    ),
+    h("div",{style:{marginBottom:10}},
+      h("label",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",display:"block",marginBottom:3}},"Observações"),
+      h("input",{value:notes,onChange:e=>setNotes(e.target.value),placeholder:"Ex: técnica linear...",style:IS2})
+    ),
+    h("div",{style:{display:"flex",gap:6}},
+      h("button",{onClick:()=>onSave({dose:Number(dose)||0,product,notes}),style:{flex:1,padding:"6px 0",borderRadius:7,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:`linear-gradient(135deg,${P.rose},${P.gold})`,color:P.accent3,fontFamily:"'DM Sans',sans-serif"}},"OK"),
+      existing.dose>0&&h("button",{onClick:onClear,style:{padding:"6px 8px",borderRadius:7,fontSize:11,cursor:"pointer",background:"rgba(192,112,112,.12)",border:"1px solid rgba(192,112,112,.2)",color:P.red,fontFamily:"'DM Sans',sans-serif"}},"✕"),
+      h("button",{onClick:onClose,style:{padding:"6px 8px",borderRadius:7,fontSize:12,cursor:"pointer",background:"none",border:`1px solid ${P.border}`,color:P.text3,fontFamily:"'DM Sans',sans-serif"}},"—")
+    )
+  );
+}
+
+function FMPMap({mapType,plan,onPlanChange,products,readOnly=false}){
+  const[active,setActive]=useState(null);
+  const zones=ZONE_DEFS[mapType]||ZONE_DEFS.botox;
+  const{unit,color}=TYPE_CFG_FMP[mapType]||TYPE_CFG_FMP.botox;
+  const h=createElement;
+  function handleZoneClick(zone){if(readOnly)return;setActive(active?.k===zone.k?null:zone);}
+  function handleSave(data){onPlanChange({...plan,[active.k]:data});setActive(null);}
+  function handleClear(){const u={...plan};delete u[active.k];onPlanChange(u);setActive(null);}
+  return h("div",{style:{position:"relative",display:"inline-block",userSelect:"none"}},
+    h("svg",{width:260,height:280,viewBox:"0 0 260 280"},
+      h(FaceSilhouetteFMP,null),
+      h("g",null,zones.map(z=>{
+        const entry=plan[z.k];
+        const isSet=entry&&Number(entry.dose)>0;
+        const isAct=active?.k===z.k;
+        return h("g",{key:z.k,onClick:()=>handleZoneClick(z),style:{cursor:readOnly?"default":"pointer"}},
+          h("circle",{cx:z.cx,cy:z.cy,r:z.r,fill:isAct?"rgba(92,31,50,.55)":isSet?(color+"28"):"rgba(255,255,255,.03)",stroke:isAct?color:isSet?(color+"bb"):P.border,strokeWidth:isAct?2:1.5,strokeDasharray:isSet||isAct?"none":"3,2"}),
+          isSet?h("text",{x:z.cx,y:z.cy+4,textAnchor:"middle",fill:P.accent3,fontSize:9,fontWeight:700},entry.dose+unit)
+               :h("text",{x:z.cx,y:z.cy+4,textAnchor:"middle",fill:P.text3,fontSize:11},"+")
+        );
+      }))
+    ),
+    !readOnly&&h("div",{style:{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}},
+      zones.map(z=>{
+        const entry=plan[z.k];
+        return h("div",{key:z.k,style:{position:"absolute",left:z.cx<130?Math.max(0,z.cx-z.r-54):z.cx+z.r+4,top:z.cy-7,fontSize:8,color:entry?.dose>0?P.accent2:P.text3,textTransform:"uppercase",letterSpacing:".06em",whiteSpace:"nowrap"}},z.label);
+      })
+    ),
+    active&&!readOnly&&h(FMPZonePopup,{zone:active,mapType,plan,products,onSave:handleSave,onClear:handleClear,onClose:()=>setActive(null)})
+  );
+}
+
+function FMPSummary({mapType,plan,allProducts,showCost=true}){
+  const{unit}=TYPE_CFG_FMP[mapType]||TYPE_CFG_FMP.botox;
+  const h=createElement;
+  const entries=Object.entries(plan).filter(([,v])=>v&&Number(v.dose)>0);
+  const totalDose=entries.reduce((a,[,v])=>a+Number(v.dose),0);
+  const estimatedCost=entries.reduce((acc,[,v])=>{
+    if(!v.product)return acc;
+    const si=(allProducts||[]).find(p=>(typeof p==="string"?p:(p.name||p))===v.product);
+    if(!si||!si.cost)return acc;
+    const unitCost=Number(si.cost)/Math.max(1,Number(si.qty||1));
+    return acc+unitCost*Number(v.dose);
+  },0);
+  if(entries.length===0)return h("div",{style:{fontSize:13,color:P.text3,padding:"16px 0"}},"Clique nas zonas para planejar.");
+  return h("div",null,
+    h("div",{style:{display:"flex",gap:12,marginBottom:14,padding:"10px 12px",background:"rgba(92,31,50,.08)",borderRadius:8,border:"1px solid rgba(92,31,50,.2)"}},
+      h("div",{style:{flex:1}},h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".1em"}},"Total planejado"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.accent}},`${totalDose}${unit}`)),
+      h("div",{style:{flex:1}},h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".1em"}},"Zonas"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.text}},entries.length)),
+      showCost&&estimatedCost>0&&h("div",{style:{flex:1}},h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".1em"}},"Custo est."),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.yellow}},fmtCurrFMP(estimatedCost)))
+    ),
+    h("div",{style:{display:"flex",flexDirection:"column",gap:1}},
+      entries.map(([k,v])=>h("div",{key:k,style:{display:"flex",alignItems:"center",gap:8,padding:"7px 4px",borderBottom:`1px solid ${P.border}`,fontSize:12}},
+        h("div",{style:{width:28,textAlign:"right",fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:P.accent,flexShrink:0}},`${v.dose}${unit}`),
+        h("div",{style:{flex:1,color:P.text2}},k.replace(/_/g," ")),
+        v.product&&h("div",{style:{fontSize:10.5,color:P.text3,flexShrink:0,maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},v.product),
+        v.notes&&h("div",{title:v.notes,style:{fontSize:10,color:P.text3,cursor:"help"}})
+      ))
+    )
+  );
+}
+
+function FMPCompare({mapType,plan,realized}){
+  const{unit}=TYPE_CFG_FMP[mapType]||TYPE_CFG_FMP.botox;
+  const h=createElement;
+  const allKeys=new Set([...Object.keys(plan).filter(k=>plan[k]?.dose>0),...Object.keys(realized||{}).filter(k=>(realized[k]||0)>0)]);
+  if(allKeys.size===0)return h("div",{style:{fontSize:13,color:P.text3,padding:"16px 0"}},"Nenhuma zona registrada.");
+  const zones=ZONE_DEFS[mapType]||ZONE_DEFS.botox;
+  const labelOf=k=>zones.find(z=>z.k===k)?.label||k.replace(/_/g," ");
+  const rows=[...allKeys].map(k=>({k,planned:Number(plan[k]?.dose||0),real:Number(realized?.[k]||0)})).map(r=>({...r,diff:r.real-r.planned}));
+  const totalPlanned=rows.reduce((a,r)=>a+r.planned,0);
+  const totalReal=rows.reduce((a,r)=>a+r.real,0);
+  return h("div",null,
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14,padding:"10px 12px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
+      [{label:"Planejado",value:`${totalPlanned}${unit}`,color:"#7aaed4"},{label:"Realizado",value:`${totalReal}${unit}`,color:P.green},{label:"Variação",value:`${totalReal>totalPlanned?"+":""}${totalReal-totalPlanned}${unit}`,color:totalReal===totalPlanned?P.text3:totalReal>totalPlanned?P.yellow:P.green}]
+        .map(s=>h("div",{key:s.label,style:{textAlign:"center"}},h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:3}},s.label),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:s.color}},s.value)))
+    ),
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 56px 56px 48px",gap:6,padding:"4px 4px 8px",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",borderBottom:`1px solid ${P.border}`}},
+      h("span",null,"Zona"),h("span",{style:{textAlign:"right"}},"Plan."),h("span",{style:{textAlign:"right"}},"Real."),h("span",{style:{textAlign:"right"}},"Δ")
+    ),
+    rows.map(r=>h("div",{key:r.k,style:{display:"grid",gridTemplateColumns:"1fr 56px 56px 48px",gap:6,padding:"7px 4px",borderBottom:`1px solid rgba(71,35,37,.2)`,fontSize:12}},
+      h("span",{style:{color:P.text2}},labelOf(r.k)),
+      h("span",{style:{textAlign:"right",color:"#7aaed4"}},r.planned>0?`${r.planned}${unit}`:"—"),
+      h("span",{style:{textAlign:"right",color:P.green}},r.real>0?`${r.real}${unit}`:"—"),
+      h("span",{style:{textAlign:"right",color:r.diff===0?P.text3:r.diff>0?P.yellow:P.green,fontWeight:r.diff!==0?600:400}},r.diff===0?"="`${r.diff>0?"+":""}${r.diff}`)
+    ))
+  );
+}
+
+// Componente principal do planejador — usado na aba Planejamento e no modal de sessão
+function FaceMapPlanner({value,onChange,products=[],readOnly=false,mode="plan"}){
+  const mapType=value?.type||"botox";
+  const plan=value?.plan||{};
+  const realized=value?.realizedPoints||{};
+  const[tab,setTab]=useState(mode==="compare"?"compare":"map");
+  const h=createElement;
+  function setType(t){onChange({...(value||{}),type:t,plan:{},realizedPoints:{}});}
+  function setPlan(newPlan){onChange({...(value||{}),type:mapType,plan:newPlan,realizedPoints:realized});}
+  const TABS=[{k:"map",l:"🗺 Mapa"},{k:"summary",l:"📋 Resumo"},...(mode==="compare"?[{k:"compare",l:"📊 Plan. × Real"}]:[])] ;
+  return h("div",{style:{fontFamily:"'DM Sans',sans-serif"}},
+    !readOnly&&h("div",{style:{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}},
+      Object.entries(TYPE_CFG_FMP).map(([k,cfg])=>h("button",{key:k,onClick:()=>setType(k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:mapType===k?P.rose:"transparent",border:`1px solid ${mapType===k?P.rose:P.border}`,color:mapType===k?P.accent3:P.text3}},cfg.label))
+    ),
+    h("div",{style:{display:"flex",gap:2,marginBottom:16,background:P.bg2,padding:4,borderRadius:10,border:`1px solid ${P.border}`,width:"fit-content",flexWrap:"wrap"}},
+      TABS.map(t=>h("button",{key:t.k,onClick:()=>setTab(t.k),style:{padding:"6px 14px",borderRadius:7,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:"none",transition:"all .15s",background:tab===t.k?P.rose:"transparent",color:tab===t.k?P.accent3:P.text3}},t.l))
+    ),
+    tab==="map"&&h("div",{style:{display:"flex",gap:20,alignItems:"flex-start",flexWrap:"wrap"}},
+      h("div",{style:{flexShrink:0}},h(FMPMap,{mapType,plan,onPlanChange:setPlan,products,readOnly})),
+      h("div",{style:{flex:1,minWidth:180}},
+        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}},"Planejamento"),
+        h(FMPSummary,{mapType,plan,allProducts:products,showCost:true})
+      )
+    ),
+    tab==="summary"&&h(FMPSummary,{mapType,plan,allProducts:products,showCost:true}),
+    tab==="compare"&&h(FMPCompare,{mapType,plan,realized})
+  );
+}
+
+// Widget colapsável para o modal de sessão
+function FaceMapPlannerField({value,onChange,products}){
+  const h=createElement;
+  const hasData=value?.plan&&Object.keys(value.plan).some(k=>value.plan[k]?.dose>0);
+  const[open,setOpen]=useState(hasData);
+  return h("div",null,
+    h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:open?12:0}},
+      h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",fontWeight:500}},"Mapa Facial Planejador"),
+      h("button",{onClick:()=>setOpen(o=>!o),style:{background:open?P.rose:"transparent",border:`1px solid ${open?P.rose:P.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,color:open?P.accent3:P.text3,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},open?"▲ Fechar":"▼ Abrir mapa")
+    ),
+    open&&h(FaceMapPlanner,{value,onChange,products,mode:"plan"})
+  );
+}
+
+// Exibição compacta read-only na sessão salva (suporte ao legado faceMap também)
+function FMPProntuario({session,allProducts}){
+  const h=createElement;
+  const fp=session?.faceMapPlanner;
+  const legacy=session?.faceMap;
+  if(fp&&fp.plan&&Object.keys(fp.plan).some(k=>fp.plan[k]?.dose>0)){
+    const{unit}=TYPE_CFG_FMP[fp.type]||TYPE_CFG_FMP.botox;
+    const entries=Object.entries(fp.plan).filter(([,v])=>v?.dose>0);
+    const totalDose=entries.reduce((a,[,v])=>a+Number(v.dose),0);
+    const zones=ZONE_DEFS[fp.type]||ZONE_DEFS.botox;
+    const labelOf=k=>zones.find(z=>z.k===k)?.label||k.replace(/_/g," ");
+    return h("div",{style:{padding:"8px 12px",background:P.bg3,borderRadius:8,marginBottom:8,border:`1px solid ${P.border}`}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
+        h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em"}},`🗺 Mapa Planejado · ${TYPE_CFG_FMP[fp.type]?.label||fp.type} · Total: ${totalDose}${unit}`),
+      ),
+      h("div",{style:{display:"flex",gap:5,flexWrap:"wrap"}},
+        entries.map(([k,v])=>h("span",{key:k,title:v.product?(v.product+(v.notes?" — "+v.notes:"")):"",style:{fontSize:11,padding:"3px 9px",borderRadius:20,background:"rgba(92,31,50,.1)",color:P.accent,cursor:v.product?"help":"default"}},`${labelOf(k)}: ${v.dose}${unit}`+(v.product?` (${v.product.split(" ")[0]})`:""))
+        )
+      )
+    );
+  }
+  if(legacy&&Object.values(legacy.points||{}).some(v=>v>0)){
+    return h("div",{style:{padding:"8px 12px",background:P.bg3,borderRadius:8,marginBottom:8}},
+      h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},`Mapa · ${legacy.type}`),
+      h("div",{style:{display:"flex",gap:5,flexWrap:"wrap"}},Object.entries(legacy.points||{}).filter(([,v])=>v>0).map(([k,v])=>h("span",{key:k,style:{fontSize:11,padding:"3px 9px",borderRadius:20,background:"rgba(92,31,50,.1)",color:P.accent}},`${k.replace(/_/g," ")}: ${v}${legacy.type==="botox"?"U":"ml"}`)))
+    );
+  }
+  return null;
+}
+
 // ─── PLAN ANNOTATOR ───────────────────────────────────────────────────────────
 // Salva anotações como dados estruturados para reedição posterior
 function PlanAnnotator({initial,onSave,onClose}){
@@ -2240,7 +2461,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const qvfv=k=>v=>setQvForm(p=>({...p,[k]:v}));
   const h=createElement;
   const today=new Date();
-  const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",finStatus:"Pendente",paid:false,notes:"",evolution:"",useFaceMap:false,returnReminderDays:14,loteId:"",qtdUsada:""};
+  const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",finStatus:"Pendente",paid:false,notes:"",evolution:"",useFaceMap:false,faceMapPlanner:null,returnReminderDays:14,loteId:"",qtdUsada:""};
   const[sForm,setSForm]=useState(blankS);
   const sfv=k=>v=>setSForm(p=>({...p,[k]:v}));
   // Auto-preenche prazo de retorno e valor ao trocar procedimento
@@ -2293,7 +2514,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   }
   function saveSession(){
     const _loteSel=(allProducts||[]).flatMap(p=>p.lotes||[]).find(l=>String(l.id)===String(sForm.loteId));
-    const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,loteId:sForm.loteId||"",loteCodigo:_loteSel?.codigo||"",qtdUsada:sForm.qtdUsada||"",dose:sForm.dose,region:sForm.region,location:sForm.location,value:Number(sForm.value)||0,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1,notes:sForm.notes,evolution:sForm.evolution,faceMap:sForm.useFaceMap?sessionFaceMap:null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90};
+    const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,loteId:sForm.loteId||"",loteCodigo:_loteSel?.codigo||"",qtdUsada:sForm.qtdUsada||"",dose:sForm.dose,region:sForm.region,location:sForm.location,value:Number(sForm.value)||0,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1,notes:sForm.notes,evolution:sForm.evolution,faceMap:sForm.useFaceMap?sessionFaceMap:null,faceMapPlanner:sForm.faceMapPlanner||null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90};
     upd(p=>editSess?{...p,sessions:(p.sessions||[]).map(x=>x.id===s.id?s:x),lastVisit:s.date}:{...p,sessions:[s,...(p.sessions||[])],lastVisit:s.date});
     // Sincronizar com Financeiro automaticamente
     const patName=patient.name;
@@ -2597,7 +2818,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:s.finStatus==="Pago"?P.green:s.finStatus==="Pendente"?P.yellow:P.red}},fmtCurr(s.value)),
             s.payMethod==="Cartão Crédito"&&s.parcelas>1&&h("div",{style:{fontSize:11,color:P.accent,background:"rgba(157,119,97,.1)",borderRadius:8,padding:"2px 8px",fontWeight:600}},`${s.parcelas}x ${fmtCurr(s.value/s.parcelas)}`),
             h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.id,e.target.value),style:{fontSize:11,padding:"3px 8px",borderRadius:12,color:s.finStatus==="Pago"?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st))),
-            h("button",{onClick:()=>{setEditSess(s);setSForm({...s,value:String(s.value),useFaceMap:!!s.faceMap,finStatus:s.finStatus||"Pendente"});setSessionFaceMap(s.faceMap);setShowNewS(true);},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"✎"),
+            h("button",{onClick:()=>{setEditSess(s);setSForm({...s,value:String(s.value),useFaceMap:!!s.faceMap,faceMapPlanner:s.faceMapPlanner||null,finStatus:s.finStatus||"Pendente"});setSessionFaceMap(s.faceMap);setShowNewS(true);},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"✎"),
             h("button",{onClick:()=>delSession(s.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"🗑")
           )
         ),
@@ -2605,7 +2826,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         s.notes&&h("div",{style:{background:P.bg3,borderRadius:8,padding:"10px 14px",marginBottom:8}},h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"Notas"),h("div",{style:{fontSize:13,color:P.text2,lineHeight:1.6}},s.notes)),
         s.evolution&&h("div",{style:{background:`rgba(92,31,50,.06)`,borderRadius:8,padding:"10px 14px",border:`1px solid rgba(92,31,50,.15)`,marginBottom:8}},h("div",{style:{fontSize:9.5,color:P.accent,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"Evolução / Retorno"),h("div",{style:{fontSize:13,color:P.text2,lineHeight:1.6}},s.evolution)),
         s.returnReminderDays&&h("div",{style:{fontSize:11,color:P.text3,marginBottom:8}},`⏰ Lembrete de retorno: ${s.returnReminderDays} dias após procedimento`),
-        s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)&&h("div",{style:{padding:"8px 12px",background:P.bg3,borderRadius:8,marginBottom:8}},h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},`Mapa · ${s.faceMap.type}`),h("div",{style:{display:"flex",gap:5,flexWrap:"wrap"}},Object.entries(s.faceMap.points||{}).filter(([,v])=>v>0).map(([k,v])=>h("span",{key:k,style:{fontSize:11,padding:"3px 9px",borderRadius:20,background:`rgba(92,31,50,.1)`,color:P.accent}},`${k.replace(/_/g," ")}: ${v}${s.faceMap.type==="botox"?"U":"ml"}`)))),
+        h(FMPProntuario,{session:s,allProducts:allProducts||products}),
         (s.intercorrencias||[]).length>0&&h("div",{style:{marginBottom:8,padding:"8px 12px",background:"rgba(192,112,112,.06)",borderRadius:8,border:"1px solid rgba(192,112,112,.18)"}},h("div",{style:{fontSize:10,color:P.red,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"⚠ Intercorrências"),(s.intercorrencias||[]).map((ic,i)=>h("div",{key:i,style:{fontSize:12,color:P.text2}},`${ic.date} · ${ic.type}: ${ic.notes}`))),
         (s.photos||[]).length>0&&h("div",{style:{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}},(s.photos||[]).slice(0,4).map(ph=>h("img",{key:ph.id,src:ph.url,alt:ph.name,style:{width:58,height:58,objectFit:"cover",borderRadius:6,border:`1px solid ${P.border}`}})),(s.photos||[]).length>4&&h("div",{style:{width:58,height:58,borderRadius:6,background:P.card2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:P.text3}},`+${(s.photos||[]).length-4}`)),
         h("div",{style:{display:"flex",gap:8,marginTop:10}},
@@ -2619,17 +2840,36 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     tab==="mapa"&&h("div",null,
       h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}},
         [{title:"💉 Toxina",type:"botox"},{title:"✨ Preenchimento",type:"filler"},{title:"🧵 Fios",type:"thread"}].map(mt=>{
-          const sess=(patient.sessions||[]).find(s=>s.faceMap?.type===mt.type);
-          return h(Card,{key:mt.type},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:14}},mt.title),sess?h(FaceMapEditor,{sessionMap:sess.faceMap,onChange:()=>{},readOnly:true}):h("div",{style:{textAlign:"center",padding:"20px 0",color:P.text3,fontSize:13}},"Nenhuma sessão."),sess&&h("div",{style:{fontSize:11,color:P.text3,marginTop:8}},`Sessão: ${sess.date}`));
+          const sessPlanner=(patient.sessions||[]).find(s=>s.faceMapPlanner?.type===mt.type&&s.faceMapPlanner?.plan&&Object.keys(s.faceMapPlanner.plan).some(k=>s.faceMapPlanner.plan[k]?.dose>0));
+          const sessLegacy=(patient.sessions||[]).find(s=>s.faceMap?.type===mt.type);
+          const sess=sessPlanner||sessLegacy;
+          return h(Card,{key:mt.type},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:14}},mt.title),
+            sessPlanner
+              ?h("div",null,
+                  h(FaceMapPlanner,{value:sessPlanner.faceMapPlanner,products,readOnly:true,mode:"plan"}),
+                  h("div",{style:{fontSize:11,color:P.text3,marginTop:8}},`Sessão: ${sessPlanner.date}`)
+                )
+              :sessLegacy
+                ?h("div",null,h(FaceMapEditor,{sessionMap:sessLegacy.faceMap,onChange:()=>{},readOnly:true}),h("div",{style:{fontSize:11,color:P.text3,marginTop:8}},`Sessão: ${sessLegacy.date}`))
+                :h("div",{style:{textAlign:"center",padding:"20px 0",color:P.text3,fontSize:13}},"Nenhuma sessão.")
+          );
         })
       ),
       h(Card,{style:{marginTop:14}},
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Histórico de Mapas"),
-        (patient.sessions||[]).filter(s=>s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)).length===0?h("div",{style:{color:P.text3,fontSize:13}},"Nenhum mapa registrado.")
-        :(patient.sessions||[]).filter(s=>s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)).map((s,i)=>h("div",{key:i,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`,display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:6}},
-          h("span",{style:{fontSize:13,color:P.text}},`${s.date} · ${s.procedure}`),
-          h("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},Object.entries(s.faceMap.points||{}).filter(([,v])=>v>0).map(([k,v])=>h("span",{key:k,style:{fontSize:10,padding:"2px 8px",borderRadius:12,background:`rgba(92,31,50,.1)`,color:P.accent}},`${k.replace(/_/g," ")}: ${v}${s.faceMap.type==="botox"?"U":"ml"}`)))
-        ))
+        (()=>{
+          const withMaps=(patient.sessions||[]).filter(s=>(s.faceMapPlanner?.plan&&Object.keys(s.faceMapPlanner.plan).some(k=>s.faceMapPlanner.plan[k]?.dose>0))||(s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)));
+          if(withMaps.length===0)return h("div",{style:{color:P.text3,fontSize:13}},"Nenhum mapa registrado.");
+          return h("div",null,withMaps.map((s,i)=>h("div",{key:i,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`,display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:6}},
+            h("span",{style:{fontSize:13,color:P.text}},`${s.date} · ${s.procedure}`),
+            h("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},
+              s.faceMapPlanner?.plan
+                ?Object.entries(s.faceMapPlanner.plan).filter(([,v])=>v?.dose>0).map(([k,v])=>h("span",{key:k,style:{fontSize:10,padding:"2px 8px",borderRadius:12,background:"rgba(92,31,50,.1)",color:P.accent}},`${k.replace(/_/g," ")}: ${v.dose}${TYPE_CFG_FMP[s.faceMapPlanner.type]?.unit||"U"}`))
+                :Object.entries(s.faceMap.points||{}).filter(([,v])=>v>0).map(([k,v])=>h("span",{key:k,style:{fontSize:10,padding:"2px 8px",borderRadius:12,background:"rgba(92,31,50,.1)",color:P.accent}},`${k.replace(/_/g," ")}: ${v}${s.faceMap.type==="botox"?"U":"ml"}`))
+            )
+          )));
+        })()
       )
     ),
     // ─── POR REGIÃO TAB ──────────────────────────────────────────────────────
@@ -2723,6 +2963,16 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           h(Btn,{variant:"ghost",onClick:()=>setShowPlan(true),style:{fontSize:12}},"＋ Plano de Texto"),
           h(Btn,{onClick:()=>{setPlanAnnotating("new");},style:{fontSize:12}},"🖼 Plano com Foto")
         )
+      ),
+      // ── Plano Visual Estruturado (FaceMapPlanner) ──
+      h(Card,{style:{marginBottom:18,border:`1px solid rgba(157,119,97,.25)`}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:12}},"🗺 Plano Visual por Zona"),
+        h(FaceMapPlanner,{
+          value:patient.facePlanPlanner||null,
+          onChange:v=>{upd(p=>({...p,facePlanPlanner:v}));},
+          products:products||[],
+          mode:"plan"
+        })
       ),
       (patient.planejamento||[]).length===0&&h(Card,{style:{textAlign:"center",padding:40}},
         h("div",{style:{fontSize:32,marginBottom:12}},"🎯"),
@@ -2944,6 +3194,9 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Field,{label:"Mapa de Aplicação"},
           h("button",{onClick:()=>sfv("useFaceMap")(!sForm.useFaceMap),style:{padding:"7px 16px",borderRadius:8,cursor:"pointer",fontSize:12,fontFamily:"'DM Sans',sans-serif",background:sForm.useFaceMap?P.rose:"transparent",border:`1px solid ${sForm.useFaceMap?P.rose:P.border}`,color:sForm.useFaceMap?P.accent3:P.text3,marginBottom:sForm.useFaceMap?14:0}},sForm.useFaceMap?"✓ Incluindo Mapa":"＋ Incluir Mapa"),
           sForm.useFaceMap&&h("div",{style:{paddingBottom:64}},h(FaceMapEditor,{sessionMap:sessionFaceMap,onChange:setSessionFaceMap}))
+        ),
+        h(Field,{label:"Mapa Planejador (dose · produto · custo)"},
+          h(FaceMapPlannerField,{value:sForm.faceMapPlanner,onChange:v=>setSForm(p=>({...p,faceMapPlanner:v})),products})
         )
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},h(Btn,{variant:"ghost",onClick:()=>{setShowNewS(false);setEditSess(null);}},"Cancelar"),!editSess&&h("button",{onClick:()=>{saveSession();setTimeout(()=>{setPkgForm(p=>({...p,procedure:sForm.procedure}));setShowNewPkg(true);setTab("pacotes");},100);},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:"1px solid "+P.gold,color:P.gold}},"📦 Salvar e Criar Pacote"),h(Btn,{onClick:saveSession},editSess?"Salvar":"Salvar Sessão"))
