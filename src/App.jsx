@@ -152,6 +152,182 @@ function LoyaltyBadge({patient,allPatients,size="md"}){
   );
 }
 
+// ─── DOSSIÊ COMPLETO DA PACIENTE (PDF) ────────────────────────────────────────
+let _jsPDFLoadPromise=null;
+function loadJsPDF(){
+  if(window.jspdf?.jsPDF)return Promise.resolve(window.jspdf.jsPDF);
+  if(_jsPDFLoadPromise)return _jsPDFLoadPromise;
+  _jsPDFLoadPromise=new Promise((resolve,reject)=>{
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload=()=>resolve(window.jspdf.jsPDF);
+    s.onerror=()=>reject(new Error("Não foi possível carregar o gerador de PDF. Verifique sua conexão."));
+    document.head.appendChild(s);
+  });
+  return _jsPDFLoadPromise;
+}
+
+async function generatePatientDossier(patient,{products,settings}={}){
+  const jsPDFCtor=await loadJsPDF();
+  const doc=new jsPDFCtor({unit:"pt",format:"a4"});
+  const PG_W=595.28, MARGIN=42, MAX_W=PG_W-MARGIN*2;
+  let y=MARGIN;
+  const COL={accent:[157,119,97],text:[35,28,30],text2:[90,80,82],text3:[140,130,132],line:[222,212,208],danger:[176,72,72]};
+
+  function ensureSpace(h){ if(y+h>800){ doc.addPage(); y=MARGIN; drawPageHeader(); } }
+  function drawPageHeader(){
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...COL.text3);
+    doc.text((settings?.clinicName||"HarmonizaPro")+" · Dossiê Confidencial — "+patient.name,MARGIN,24);
+    doc.setDrawColor(...COL.line); doc.line(MARGIN,30,PG_W-MARGIN,30);
+    y=44;
+  }
+  function sectionTitle(txt,emoji){
+    ensureSpace(34);
+    doc.setFillColor(247,240,237); doc.rect(MARGIN,y,MAX_W,24,"F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(...COL.accent);
+    doc.text((emoji?emoji+"  ":"")+txt,MARGIN+8,y+16);
+    y+=34;
+  }
+  function kv(label,value,opts={}){
+    if(value===undefined||value===null||value==="")value="—";
+    ensureSpace(16);
+    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(...COL.text2);
+    doc.text(label+":",MARGIN+4,y);
+    doc.setFont("helvetica","normal"); doc.setTextColor(...(opts.danger?COL.danger:COL.text));
+    const lines=doc.splitTextToSize(String(value),MAX_W-150);
+    doc.text(lines,MARGIN+150,y);
+    y+=Math.max(16,lines.length*12);
+  }
+  function paragraph(text,opts={}){
+    if(!text)return;
+    ensureSpace(14);
+    doc.setFont("helvetica",opts.bold?"bold":"normal"); doc.setFontSize(opts.size||9.5); doc.setTextColor(...(opts.color||COL.text));
+    const lines=doc.splitTextToSize(String(text),MAX_W-8);
+    lines.forEach(ln=>{ ensureSpace(13); doc.text(ln,MARGIN+4,y); y+=13; });
+  }
+  function divider(){ ensureSpace(10); doc.setDrawColor(...COL.line); doc.line(MARGIN,y,PG_W-MARGIN,y); y+=12; }
+  function emptyMsg(txt){ doc.setFont("helvetica","italic"); doc.setFontSize(9); doc.setTextColor(...COL.text3); ensureSpace(14); doc.text(txt,MARGIN+4,y); y+=16; }
+
+  // ── CAPA ──────────────────────────────────────────────────────────────────
+  doc.setFillColor(247,240,237); doc.rect(0,0,PG_W,841.89,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(22); doc.setTextColor(...COL.accent);
+  doc.text(settings?.clinicName||"HarmonizaPro",PG_W/2,180,{align:"center"});
+  doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(...COL.text3);
+  doc.text("DOSSIÊ CLÍNICO CONFIDENCIAL",PG_W/2,202,{align:"center"});
+  doc.setDrawColor(...COL.accent); doc.line(PG_W/2-60,216,PG_W/2+60,216);
+  doc.setFont("helvetica","bold"); doc.setFontSize(20); doc.setTextColor(...COL.text);
+  doc.text(patient.name,PG_W/2,300,{align:"center"});
+  doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(...COL.text2);
+  doc.text("Gerado em "+new Date().toLocaleDateString("pt-BR")+" às "+new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),PG_W/2,320,{align:"center"});
+  doc.setFontSize(8); doc.setTextColor(...COL.text3);
+  doc.text("Este documento contém informações médicas e pessoais sensíveis.\nDestinado exclusivamente para fins clínicos, sob sigilo profissional.",PG_W/2,700,{align:"center"});
+
+  doc.addPage(); y=MARGIN; drawPageHeader();
+
+  // ── DADOS PESSOAIS ────────────────────────────────────────────────────────
+  sectionTitle("Dados Pessoais","👤");
+  const bd=patient.birthDate?new Date(patient.birthDate+"T12:00"):null;
+  kv("Nome completo",patient.name);
+  kv("Idade",patient.age?patient.age+" anos":"—");
+  kv("Data de nascimento",bd&&!isNaN(bd)?bd.toLocaleDateString("pt-BR"):"—");
+  kv("Telefone",patient.phone);
+  kv("E-mail",patient.email);
+  kv("CPF",patient.cpf);
+  kv("Tipo sanguíneo",patient.bloodType);
+  kv("Cliente desde",patient.since);
+  kv("Indicado por",patient.indicadoPor);
+  y+=4;
+
+  // ── ANAMNESE ──────────────────────────────────────────────────────────────
+  sectionTitle("Anamnese","📋");
+  const an=patient.anamnese||{};
+  kv("Histórico de saúde",an.healthHistory);
+  kv("Medicações em uso",an.medications);
+  kv("Fumante",an.smoking);
+  kv("Gestante/Amamentando",an.pregnancy);
+  kv("Procedimentos anteriores",an.previousProcedures);
+  kv("Tipo de pele",an.skinType);
+  kv("Fototipo (Fitzpatrick)",an.fitzpatrick);
+  kv("Alergias",an.allergiesDetail||patient.allergies,{danger:!!(an.allergiesDetail||(patient.allergies&&patient.allergies!=="Nenhuma"))});
+  kv("Contraindicações",an.contraindications,{danger:!!an.contraindications&&an.contraindications!=="Nenhuma"});
+  if((an.importantAlerts||[]).length>0)kv("Alertas importantes",an.importantAlerts.join(", "),{danger:true});
+  y+=4;
+
+  // ── EVOLUÇÃO / SESSÕES ────────────────────────────────────────────────────
+  sectionTitle("Evolução — Histórico de Sessões","📈");
+  const sessions=[...(patient.sessions||[])].sort((a,b)=>(parseDMY(a.date)||new Date(0))-(parseDMY(b.date)||new Date(0)));
+  if(sessions.length===0)emptyMsg("Nenhuma sessão registrada.");
+  sessions.forEach((s,i)=>{
+    ensureSpace(20);
+    doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...COL.accent);
+    doc.text(`${i+1}. ${s.date} — ${s.procedure}`,MARGIN+4,y); y+=14;
+    kv("  Produto / Dose",`${s.product||"—"} ${s.dose?"· "+s.dose:""}`);
+    kv("  Região",s.region);
+    kv("  Local",s.location);
+    kv("  Profissional",s.doctor);
+    kv("  Valor",fmtCurr(s.value||0)+" · "+(s.payMethod||"—")+" · "+(s.finStatus||(s.paid?"Pago":"Pendente")));
+    if(s.notes)paragraph("Observações: "+s.notes,{size:9});
+    if(s.evolution)paragraph("Evolução: "+s.evolution,{size:9});
+    if((s.photos||[]).length>0)kv("  Fotos registradas",s.photos.length+" foto(s) (ver galeria do prontuário)");
+    if((s.docs||[]).length>0)kv("  Documentos",s.docs.length+" documento(s) anexado(s)");
+    divider();
+  });
+
+  // ── PRODUTOS E LOTES UTILIZADOS ───────────────────────────────────────────
+  sectionTitle("Produtos e Lotes Utilizados","💉");
+  const usedProducts=sessions.filter(s=>s.product);
+  if(usedProducts.length===0)emptyMsg("Nenhum produto registrado nas sessões.");
+  usedProducts.forEach(s=>{
+    const prod=(Array.isArray(products)?products:[]).find(p=>(p.name||p)===s.product);
+    const lote=s.faceMap?.lote||s.lote||null;
+    ensureSpace(14);
+    paragraph(`${s.date} — ${s.product}${s.dose?" ("+s.dose+")":""}${lote?" · Lote: "+lote:""}`,{size:9.5,bold:true,color:COL.text});
+  });
+  y+=6;
+
+  // ── INTERCORRÊNCIAS ───────────────────────────────────────────────────────
+  sectionTitle("Intercorrências","⚠");
+  const interc=[...(patient.intercorrencias||[]),...sessions.flatMap(s=>(s.intercorrencias||[]).map(i=>({...i,date:i.date||s.date})))];
+  if(interc.length===0)emptyMsg("Nenhuma intercorrência registrada.");
+  interc.forEach(it=>{
+    ensureSpace(16);
+    paragraph(`${it.date||"—"} — ${it.description||it.desc||it.text||"Intercorrência registrada"}`,{size:9.5,color:COL.danger});
+  });
+  y+=6;
+
+  // ── PAGAMENTOS ─────────────────────────────────────────────────────────────
+  sectionTitle("Pagamentos","💰");
+  if(sessions.length===0)emptyMsg("Nenhum pagamento registrado.");
+  let totalPago=0,totalPendente=0;
+  sessions.forEach(s=>{ if(s.paid)totalPago+=Number(s.value||0); else totalPendente+=Number(s.value||0); });
+  sessions.forEach(s=>{
+    ensureSpace(14);
+    paragraph(`${s.date} · ${s.procedure} · ${fmtCurr(s.value||0)} · ${s.payMethod||"—"} · ${s.finStatus||(s.paid?"Pago":"Pendente")}`,{size:9.5});
+  });
+  divider();
+  kv("Total pago",fmtCurr(totalPago));
+  kv("Total pendente",fmtCurr(totalPendente),{danger:totalPendente>0});
+
+  // ── DOCUMENTOS E FOTOS (resumo) ───────────────────────────────────────────
+  sectionTitle("Fotos e Documentos","📎");
+  const totalPhotos=sessions.reduce((a,s)=>a+(s.photos||[]).length,0);
+  const totalDocs=sessions.reduce((a,s)=>a+(s.docs||[]).length,0);
+  kv("Total de fotos registradas",String(totalPhotos));
+  kv("Total de documentos anexados",String(totalDocs));
+  paragraph("Nota: imagens e arquivos originais permanecem armazenados no sistema. Este dossiê traz apenas a contagem e referência por sessão — consulte o prontuário digital para visualização completa.",{size:8.5,color:COL.text3});
+
+  // Numeração de páginas
+  const pageCount=doc.getNumberOfPages();
+  for(let p=2;p<=pageCount;p++){
+    doc.setPage(p);
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...COL.text3);
+    doc.text(`Página ${p-1} de ${pageCount-1}`,PG_W-MARGIN,820,{align:"right"});
+  }
+
+  const fileName=`Dossie_${patient.name.replace(/[^a-zA-Z0-9]+/g,"_")}_${new Date().toISOString().slice(0,10)}.pdf`;
+  doc.save(fileName);
+}
+
 // ─── HELPERS DE ESTOQUE POR LOTE ────────────────────────────────────────────
 function getAvailableLotes(products, productName) {
   if (!productName) return [];
@@ -1977,7 +2153,7 @@ function IndicacoesTab({patient,patients,onSelectPatient,fmtCurr}){
   );
 }
 
-function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates}){
+function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings}){
   const _vTemplates=Array.isArray(voucherTemplates)&&voucherTemplates.length?voucherTemplates:DEFAULT_VOUCHER_TEMPLATES;
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
@@ -1996,6 +2172,13 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[orcForm,setOrcForm]=useState(blankOrc);
   const[orcItemInput,setOrcItemInput]=useState("");
   const[showQuickVoucher,setShowQuickVoucher]=useState(false);
+  const[generatingDossie,setGeneratingDossie]=useState(false);
+  async function handleGenerateDossie(){
+    setGeneratingDossie(true);
+    try{ await generatePatientDossier(patient,{products,settings:clinicSettings||{}}); }
+    catch(e){ alert(e.message||"Erro ao gerar o dossiê. Tente novamente."); }
+    finally{ setGeneratingDossie(false); }
+  }
   const blankQV={template:"classico",fromName:"",message:"",validUntil:"",type:"valor",value:"",procedures:[],procInput:""};
   const[qvForm,setQvForm]=useState(blankQV);
   const qvfv=k=>v=>setQvForm(p=>({...p,[k]:v}));
@@ -2136,6 +2319,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       h("button",{onClick:onBack,style:{background:`rgba(92,31,50,.12)`,border:`1px solid ${P.rose}`,borderRadius:8,padding:"7px 14px",color:P.accent,cursor:"pointer",fontSize:13}},"← Voltar"),
       h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.text}},"Ficha da Paciente"),
       h("div",{style:{marginLeft:"auto",display:"flex",gap:8}},
+        h(Btn,{variant:"ghost",onClick:handleGenerateDossie,disabled:generatingDossie,style:{fontSize:12,padding:"6px 14px"}},generatingDossie?"Gerando...":"📋 Gerar Dossiê"),
         h(Btn,{variant:"ghost",onClick:()=>setEditPat(true),style:{fontSize:12,padding:"6px 14px"}},"✎ Editar"),
         h(Btn,{variant:"danger",onClick:()=>{if(window.confirm("Excluir paciente?"))setPatients(prev=>prev.filter(p=>p.id!==patient.id));onBack();},style:{fontSize:12,padding:"6px 14px"}},"🗑 Excluir")
       )
@@ -4580,7 +4764,7 @@ function AppInner({ session, onLogout }) {
             page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,proceduresFull:procedures,locations:locationNames}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
-            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates}),
+            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
