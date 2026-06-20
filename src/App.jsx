@@ -1858,28 +1858,40 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations})
   }
 
   // ── Drag & Drop ──
+  // Usa ref + dataTransfer para evitar closure stale com useState
+  const dragIdRef=useRef(null);
   function onDragStart(e,id){
+    dragIdRef.current=id;
     setDragId(id);
     e.dataTransfer.effectAllowed="move";
+    e.dataTransfer.setData("text/plain",String(id));
   }
   function onDragOverSlot(e,date,hour){
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect="move";
     setDragOver({date,hour});
   }
   function onDropSlot(e,date,hour){
     e.preventDefault();
-    if(!dragId)return;
+    e.stopPropagation();
+    const rawId=e.dataTransfer.getData("text/plain")||String(dragIdRef.current||"");
+    const id=Number(rawId);
+    if(!id)return;
     const newTime=`${String(hour).padStart(2,"0")}:00`;
     setAgenda(prev=>prev.map(a=>{
-      if(a.id!==dragId)return a;
+      if(a.id!==id)return a;
       const entry={from:`${a.date} ${a.time}`,to:`${date} ${newTime}`,at:new Date().toLocaleString("pt-BR")};
-      return{...a,date,time:newTime,status:a.status==="Reagendado"?a.status:"Reagendado",rescheduleHistory:[...(a.rescheduleHistory||[]),entry]};
+      return{...a,date,time:newTime,status:"Reagendado",rescheduleHistory:[...(a.rescheduleHistory||[]),entry]};
     }));
     setSelDate(date);
+    dragIdRef.current=null;
     setDragId(null);setDragOver(null);
   }
-  function onDragEnd(){setDragId(null);setDragOver(null);}
+  function onDragEnd(){
+    dragIdRef.current=null;
+    setDragId(null);setDragOver(null);
+  }
 
   // ── Clique em slot vazio → novo agendamento ──
   function onClickEmptySlot(date,hour){
@@ -1935,13 +1947,23 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations})
 
   // ─── COLUNA DE HORAS (view dia/semana) ───
   function HourSlots({date,appts}){
-    return h("div",{style:{position:"relative"}},
+    return h("div",{
+      style:{position:"relative"},
+      // onDragOver e onDrop no container pai também, para garantir que o drop funcione
+      // mesmo quando o cursor passa sobre o card absoluto
+      onDragOver:e=>{ e.preventDefault(); const hr=7+Math.floor(e.nativeEvent.offsetY/64); setDragOver({date,hour:Math.max(7,Math.min(20,hr))}); },
+      onDrop:e=>{
+        e.preventDefault();
+        const hr=7+Math.floor(e.nativeEvent.offsetY/64);
+        onDropSlot(e,date,Math.max(7,Math.min(20,hr)));
+      }
+    },
       HOURS.map(hr=>{
         const isOver=dragOver&&dragOver.date===date&&dragOver.hour===hr;
         return h("div",{
           key:hr,
-          style:{...slotBase,background:isOver?"rgba(157,119,97,.12)":"transparent"},
-          onClick:()=>{ if(!dragId) onClickEmptySlot(date,hr); },
+          style:{...slotBase,background:isOver?"rgba(157,119,97,.18)":"transparent"},
+          onClick:()=>{ if(!dragIdRef.current) onClickEmptySlot(date,hr); },
           onDoubleClick:()=>onDblClickSlot(date,hr),
           onDragOver:e=>onDragOverSlot(e,date,hr),
           onDrop:e=>onDropSlot(e,date,hr),
@@ -1950,8 +1972,11 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations})
       appts.map(a=>{
         const [hh,mm]=(a.time||"09:00").split(":").map(Number);
         const top=(hh-7)*64+(mm/60)*64+2;
-        return h("div",{key:a.id,style:{position:"absolute",left:2,right:2,top,zIndex:2}},
-          h(ApptCard,{a,compact:true})
+        // pointerEvents none na wrapper para o drop cair no slot por baixo
+        return h("div",{key:a.id,style:{position:"absolute",left:2,right:2,top,zIndex:2,pointerEvents:"none"}},
+          h("div",{style:{pointerEvents:"auto"}},
+            h(ApptCard,{a,compact:true})
+          )
         );
       })
     );
