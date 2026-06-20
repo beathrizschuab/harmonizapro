@@ -1033,6 +1033,194 @@ function FaceMapEditor({sessionMap,onChange,readOnly=false}){
     )
   );
 }
+// ─── MARKER PHOTO PLANNER ─────────────────────────────────────────────────────
+// Planejamento com marcadores sobre a foto real da paciente: cada marcador tem
+// produto+quantidade planejada e, depois, produto+quantidade realizada, com
+// custo estimado x custo real calculados a partir do custo unitário cadastrado
+// no Estoque (allProducts[].cost).
+function guessMarkerUnit(productName){
+  if(!productName)return "U";
+  const n=String(productName).toLowerCase();
+  if(n.includes("botox")||n.includes("toxina")||n.includes("dysport")||n.includes("xeomin")||n.includes("allergan"))return "U";
+  return "ml";
+}
+function markerUnitCost(allProducts,productName){
+  if(!productName)return 0;
+  const p=(allProducts||[]).find(x=>(x.name||"").toLowerCase()===String(productName).toLowerCase());
+  return p?Number(p.cost)||0:0;
+}
+function MarkerDot({m,idx,active,onClick}){
+  const h=createElement;
+  return h("div",{
+    onClick,
+    title:(m.plannedProduct||"Marcador "+(idx+1)),
+    style:{
+      position:"absolute",left:m.xPct+"%",top:m.yPct+"%",transform:"translate(-50%,-50%)",
+      width:active?27:22,height:active?27:22,borderRadius:"50%",
+      background:m.done?"rgba(122,173,138,.88)":"rgba(157,119,97,.88)",
+      border:`2px solid ${active?"#fff":(m.done?P.green:P.accent3)}`,
+      display:"flex",alignItems:"center",justifyContent:"center",
+      color:"#fff",fontSize:10.5,fontWeight:700,cursor:onClick?"pointer":"default",
+      boxShadow:"0 2px 7px rgba(0,0,0,.55)",transition:"all .12s",fontFamily:"'DM Sans',sans-serif"
+    }
+  },idx+1);
+}
+function MarkerPhotoPlanner({initial,allProducts,patientPhotos,onSave,onClose}){
+  const h=createElement;
+  const[baseImage,setBaseImage]=useState(initial?.baseImage||null);
+  const[markers,setMarkers]=useState(initial?.markers||[]);
+  const[selectedId,setSelectedId]=useState(null);
+  const[showPicker,setShowPicker]=useState(!initial?.baseImage);
+  const imgWrapRef=useRef();
+
+  function handleFileUpload(file){
+    const r=new FileReader();
+    r.onload=e=>{setBaseImage(e.target.result);setMarkers([]);setSelectedId(null);setShowPicker(false);};
+    r.readAsDataURL(file);
+  }
+  function pickExisting(url){setBaseImage(url);setMarkers([]);setSelectedId(null);setShowPicker(false);}
+  function addMarkerAt(e){
+    if(!imgWrapRef.current)return;
+    const rect=imgWrapRef.current.getBoundingClientRect();
+    const xPct=((e.clientX-rect.left)/rect.width)*100;
+    const yPct=((e.clientY-rect.top)/rect.height)*100;
+    const id=Date.now()+Math.random();
+    const novo={id,xPct:Math.max(1.5,Math.min(98.5,xPct)),yPct:Math.max(1.5,Math.min(98.5,yPct)),plannedProduct:"",plannedQty:"",plannedUnit:"U",actualProduct:"",actualQty:"",actualUnit:"",done:false,notes:""};
+    setMarkers(m=>[...m,novo]);
+    setSelectedId(id);
+  }
+  function updateMarker(id,patch){setMarkers(m=>m.map(mk=>mk.id===id?{...mk,...patch}:mk));}
+  function removeMarker(id){setMarkers(m=>m.filter(mk=>mk.id!==id));if(selectedId===id)setSelectedId(null);}
+  function toggleDone(m){
+    updateMarker(m.id,{
+      done:!m.done,
+      actualProduct:m.done?m.actualProduct:(m.actualProduct||m.plannedProduct),
+      actualQty:m.done?m.actualQty:(m.actualQty||m.plannedQty),
+      actualUnit:m.done?m.actualUnit:(m.actualUnit||m.plannedUnit)
+    });
+  }
+  function handleSave(){onSave({baseImage,markers});}
+
+  const cu=name=>markerUnitCost(allProducts,name);
+  const totalPlanned=markers.reduce((a,m)=>a+(Number(m.plannedQty)||0)*cu(m.plannedProduct),0);
+  const doneMarkers=markers.filter(m=>m.done);
+  const pendingMarkers=markers.filter(m=>!m.done);
+  const totalActual=doneMarkers.reduce((a,m)=>a+(Number(m.actualQty)||0)*cu(m.actualProduct||m.plannedProduct),0);
+  const totalActualPlannedPortion=doneMarkers.reduce((a,m)=>a+(Number(m.plannedQty)||0)*cu(m.plannedProduct),0);
+  const totalPending=pendingMarkers.reduce((a,m)=>a+(Number(m.plannedQty)||0)*cu(m.plannedProduct),0);
+  const diff=totalActual-totalActualPlannedPortion;
+  const selected=markers.find(m=>m.id===selectedId);
+  const prodOptions=["",...(allProducts||[]).map(p=>p.name)];
+
+  if(showPicker||!baseImage){
+    return h("div",{style:{position:"fixed",inset:0,background:"rgba(8,4,6,.97)",zIndex:3000,display:"flex",flexDirection:"column",alignItems:"center",padding:"24px 16px",overflow:"auto",gap:16}},
+      h("div",{style:{width:"100%",maxWidth:760,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent3}},"📍 Escolha a foto da paciente"),
+        h("button",{onClick:onClose,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text3,padding:"7px 14px",cursor:"pointer",fontSize:13}},"✕")
+      ),
+      (patientPhotos||[]).length>0&&h("div",{style:{width:"100%",maxWidth:760,display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10}},
+        patientPhotos.map((ph,i)=>h("img",{key:i,src:ph.url,onClick:()=>pickExisting(ph.url),title:ph.label||"",style:{width:"100%",height:120,objectFit:"cover",borderRadius:10,border:`1px solid ${P.border}`,cursor:"pointer"}}))
+      ),
+      (patientPhotos||[]).length===0&&h("div",{style:{fontSize:12.5,color:P.text3}},"Nenhuma foto registrada ainda na ficha da paciente. Envie uma abaixo."),
+      h("label",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,width:"100%",maxWidth:760,height:160,border:`2px dashed ${P.border}`,borderRadius:14,cursor:"pointer",background:P.bg3,color:P.text3,flexShrink:0}},
+        h("div",{style:{fontSize:34}},"📷"),
+        h("div",{style:{fontSize:14,color:P.accent3,fontFamily:"'Cormorant Garamond',serif"}},"Enviar foto"),
+        h("div",{style:{fontSize:11.5,color:P.text3}},"Clique para selecionar uma imagem do dispositivo"),
+        h("input",{type:"file",accept:"image/*",style:{display:"none"},onChange:e=>{if(e.target.files[0])handleFileUpload(e.target.files[0]);}})
+      )
+    );
+  }
+
+  return h("div",{style:{position:"fixed",inset:0,background:"rgba(8,4,6,.97)",zIndex:3000,display:"flex",flexDirection:"column",padding:"14px 16px",overflow:"auto",gap:12}},
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,flexShrink:0}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent3}},"📍 Planejamento com Marcadores"),
+      h("div",{style:{display:"flex",gap:8}},
+        h("button",{onClick:()=>setShowPicker(true),style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,cursor:"pointer",fontSize:12.5}},"🔄 Trocar foto"),
+        h("button",{onClick:handleSave,style:{padding:"7px 18px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,cursor:"pointer",fontSize:13,fontWeight:600}},"💾 Salvar"),
+        h("button",{onClick:onClose,style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text3,cursor:"pointer",fontSize:13}},"✕")
+      )
+    ),
+    h("div",{style:{fontSize:11.5,color:P.text3,flexShrink:0}},"Clique em qualquer ponto da foto para adicionar um marcador. Clique num marcador existente para editá-lo."),
+    h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",flex:1,minHeight:0}},
+      h("div",{style:{flex:"1 1 420px",minWidth:280,display:"flex",alignItems:"flex-start",justifyContent:"center"}},
+        h("div",{ref:imgWrapRef,onClick:addMarkerAt,style:{position:"relative",display:"inline-block",cursor:"crosshair",borderRadius:10,overflow:"hidden",border:`1px solid ${P.border}`,maxWidth:"100%",lineHeight:0}},
+          h("img",{src:baseImage,draggable:false,style:{display:"block",maxWidth:"100%",maxHeight:"70vh",userSelect:"none"}}),
+          markers.map((m,i)=>h(MarkerDot,{key:m.id,m,idx:i,active:selectedId===m.id,onClick:e=>{e.stopPropagation();setSelectedId(m.id);}}))
+        )
+      ),
+      h("div",{style:{flex:"0 0 320px",minWidth:280,display:"flex",flexDirection:"column",gap:12,maxHeight:"78vh",overflowY:"auto"}},
+        h("div",{style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:10,padding:14,flexShrink:0}},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}},"Resumo"),
+          h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Marcadores"),h("span",{style:{color:P.text}},doneMarkers.length+" / "+markers.length+" realizados")),
+          h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Custo planejado (total)"),h("span",{style:{color:P.accent3,fontWeight:600}},fmtCurr(totalPlanned))),
+          h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Custo realizado"),h("span",{style:{color:P.green,fontWeight:600}},fmtCurr(totalActual))),
+          h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Restante a executar"),h("span",{style:{color:P.yellow,fontWeight:600}},fmtCurr(totalPending))),
+          doneMarkers.length>0&&h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0",borderTop:`1px solid ${P.border}`,marginTop:6,paddingTop:8}},
+            h("span",{style:{color:P.text2}},"Diferença (realizado − planejado)"),
+            h("span",{style:{color:diff>0?P.red:(diff<0?P.green:P.text2),fontWeight:600}},(diff>0?"+":"")+fmtCurr(diff))
+          )
+        ),
+        selected
+          ? h("div",{style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:10,padding:14,display:"flex",flexDirection:"column",gap:10,flexShrink:0}},
+              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                h("div",{style:{fontSize:13,color:P.accent3,fontWeight:600}},"Marcador "+(markers.findIndex(m=>m.id===selected.id)+1)),
+                h("button",{onClick:()=>removeMarker(selected.id),style:{background:"transparent",border:"1px solid rgba(192,112,112,.25)",color:P.red,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11}},"🗑 Remover")
+              ),
+              h("div",null,
+                h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Produto previsto"),
+                h(Sel,{value:selected.plannedProduct,onChange:v=>updateMarker(selected.id,{plannedProduct:v,plannedUnit:guessMarkerUnit(v)}),options:prodOptions})
+              ),
+              h("div",{style:{display:"flex",gap:8}},
+                h("div",{style:{flex:1}},
+                  h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Qtd. planejada"),
+                  h(Inp,{type:"number",value:selected.plannedQty,onChange:v=>updateMarker(selected.id,{plannedQty:v})})
+                ),
+                h("div",{style:{width:64}},
+                  h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Un."),
+                  h(Inp,{value:selected.plannedUnit,onChange:v=>updateMarker(selected.id,{plannedUnit:v})})
+                )
+              ),
+              selected.plannedProduct&&h("div",{style:{fontSize:11,color:P.text3}},"Custo estimado: "+fmtCurr((Number(selected.plannedQty)||0)*cu(selected.plannedProduct))),
+              h("div",null,
+                h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Observação"),
+                h(TA,{value:selected.notes,onChange:v=>updateMarker(selected.id,{notes:v}),rows:2,placeholder:"Ex: técnica em leque, simetria, etc."})
+              ),
+              h("div",{style:{borderTop:`1px solid ${P.border}`,paddingTop:10,marginTop:2}},
+                h("button",{onClick:()=>toggleDone(selected),style:{width:"100%",padding:"7px 0",borderRadius:8,cursor:"pointer",fontSize:12,fontFamily:"'DM Sans',sans-serif",background:selected.done?P.green:"transparent",border:`1px solid ${selected.done?P.green:P.border}`,color:selected.done?"#fff":P.text2,marginBottom:selected.done?10:0}},
+                  selected.done?"✓ Marcado como Realizado":"＋ Marcar como Realizado"
+                ),
+                selected.done&&h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+                  h("div",null,
+                    h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Produto realizado"),
+                    h(Sel,{value:selected.actualProduct||selected.plannedProduct,onChange:v=>updateMarker(selected.id,{actualProduct:v}),options:prodOptions})
+                  ),
+                  h("div",{style:{display:"flex",gap:8}},
+                    h("div",{style:{flex:1}},
+                      h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Qtd. realizada"),
+                      h(Inp,{type:"number",value:selected.actualQty,onChange:v=>updateMarker(selected.id,{actualQty:v})})
+                    ),
+                    h("div",{style:{width:64}},
+                      h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Un."),
+                      h(Inp,{value:selected.actualUnit||selected.plannedUnit,onChange:v=>updateMarker(selected.id,{actualUnit:v})})
+                    )
+                  ),
+                  h("div",{style:{fontSize:11,color:P.text3}},"Custo real: "+fmtCurr((Number(selected.actualQty)||0)*cu(selected.actualProduct||selected.plannedProduct)))
+                )
+              )
+            )
+          : h("div",{style:{background:P.bg3,border:`1px dashed ${P.border}`,borderRadius:10,padding:20,textAlign:"center",color:P.text3,fontSize:12.5,flexShrink:0}},
+              markers.length===0?"Clique em qualquer ponto da foto para adicionar o primeiro marcador.":"Selecione um marcador na foto (ou na lista abaixo) para editar."
+            ),
+        markers.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+          markers.map((m,i)=>h("div",{key:m.id,onClick:()=>setSelectedId(m.id),style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",borderRadius:8,background:selectedId===m.id?P.card2:P.bg3,border:`1px solid ${selectedId===m.id?P.rose:P.border}`,cursor:"pointer",fontSize:11.5}},
+            h("span",{style:{color:P.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},(i+1)+". "+(m.plannedProduct||"sem produto")+(m.plannedQty?(" · "+m.plannedQty+(m.plannedUnit||"")):"")),
+            h("span",{style:{color:m.done?P.green:P.yellow,fontSize:10,flexShrink:0,marginLeft:8}},m.done?"✓ Realizado":"Planejado")
+          ))
+        )
+      )
+    )
+  );
+}
 // ─── PLAN ANNOTATOR ───────────────────────────────────────────────────────────
 // Salva anotações como dados estruturados para reedição posterior
 function PlanAnnotator({initial,onSave,onClose}){
@@ -2832,6 +3020,18 @@ function IndicacoesTab({patient,patients,onSelectPatient,fmtCurr}){
   );
 }
 
+// Reúne todas as fotos já disponíveis da paciente (perfil + fotos de sessões) para usar como base no Planejamento com Marcadores
+function getPatientPhotoGallery(patient){
+  const list=[];
+  if(patient.profilePhoto)list.push({url:patient.profilePhoto,label:"Foto de perfil"});
+  (patient.sessions||[]).forEach(s=>{
+    (s.photos||[]).forEach(p=>{
+      const url=typeof p==="string"?p:p.url;
+      if(url)list.push({url,label:(s.date||"")+" · "+(s.procedure||"")});
+    });
+  });
+  return list;
+}
 function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings,agenda,setAgenda}){
   const _vTemplates=Array.isArray(voucherTemplates)&&voucherTemplates.length?voucherTemplates:DEFAULT_VOUCHER_TEMPLATES;
   const[tab,setTab]=useState("prontuario");
@@ -2842,6 +3042,8 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[showIntercorr,setShowIntercorr]=useState(null);
   const[showPlan,setShowPlan]=useState(false);
   const[planAnnotating,setPlanAnnotating]=useState(null); // null | "new" | planObj
+  const[markerPlanning,setMarkerPlanning]=useState(null); // null | "new" | planObj (planejamento com marcadores)
+  const patientPhotoGallery=useMemo(()=>getPatientPhotoGallery(patient),[patient.profilePhoto,patient.sessions]);
   const[showNewPkg,setShowNewPkg]=useState(false);
   const[pkgForm,setPkgForm]=useState({name:"",procedure:"",total:4,price:"",notes:""});
   // ─ Orçamentos ─
@@ -2959,6 +3161,15 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     setPlanAnnotating(null);setShowPlan(false);setPlanForm({title:"",steps:"",notes:""});
   }
   function deletePlan(id){if(window.confirm("Excluir planejamento?"))upd(p=>({...p,planejamento:(p.planejamento||[]).filter(pl=>pl.id!==id)}));}
+  function saveMarkerPlanNew(data){
+    const pl={id:Date.now(),title:"Planejamento com Marcadores",steps:[],notes:"",done:false,created:new Date().toLocaleDateString("pt-BR"),markerPlan:data};
+    upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
+    setMarkerPlanning(null);
+  }
+  function saveMarkerPlan(planId,data){
+    upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>pl.id===planId?{...pl,markerPlan:data,updatedAt:new Date().toLocaleDateString("pt-BR")}:pl)}));
+    setMarkerPlanning(null);
+  }
 
   function togglePlanStep(planId,stepIdx){
     upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>{if(pl.id!==planId)return pl;const steps=[...pl.steps];steps[stepIdx]=steps[stepIdx].includes("✓")?steps[stepIdx].replace(" ✓",""):steps[stepIdx]+" ✓";return{...pl,steps};})}));
@@ -3341,57 +3552,100 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           else savePlanAnnotation(planAnnotating.id,annotData);
         }
       }),
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+      // MarkerPhotoPlanner fullscreen (sobrepõe tudo)
+      markerPlanning&&h(MarkerPhotoPlanner,{
+        initial:markerPlanning==="new"?null:markerPlanning.markerPlan,
+        allProducts,
+        patientPhotos:patientPhotoGallery,
+        onClose:()=>setMarkerPlanning(null),
+        onSave:data=>{
+          if(markerPlanning==="new") saveMarkerPlanNew(data);
+          else saveMarkerPlan(markerPlanning.id,data);
+        }
+      }),
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}},
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Planejamento Facial"),
-        h("div",{style:{display:"flex",gap:8}},
+        h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
           h(Btn,{variant:"ghost",onClick:()=>setShowPlan(true),style:{fontSize:12}},"＋ Plano de Texto"),
-          h(Btn,{onClick:()=>{setPlanAnnotating("new");},style:{fontSize:12}},"🖼 Plano com Foto")
+          h(Btn,{variant:"ghost",onClick:()=>{setPlanAnnotating("new");},style:{fontSize:12}},"🖼 Plano com Foto"),
+          h(Btn,{onClick:()=>setMarkerPlanning("new"),style:{fontSize:12}},"📍 Plano com Marcadores")
         )
       ),
       (patient.planejamento||[]).length===0&&h(Card,{style:{textAlign:"center",padding:40}},
         h("div",{style:{fontSize:32,marginBottom:12}},"🎯"),
         h("div",{style:{color:P.text3,fontSize:14,marginBottom:16}},"Nenhum planejamento criado."),
-        h("div",{style:{display:"flex",gap:10,justifyContent:"center"}},
+        h("div",{style:{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}},
           h(Btn,{variant:"ghost",onClick:()=>setShowPlan(true)},"＋ Plano de Texto"),
-          h(Btn,{onClick:()=>setPlanAnnotating("new")},"🖼 Plano com Foto")
+          h(Btn,{variant:"ghost",onClick:()=>setPlanAnnotating("new")},"🖼 Plano com Foto"),
+          h(Btn,{onClick:()=>setMarkerPlanning("new")},"📍 Plano com Marcadores")
         )
       ),
       h("div",{style:{display:"flex",flexDirection:"column",gap:14}},
-        (patient.planejamento||[]).map(pl=>h(Card,{key:pl.id,style:{padding:0,overflow:"hidden"}},
-          // Se tiver anotação visual, mostrar thumbnail à esquerda
-          h("div",{style:{display:"flex",gap:0}},
-            pl.annotation?.thumbnail&&h("div",{style:{width:180,flexShrink:0,position:"relative",cursor:"pointer"},onClick:()=>setPlanAnnotating(pl)},
-              h("img",{src:pl.annotation.thumbnail,alt:"anotação",style:{width:"100%",height:"100%",objectFit:"cover",display:"block",minHeight:130}}),
-              h("div",{style:{position:"absolute",inset:0,background:"rgba(0,0,0,.0)",display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .2s"},
-                onMouseEnter:e=>e.currentTarget.style.opacity=1,onMouseLeave:e=>e.currentTarget.style.opacity=0},
-                h("div",{style:{background:"rgba(0,0,0,.7)",borderRadius:8,padding:"6px 12px",color:"#fff",fontSize:12,fontWeight:600}},"✎ Editar")
-              )
-            ),
-            h("div",{style:{flex:1,padding:"14px 16px",display:"flex",flexDirection:"column",gap:8}},
-              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
-                h("div",null,
-                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:2}},pl.title),
-                  h("div",{style:{fontSize:11,color:P.text3}},
-                    "Criado em "+pl.created,
-                    pl.updatedAt&&h("span",{style:{marginLeft:8,color:P.accent}},"· Editado em "+pl.updatedAt),
-                    pl.annotation&&h("span",{style:{marginLeft:8,fontSize:10,color:P.green,background:"rgba(122,173,138,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(122,173,138,.3)"}},"📷 Com anotação visual")
-                  )
-                ),
-                h("div",{style:{display:"flex",gap:5,flexShrink:0}},
-                  h("button",{onClick:()=>setPlanAnnotating(pl),title:pl.annotation?"Editar anotação visual":"Adicionar foto",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},pl.annotation?"✎ Foto":"📷 Foto"),
-                  h("button",{onClick:()=>deletePlan(pl.id),style:{padding:"5px 8px",borderRadius:7,background:"transparent",border:"1px solid rgba(192,112,112,.2)",color:P.red,cursor:"pointer",fontSize:11}},"🗑")
+        (patient.planejamento||[]).map(pl=>{
+          // Totais do plano com marcadores (planejado x realizado), se houver
+          const mp=pl.markerPlan;
+          let mpPlanned=0,mpActual=0,mpDone=0,mpTotal=0,mpDiff=0;
+          if(mp){
+            const cu=name=>markerUnitCost(allProducts,name);
+            mpTotal=(mp.markers||[]).length;
+            mpDone=(mp.markers||[]).filter(m=>m.done).length;
+            mpPlanned=(mp.markers||[]).reduce((a,m)=>a+(Number(m.plannedQty)||0)*cu(m.plannedProduct),0);
+            const doneList=(mp.markers||[]).filter(m=>m.done);
+            mpActual=doneList.reduce((a,m)=>a+(Number(m.actualQty)||0)*cu(m.actualProduct||m.plannedProduct),0);
+            const doneListPlannedCost=doneList.reduce((a,m)=>a+(Number(m.plannedQty)||0)*cu(m.plannedProduct),0);
+            mpDiff=mpActual-doneListPlannedCost;
+          }
+          return h(Card,{key:pl.id,style:{padding:0,overflow:"hidden"}},
+            // Se tiver anotação visual ou marcadores, mostrar thumbnail à esquerda
+            h("div",{style:{display:"flex",gap:0}},
+              pl.annotation?.thumbnail&&h("div",{style:{width:180,flexShrink:0,position:"relative",cursor:"pointer"},onClick:()=>setPlanAnnotating(pl)},
+                h("img",{src:pl.annotation.thumbnail,alt:"anotação",style:{width:"100%",height:"100%",objectFit:"cover",display:"block",minHeight:130}}),
+                h("div",{style:{position:"absolute",inset:0,background:"rgba(0,0,0,.0)",display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .2s"},
+                  onMouseEnter:e=>e.currentTarget.style.opacity=1,onMouseLeave:e=>e.currentTarget.style.opacity=0},
+                  h("div",{style:{background:"rgba(0,0,0,.7)",borderRadius:8,padding:"6px 12px",color:"#fff",fontSize:12,fontWeight:600}},"✎ Editar")
                 )
               ),
-              pl.notes&&h("div",{style:{fontSize:13,color:P.text3,fontStyle:"italic"}},pl.notes),
-              (pl.steps||[]).length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:2}},
-                (pl.steps||[]).map((step,si)=>h("div",{key:si,onClick:()=>togglePlanStep(pl.id,si),style:{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid rgba(71,35,37,.3)`,cursor:"pointer"}},
-                  h("div",{style:{width:14,height:14,borderRadius:3,border:`2px solid ${step.includes("✓")?P.green:P.border}`,background:step.includes("✓")?P.green:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff"}},step.includes("✓")?"✓":""),
-                  h("span",{style:{fontSize:12.5,color:step.includes("✓")?P.green:P.text,textDecoration:step.includes("✓")?"line-through":"none"}},step.replace(" ✓",""))
-                ))
+              mp?.baseImage&&h("div",{style:{width:180,flexShrink:0,position:"relative",cursor:"pointer",lineHeight:0},onClick:()=>setMarkerPlanning(pl)},
+                h("img",{src:mp.baseImage,alt:"marcadores",style:{width:"100%",height:"100%",objectFit:"cover",display:"block",minHeight:130}}),
+                (mp.markers||[]).map((m,mi)=>h("div",{key:mi,style:{position:"absolute",left:m.xPct+"%",top:m.yPct+"%",transform:"translate(-50%,-50%)",width:14,height:14,borderRadius:"50%",background:m.done?"rgba(122,173,138,.9)":"rgba(157,119,97,.9)",border:"1.5px solid rgba(255,255,255,.85)"}})),
+                h("div",{style:{position:"absolute",inset:0,background:"rgba(0,0,0,.0)",display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .2s"},
+                  onMouseEnter:e=>e.currentTarget.style.opacity=1,onMouseLeave:e=>e.currentTarget.style.opacity=0},
+                  h("div",{style:{background:"rgba(0,0,0,.7)",borderRadius:8,padding:"6px 12px",color:"#fff",fontSize:12,fontWeight:600}},"✎ Editar")
+                )
+              ),
+              h("div",{style:{flex:1,padding:"14px 16px",display:"flex",flexDirection:"column",gap:8}},
+                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:6}},
+                  h("div",null,
+                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:2}},pl.title),
+                    h("div",{style:{fontSize:11,color:P.text3}},
+                      "Criado em "+pl.created,
+                      pl.updatedAt&&h("span",{style:{marginLeft:8,color:P.accent}},"· Editado em "+pl.updatedAt),
+                      pl.annotation&&h("span",{style:{marginLeft:8,fontSize:10,color:P.green,background:"rgba(122,173,138,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(122,173,138,.3)"}},"📷 Com anotação visual"),
+                      mp&&h("span",{style:{marginLeft:8,fontSize:10,color:P.accent,background:"rgba(157,119,97,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(157,119,97,.3)"}},"📍 "+mpDone+"/"+mpTotal+" marcadores realizados")
+                    )
+                  ),
+                  h("div",{style:{display:"flex",gap:5,flexShrink:0}},
+                    h("button",{onClick:()=>setPlanAnnotating(pl),title:pl.annotation?"Editar anotação visual":"Adicionar foto",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},pl.annotation?"✎ Foto":"📷 Foto"),
+                    h("button",{onClick:()=>setMarkerPlanning(mp?pl:"new"),title:mp?"Editar marcadores":"Adicionar marcadores",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},mp?"✎ Marcadores":"📍 Marcadores"),
+                    h("button",{onClick:()=>deletePlan(pl.id),style:{padding:"5px 8px",borderRadius:7,background:"transparent",border:"1px solid rgba(192,112,112,.2)",color:P.red,cursor:"pointer",fontSize:11}},"🗑")
+                  )
+                ),
+                pl.notes&&h("div",{style:{fontSize:13,color:P.text3,fontStyle:"italic"}},pl.notes),
+                mp&&h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",padding:"8px 10px",background:P.bg3,borderRadius:8}},
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Custo planejado"),h("div",{style:{fontSize:14,color:P.accent3}},fmtCurr(mpPlanned))),
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Custo realizado"),h("div",{style:{fontSize:14,color:P.green}},fmtCurr(mpActual))),
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Diferença"),h("div",{style:{fontSize:14,color:mpDiff>0?P.red:(mpDiff<0?P.green:P.text2)}},(mpDiff>0?"+":"")+fmtCurr(mpDiff)))
+                ),
+                (pl.steps||[]).length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:2}},
+                  (pl.steps||[]).map((step,si)=>h("div",{key:si,onClick:()=>togglePlanStep(pl.id,si),style:{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid rgba(71,35,37,.3)`,cursor:"pointer"}},
+                    h("div",{style:{width:14,height:14,borderRadius:3,border:`2px solid ${step.includes("✓")?P.green:P.border}`,background:step.includes("✓")?P.green:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff"}},step.includes("✓")?"✓":""),
+                    h("span",{style:{fontSize:12.5,color:step.includes("✓")?P.green:P.text,textDecoration:step.includes("✓")?"line-through":"none"}},step.replace(" ✓",""))
+                  ))
+                )
               )
             )
-          )
-        ))
+          );
+        })
       )
     ),
     // ─── ANAMNESE TAB
