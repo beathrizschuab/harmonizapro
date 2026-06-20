@@ -16,6 +16,14 @@ const SKIN_TYPES=["Normal","Seca","Oleosa","Mista","Sensível"];
 const FITZPATRICK=["I","II","III","IV","V","VI"];
 const MUSIC_STYLES=["Pop","Rock","Sertanejo","MPB","Eletrônico","Clássica","Jazz","Funk","Gospel","Outro"];
 const INTERCORRENCIA_TYPES=["Edema","Hematoma","Assimetria","Dor","Infecção","Nódulo","Alergia","Necrose","Migração","Outro"];
+const IC_SEVERITY=["Leve","Moderada","Grave","Emergencial"];
+const IC_SEVERITY_CFG={Leve:{color:"#7aad8a",bg:"rgba(122,173,138,.14)"},Moderada:{color:"#c4a96a",bg:"rgba(196,169,106,.14)"},Grave:{color:"#c07070",bg:"rgba(192,112,112,.16)"},Emergencial:{color:"#ff6b6b",bg:"rgba(255,107,107,.18)"}};
+const IC_STATUS_LIST=["Em Acompanhamento","Resolvida","Não Resolvida","Encaminhada"];
+const IC_STATUS_CFG={"Em Acompanhamento":{color:"#7aaed4",bg:"rgba(122,174,212,.14)"},"Resolvida":{color:"#7aad8a",bg:"rgba(122,173,138,.14)"},"Não Resolvida":{color:"#c07070",bg:"rgba(192,112,112,.14)"},"Encaminhada":{color:"#9b7aad",bg:"rgba(155,122,173,.14)"}};
+const icSeverityOf=ic=>ic.severity||"Leve";
+const icStatusOf=ic=>ic.status||"Em Acompanhamento";
+const icConductsOf=ic=>(ic.conducts&&ic.conducts.length)?ic.conducts:(ic.conduct?[{id:"legacy_c",date:ic.date,text:ic.conduct}]:[]);
+const icEvolutionsOf=ic=>ic.evolutions||[];
 const EXPENSE_CATS=["Aluguel","Marketing","Fornecedores","Produtos","Impostos","Equipamentos","Funcionários","Outros"];
 const PAY_METHODS=["Pix","Cartão Crédito","Cartão Débito","Dinheiro","Transferência","Pendente"];
 const FIN_STATUS=["Pago","Pendente","Parcial","Cancelado"];
@@ -114,6 +122,20 @@ const fmtCurr=v=>"R$"+Number(v).toLocaleString("pt-BR",{minimumFractionDigits:0}
 const parseDMY=s=>{if(!s)return null;const[d,m,y]=s.split("/");return new Date(`${y}-${m}-${d}`);};
 const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
 const todayISO=()=>new Date().toISOString().slice(0,10);
+const dmyToISO=s=>{const d=parseDMY(s);return d?d.toISOString().slice(0,10):"";};
+const isoToBR=s=>{if(!s)return"";const[y,m,d]=s.split("-");return d&&m&&y?`${d}/${m}/${y}`:s;};
+// Atualiza uma intercorrência (por id) tanto na lista global do paciente quanto na sessão de origem,
+// mantendo as duas cópias sempre sincronizadas. Usado por PatientDetail e pelo painel global.
+function updateIntercorrencia(setPatients,patientId,icId,updater){
+  setPatients(prev=>prev.map(p=>{
+    if(p.id!==patientId)return p;
+    return{
+      ...p,
+      intercorrencias:(p.intercorrencias||[]).map(ic=>ic.id===icId?updater(ic):ic),
+      sessions:(p.sessions||[]).map(s=>({...s,intercorrencias:(s.intercorrencias||[]).map(ic=>ic.id===icId?updater(ic):ic)}))
+    };
+  }));
+}
 
 // ─── FIDELIZAÇÃO ──────────────────────────────────────────────────────────────
 // Critérios automáticos: valor gasto total + nº de sessões (frequência) + nº de indicações feitas
@@ -287,11 +309,15 @@ async function generatePatientDossier(patient,{products,settings}={}){
 
   // ── INTERCORRÊNCIAS ───────────────────────────────────────────────────────
   sectionTitle("Intercorrências","⚠");
-  const interc=[...(patient.intercorrencias||[]),...sessions.flatMap(s=>(s.intercorrencias||[]).map(i=>({...i,date:i.date||s.date})))];
+  const interc=patient.intercorrencias||[];
   if(interc.length===0)emptyMsg("Nenhuma intercorrência registrada.");
   interc.forEach(it=>{
-    ensureSpace(16);
-    paragraph(`${it.date||"—"} — ${it.description||it.desc||it.text||"Intercorrência registrada"}`,{size:9.5,color:COL.danger});
+    ensureSpace(20);
+    const dt=isoToBR(it.date)||it.date||"—";
+    paragraph(`${dt} — ${it.type||"Intercorrência"} (${icSeverityOf(it)} · ${icStatusOf(it)})${it.region?" · "+it.region:""}`,{size:9.5,bold:true,color:COL.danger});
+    if(it.notes)paragraph(it.notes,{size:9});
+    const cds=icConductsOf(it);
+    if(cds.length)paragraph(`Condutas: ${cds.map(c=>c.text).join("; ")}`,{size:8.5,color:COL.text2||COL.text});
   });
   y+=6;
 
@@ -2376,6 +2402,36 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,settings,returnRules,i
         })
       )
     ),
+    (()=>{
+      const icAcomp=patients.flatMap(p=>(p.intercorrencias||[]).map(ic=>({...ic,patient:p}))).filter(ic=>icStatusOf(ic)==="Em Acompanhamento").sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+      if(icAcomp.length===0)return null;
+      return h("div",{style:{marginBottom:14,padding:"16px 20px",background:"linear-gradient(135deg,rgba(192,112,112,.13),rgba(192,112,112,.05))",border:"1px solid rgba(192,112,112,.4)",borderRadius:14,boxShadow:"0 2px 16px rgba(192,112,112,.08)"}},
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+            h("span",{style:{fontSize:26}},"⚠"),
+            h("div",null,
+              h("div",{style:{fontSize:14,color:P.red,fontWeight:700,letterSpacing:".02em"}},"Intercorrências em Acompanhamento"),
+              h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},`${icAcomp.length} caso${icAcomp.length>1?"s":""} clínico${icAcomp.length>1?"s":""} requer${icAcomp.length>1?"em":""} atenção`)
+            )
+          ),
+          h("button",{onClick:()=>onNav("intercorrencias_global"),style:{fontSize:11,color:P.red,background:"rgba(192,112,112,.1)",border:"1px solid rgba(192,112,112,.3)",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},"Ver todas →")
+        ),
+        h("div",{style:{display:"flex",flexWrap:"wrap",gap:10}},
+          icAcomp.slice(0,4).map(ic=>{
+            const sevCfg=IC_SEVERITY_CFG[icSeverityOf(ic)]||IC_SEVERITY_CFG.Leve;
+            return h("div",{key:ic.id,onClick:()=>{onSelectPatient(ic.patient);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:10,padding:"8px 14px",background:"rgba(192,112,112,.08)",border:"1px solid rgba(192,112,112,.25)",borderRadius:12,cursor:"pointer",flex:"1 1 auto",minWidth:230}},
+              h(Avatar,{name:ic.patient.name,size:32,src:ic.patient.profilePhoto}),
+              h("div",{style:{flex:1,minWidth:0}},
+                h("div",{style:{fontSize:13,color:P.text,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},ic.patient.name),
+                h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},`${ic.type} · ${isoToBR(ic.date)||ic.date}`)
+              ),
+              h("span",{style:{fontSize:9.5,padding:"2px 8px",borderRadius:10,background:sevCfg.bg,color:sevCfg.color,fontWeight:600,flexShrink:0}},icSeverityOf(ic))
+            );
+          })
+        ),
+        icAcomp.length>4&&h("div",{style:{fontSize:11,color:P.text3,marginTop:10}},`+ ${icAcomp.length-4} caso(s) adicional(is)...`)
+      );
+    })(),
     h(RetornosPendentes,{patients,returnRules,onSelectPatient,onNav,mini:true}),
     // KPIs
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:isMobile?10:14,marginBottom:22}},
@@ -2904,6 +2960,107 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations})
     )
   );
 }
+// ─── INTERCORRÊNCIA CARD (usado no prontuário do paciente e no painel global) ──
+function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSelectPatient,onNav}){
+  const h=createElement;
+  const[showEvo,setShowEvo]=useState(false);
+  const[evoText,setEvoText]=useState("");
+  const[showCond,setShowCond]=useState(false);
+  const[condText,setCondText]=useState("");
+  const sevCfg=IC_SEVERITY_CFG[icSeverityOf(ic)]||IC_SEVERITY_CFG.Leve;
+  const stCfg=IC_STATUS_CFG[icStatusOf(ic)]||IC_STATUS_CFG["Em Acompanhamento"];
+  const evolutions=icEvolutionsOf(ic);
+  const conducts=icConductsOf(ic);
+  function addEvo(){
+    if(!evoText.trim())return;
+    updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,evolutions:[...(old.evolutions||[]),{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),text:evoText.trim()}]}));
+    setEvoText("");setShowEvo(false);
+  }
+  function addCond(){
+    if(!condText.trim())return;
+    updateIntercorrencia(setPatients,patient.id,ic.id,old=>{
+      const base=old.conducts&&old.conducts.length?old.conducts:(old.conduct?[{id:"legacy_c",date:old.date,text:old.conduct}]:[]);
+      return{...old,conducts:[...base,{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),text:condText.trim()}]};
+    });
+    setCondText("");setShowCond(false);
+  }
+  function changeStatus(v){updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,status:v}));}
+  function changeReaval(v){updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,nextReavaliacao:v}));}
+  function addPhotos(files){
+    const readers=files.map(f=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,url:e.target.result});r.readAsDataURL(f);}));
+    Promise.all(readers).then(news=>{updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,photos:[...(old.photos||[]),...news]}));});
+  }
+  function removePhoto(fid){updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,photos:(old.photos||[]).filter(ph=>ph.id!==fid)}));}
+  return h(Card,{style:{marginBottom:14,border:`1px solid ${sevCfg.color}33`}},
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8,marginBottom:8}},
+      h("div",null,
+        showPatientName&&h("div",{onClick:()=>{onSelectPatient(patient);onNav("prontuario");},style:{fontSize:12.5,color:P.rose2,fontWeight:600,cursor:"pointer",marginBottom:3}},`👤 ${patient.name}`),
+        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:3}},isoToBR(ic.date)||ic.date),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},ic.type)
+      ),
+      h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
+        h("span",{style:{fontSize:10,padding:"3px 9px",borderRadius:12,background:sevCfg.bg,color:sevCfg.color,fontWeight:600}},icSeverityOf(ic)),
+        h("select",{value:icStatusOf(ic),onChange:e=>changeStatus(e.target.value),style:{fontSize:10.5,padding:"3px 8px",borderRadius:12,background:stCfg.bg,color:stCfg.color,border:`1px solid ${stCfg.color}55`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},IC_STATUS_LIST.map(st=>h("option",{key:st,value:st},st)))
+      )
+    ),
+    (ic.procedure||ic.product||ic.region)&&h("div",{style:{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:P.text2,marginBottom:8,padding:"8px 12px",background:P.bg3,borderRadius:8}},
+      ic.procedure&&h("span",null,"💉 ",h("strong",{style:{color:P.text}},ic.procedure)),
+      ic.product&&h("span",null,"🧪 ",h("strong",{style:{color:P.text}},ic.product)),
+      ic.region&&h("span",null,"🎯 ",h("strong",{style:{color:P.text}},ic.region)),
+      ic.procedureDate&&h("span",null,"📅 Procedimento: ",h("strong",{style:{color:P.text}},isoToBR(ic.procedureDate)))
+    ),
+    ic.notes&&h("div",{style:{fontSize:13,color:P.text2,marginBottom:10,lineHeight:1.6}},ic.notes),
+    // Fotos
+    h("div",{style:{marginBottom:10}},
+      h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:6}},
+        h("span",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em"}},"Fotos"),
+        h("label",{style:{fontSize:10.5,color:P.accent,border:`1px solid ${P.border}`,borderRadius:6,padding:"2px 8px",cursor:"pointer"}},"📷 Adicionar",h("input",{type:"file",accept:"image/*",multiple:true,style:{display:"none"},onChange:e=>{addPhotos([...e.target.files]);e.target.value="";}}))
+      ),
+      (ic.photos||[]).length===0?h("div",{style:{fontSize:11.5,color:P.text3}},"Nenhuma foto anexada."):
+      h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},(ic.photos||[]).map(ph=>h("div",{key:ph.id,style:{position:"relative"}},
+        h("img",{src:ph.url,alt:ph.name,style:{width:58,height:58,objectFit:"cover",borderRadius:6,border:`1px solid ${P.border}`}}),
+        h("button",{onClick:()=>removePhoto(ph.id),style:{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:P.red,color:"#fff",border:"none",fontSize:10,cursor:"pointer",lineHeight:"18px"}},"✕")
+      )))
+    ),
+    // Histórico de evolução
+    h("div",{style:{marginBottom:10,paddingTop:8,borderTop:`1px solid ${P.border}`}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
+        h("span",{style:{fontSize:9.5,color:P.accent,textTransform:"uppercase",letterSpacing:".1em"}},"Histórico de Evolução"),
+        h("button",{onClick:()=>setShowEvo(s=>!s),style:{fontSize:10.5,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"2px 8px",cursor:"pointer"}},showEvo?"✕":"＋ Evolução")
+      ),
+      showEvo&&h("div",{style:{display:"flex",gap:6,marginBottom:8}},
+        h(TA,{value:evoText,onChange:setEvoText,placeholder:"Descreva a evolução do quadro...",rows:2}),
+        h(Btn,{onClick:addEvo,style:{flexShrink:0,alignSelf:"flex-end"}},"Salvar")
+      ),
+      evolutions.length===0?h("div",{style:{fontSize:11.5,color:P.text3}},"Sem registros de evolução ainda."):
+      h("div",{style:{display:"flex",flexDirection:"column",gap:6}},evolutions.map((e,i)=>h("div",{key:e.id||i,style:{background:P.bg3,borderRadius:8,padding:"7px 10px"}},
+        h("div",{style:{fontSize:9.5,color:P.text3,marginBottom:2}},e.date),
+        h("div",{style:{fontSize:12.5,color:P.text2}},e.text)
+      )))
+    ),
+    // Histórico de condutas
+    h("div",{style:{marginBottom:10,paddingTop:8,borderTop:`1px solid ${P.border}`}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
+        h("span",{style:{fontSize:9.5,color:P.green,textTransform:"uppercase",letterSpacing:".1em"}},"Condutas Realizadas"),
+        h("button",{onClick:()=>setShowCond(s=>!s),style:{fontSize:10.5,color:P.green,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"2px 8px",cursor:"pointer"}},showCond?"✕":"＋ Conduta")
+      ),
+      showCond&&h("div",{style:{display:"flex",gap:6,marginBottom:8}},
+        h(TA,{value:condText,onChange:setCondText,placeholder:"O que foi feito...",rows:2}),
+        h(Btn,{onClick:addCond,style:{flexShrink:0,alignSelf:"flex-end"}},"Salvar")
+      ),
+      conducts.length===0?h("div",{style:{fontSize:11.5,color:P.text3}},"Sem condutas registradas ainda."):
+      h("div",{style:{display:"flex",flexDirection:"column",gap:6}},conducts.map((c,i)=>h("div",{key:c.id||i,style:{background:"rgba(122,173,138,.07)",border:"1px solid rgba(122,173,138,.18)",borderRadius:8,padding:"7px 10px"}},
+        h("div",{style:{fontSize:9.5,color:P.text3,marginBottom:2}},c.date),
+        h("div",{style:{fontSize:12.5,color:P.text2}},"✓ "+c.text)
+      )))
+    ),
+    // Próxima reavaliação
+    h("div",{style:{display:"flex",alignItems:"center",gap:8,paddingTop:8,borderTop:`1px solid ${P.border}`}},
+      h("span",{style:{fontSize:11,color:P.text3,whiteSpace:"nowrap"}},"📆 Próxima reavaliação:"),
+      h("input",{type:"date",value:ic.nextReavaliacao||"",onChange:e=>changeReaval(e.target.value),style:{fontSize:12,padding:"4px 8px",borderRadius:6,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontFamily:"'DM Sans',sans-serif"}})
+    )
+  );
+}
 // ─── PATIENTS LIST ────────────────────────────────────────────────────────────
 function Patients({patients,setPatients,onSelect,procedures,locations}){
   const[search,setSearch]=useState("");
@@ -3247,6 +3404,10 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[pFilterYear,setPFilterYear]=useState("Todos");
   const[pFilterMonth,setPFilterMonth]=useState("Todos");
   const[pFilterRegion,setPFilterRegion]=useState("Todas");
+  const[icFilterSev,setIcFilterSev]=useState("Todas");
+  const[icFilterStatus,setIcFilterStatus]=useState("Todos");
+  const[icFilterProc,setIcFilterProc]=useState("Todos");
+  const[icFilterProd,setIcFilterProd]=useState("Todos");
   const[editSess,setEditSess]=useState(null);
   const[markerPlanning,setMarkerPlanning]=useState(null); // null | "new" | planObj (planejamento com marcadores)
   const[markerPlanningForSession,setMarkerPlanningForSession]=useState(null); // sessId quando o markerPlanning "new" deve nascer já vinculado a uma sessão
@@ -3300,7 +3461,9 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   };
   const[patForm,setPatForm]=useState({...patient,...patient.anamnese,complaints:(patient.complaints||[]).join(", ")});
   const pfv=k=>v=>setPatForm(p=>({...p,[k]:v}));
-  const[icForm,setIcForm]=useState({type:"Edema",notes:"",conduct:"",date:""});
+  const blankIc={type:"Edema",severity:"Leve",status:"Em Acompanhamento",procedure:"",product:"",region:"",procedureDate:"",date:todayISO(),notes:"",conduct:"",nextReavaliacao:"",sessId:null,_photoFiles:[]};
+  const[icForm,setIcForm]=useState(blankIc);
+  const icfv=k=>v=>setIcForm(p=>({...p,[k]:v}));
   const[planForm,setPlanForm]=useState({title:"",steps:"",notes:""});
   const totalSpent=(patient.sessions||[]).reduce((a,s)=>a+s.value,0);
   const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"fichaRapida",l:"⚡ Ficha Rápida"},{k:"agendaPaciente",l:"📅 Agenda"},{k:"orcamentos",l:"💼 Orçamentos"},{k:"mapa",l:"🗺 Mapa"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"},{k:"skincare",l:"🧴 Skincare"},{k:"indicacoes",l:"🤝 Indicações"}];
@@ -3383,10 +3546,40 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     Promise.all(readers).then(news=>{upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,[type]:[...(s[type]||[]),...news]}:s)}));});
   }
   function removeMedia(sessId,fid,type){upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,[type]:(s[type]||[]).filter(f=>f.id!==fid)}:s)}));}
-  function saveIntercorrencia(sessId){
-    const ic={id:Date.now(),...icForm,date:icForm.date||new Date().toLocaleDateString("pt-BR"),photos:[]};
-    upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,intercorrencias:[...(s.intercorrencias||[]),ic]}:s),intercorrencias:[...(p.intercorrencias||[]),{...ic,sessId}]}));
-    setShowIntercorr(null);setIcForm({type:"Edema",notes:"",conduct:"",date:""});
+  function openIntercorrFromSession(s){
+    setIcForm({...blankIc,date:todayISO(),sessId:s.id,procedure:s.procedure||"",product:s.product||"",region:s.region||"",procedureDate:dmyToISO(s.date)});
+    setShowIntercorr(s.id);
+  }
+  function applySessionToIcForm(sessId){
+    const s=(patient.sessions||[]).find(x=>String(x.id)===String(sessId));
+    if(!s){setIcForm(p=>({...p,sessId:null}));return;}
+    setIcForm(p=>({...p,sessId:s.id,procedure:s.procedure||"",product:s.product||"",region:s.region||"",procedureDate:dmyToISO(s.date)}));
+  }
+  function saveIntercorrencia(){
+    const sessId=showIntercorr==="global"?(icForm.sessId||null):showIntercorr;
+    const photoFiles=icForm._photoFiles||[];
+    const finish=photos=>{
+      const ic={
+        id:Date.now(),sessId,
+        type:icForm.type,severity:icForm.severity,status:icForm.status,
+        procedure:icForm.procedure,product:icForm.product,region:icForm.region,
+        procedureDate:icForm.procedureDate,date:icForm.date||todayISO(),
+        notes:icForm.notes,
+        conducts:icForm.conduct.trim()?[{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),text:icForm.conduct.trim()}]:[],
+        evolutions:[],photos,
+        nextReavaliacao:icForm.nextReavaliacao,
+        createdAt:new Date().toISOString()
+      };
+      upd(p=>({
+        ...p,
+        sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,intercorrencias:[...(s.intercorrencias||[]),ic]}:s),
+        intercorrencias:[...(p.intercorrencias||[]),ic]
+      }));
+      setShowIntercorr(null);setIcForm(blankIc);
+    };
+    if(photoFiles.length){
+      Promise.all(photoFiles.map(f=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,url:e.target.result});r.readAsDataURL(f);}))).then(finish);
+    } else finish([]);
   }
   function addPlanejamento(){
     const pl={id:Date.now(),title:planForm.title,steps:planForm.steps.split("\n").filter(s=>s.trim()),notes:planForm.notes,done:false,created:new Date().toLocaleDateString("pt-BR"),annotation:null};
@@ -3766,12 +3959,16 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           }
           return h("div",{onClick:()=>openMapForSession(s),style:{padding:"8px 12px",background:"transparent",border:`1px dashed ${P.border}`,borderRadius:8,marginBottom:8,cursor:"pointer",fontSize:11.5,color:P.text3,textAlign:"center"}},"🗺 Mapa facial (com foto) ainda não preenchido — clique para registrar");
         })(),
-        (s.intercorrencias||[]).length>0&&h("div",{style:{marginBottom:8,padding:"8px 12px",background:"rgba(192,112,112,.06)",borderRadius:8,border:"1px solid rgba(192,112,112,.18)"}},h("div",{style:{fontSize:10,color:P.red,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"⚠ Intercorrências"),(s.intercorrencias||[]).map((ic,i)=>h("div",{key:i,style:{fontSize:12,color:P.text2}},`${ic.date} · ${ic.type}: ${ic.notes}`))),
+        (s.intercorrencias||[]).length>0&&h("div",{style:{marginBottom:8,padding:"8px 12px",background:"rgba(192,112,112,.06)",borderRadius:8,border:"1px solid rgba(192,112,112,.18)"}},h("div",{style:{fontSize:10,color:P.red,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"⚠ Intercorrências"),(s.intercorrencias||[]).map((ic,i)=>h("div",{key:ic.id||i,style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",fontSize:12,color:P.text2,marginBottom:3}},
+          h("span",{style:{fontSize:9,padding:"1px 7px",borderRadius:8,background:(IC_SEVERITY_CFG[icSeverityOf(ic)]||IC_SEVERITY_CFG.Leve).bg,color:(IC_SEVERITY_CFG[icSeverityOf(ic)]||IC_SEVERITY_CFG.Leve).color,fontWeight:600}},icSeverityOf(ic)),
+          h("span",null,`${isoToBR(ic.date)||ic.date} · ${ic.type}: ${ic.notes}`),
+          h("span",{style:{fontSize:9,padding:"1px 7px",borderRadius:8,background:(IC_STATUS_CFG[icStatusOf(ic)]||IC_STATUS_CFG["Em Acompanhamento"]).bg,color:(IC_STATUS_CFG[icStatusOf(ic)]||IC_STATUS_CFG["Em Acompanhamento"]).color}},icStatusOf(ic))
+        ))),
         (s.photos||[]).length>0&&h("div",{style:{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}},(s.photos||[]).slice(0,4).map(ph=>h("img",{key:ph.id,src:ph.url,alt:ph.name,style:{width:58,height:58,objectFit:"cover",borderRadius:6,border:`1px solid ${P.border}`}})),(s.photos||[]).length>4&&h("div",{style:{width:58,height:58,borderRadius:6,background:P.card2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:P.text3}},`+${(s.photos||[]).length-4}`)),
         h("div",{style:{display:"flex",gap:8,marginTop:10}},
           h("label",{style:{fontSize:11,color:P.accent,border:`1px solid ${P.border}`,borderRadius:6,padding:"4px 10px",cursor:"pointer"}},"📷 Fotos",h("input",{type:"file",accept:"image/*",multiple:true,style:{display:"none"},onChange:e=>addMedia(s.id,[...e.target.files],"photos")})),
           h("label",{style:{fontSize:11,color:P.accent,border:`1px solid ${P.border}`,borderRadius:6,padding:"4px 10px",cursor:"pointer"}},"📎 Docs",h("input",{type:"file",multiple:true,style:{display:"none"},onChange:e=>addMedia(s.id,[...e.target.files],"docs")})),
-          h("button",{onClick:()=>setShowIntercorr(s.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"4px 10px",cursor:"pointer"}},"⚠ Intercorrência")
+          h("button",{onClick:()=>openIntercorrFromSession(s),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"4px 10px",cursor:"pointer"}},"⚠ Intercorrência")
         )
       )));
     })(),
@@ -3894,16 +4091,44 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     ),
     // ─── INTERCORRÊNCIAS TAB
     tab==="intercorrencias"&&h("div",null,
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}},
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Intercorrências Registradas"),
-        h(Btn,{onClick:()=>setShowIntercorr("global")},"＋ Registrar")
+        h(Btn,{onClick:()=>{setIcForm(blankIc);setShowIntercorr("global");}},"＋ Registrar")
       ),
-      (patient.intercorrencias||[]).length===0?h(Card,{style:{textAlign:"center",padding:32}},h("div",{style:{fontSize:28,marginBottom:8}},"✅"),h("div",{style:{color:P.text3,fontSize:13}},"Nenhuma intercorrência registrada.")):
-      (patient.intercorrencias||[]).map((ic,i)=>h(Card,{key:i,style:{marginBottom:12,border:"1px solid rgba(192,112,112,.2)"}},
-        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
-          h("div",null,h("div",{style:{fontSize:10,color:P.red,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},ic.date),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},ic.type),ic.notes&&h("div",{style:{fontSize:13,color:P.text2,marginTop:6}},ic.notes),ic.conduct&&h("div",{style:{fontSize:12,color:P.green,marginTop:4}},`✓ Conduta: ${ic.conduct}`))
-        )
-      ))
+      (()=>{
+        const all=patient.intercorrencias||[];
+        if(all.length===0)return null;
+        const stats={
+          acomp:all.filter(ic=>icStatusOf(ic)==="Em Acompanhamento").length,
+          resolv:all.filter(ic=>icStatusOf(ic)==="Resolvida").length,
+          graves:all.filter(ic=>["Grave","Emergencial"].includes(icSeverityOf(ic))).length
+        };
+        return h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}},
+          [{l:"Total",v:all.length,c:P.accent},{l:"Em Acompanhamento",v:stats.acomp,c:"#7aaed4"},{l:"Resolvidas",v:stats.resolv,c:P.green},{l:"Graves/Emergenciais",v:stats.graves,c:P.red}].map(s=>
+            h(Card,{key:s.l,style:{textAlign:"center",padding:14}},
+              h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:5}},s.l),
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:s.c}},s.v)
+            )
+          )
+        );
+      })(),
+      (patient.intercorrencias||[]).length>0&&h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}},
+        h("select",{value:icFilterSev,onChange:e=>setIcFilterSev(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'DM Sans',sans-serif"}},["Todas",...IC_SEVERITY].map(o=>h("option",{key:o,value:o},o))),
+        h("select",{value:icFilterStatus,onChange:e=>setIcFilterStatus(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'DM Sans',sans-serif"}},["Todos",...IC_STATUS_LIST].map(o=>h("option",{key:o,value:o},o))),
+        h("select",{value:icFilterProc,onChange:e=>setIcFilterProc(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'DM Sans',sans-serif"}},["Todos",...Array.from(new Set((patient.intercorrencias||[]).map(ic=>ic.procedure).filter(Boolean)))].map(o=>h("option",{key:o,value:o},o))),
+        h("select",{value:icFilterProd,onChange:e=>setIcFilterProd(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'DM Sans',sans-serif"}},["Todos",...Array.from(new Set((patient.intercorrencias||[]).map(ic=>ic.product).filter(Boolean)))].map(o=>h("option",{key:o,value:o},o)))
+      ),
+      (()=>{
+        const filtered=(patient.intercorrencias||[]).filter(ic=>
+          (icFilterSev==="Todas"||icSeverityOf(ic)===icFilterSev)&&
+          (icFilterStatus==="Todos"||icStatusOf(ic)===icFilterStatus)&&
+          (icFilterProc==="Todos"||ic.procedure===icFilterProc)&&
+          (icFilterProd==="Todos"||ic.product===icFilterProd)
+        ).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+        if((patient.intercorrencias||[]).length===0)return h(Card,{style:{textAlign:"center",padding:32}},h("div",{style:{fontSize:28,marginBottom:8}},"✅"),h("div",{style:{color:P.text3,fontSize:13}},"Nenhuma intercorrência registrada."));
+        if(filtered.length===0)return h(Card,{style:{textAlign:"center",padding:32}},h("div",{style:{fontSize:28,marginBottom:8}},"🔍"),h("div",{style:{color:P.text3,fontSize:13}},"Nenhuma intercorrência encontrada para os filtros selecionados."));
+        return filtered.map(ic=>h(IntercorrenciaCard,{key:ic.id,ic,patient,setPatients}));
+      })()
     ),
     // ─── PLANEJAMENTO TAB
     tab==="planejamento"&&h("div",null,
@@ -4264,14 +4489,32 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},h(Btn,{variant:"ghost",onClick:()=>{setShowNewS(false);setEditSess(null);}},"Cancelar"),!editSess&&h("button",{onClick:()=>{saveSession();setTimeout(()=>{setPkgForm(p=>({...p,procedure:sForm.procedure}));setShowNewPkg(true);setTab("pacotes");},100);},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:"1px solid "+P.gold,color:P.gold}},"📦 Salvar e Criar Pacote"),h(Btn,{onClick:saveSession},editSess?"Salvar":"Salvar Sessão"))
     ),
-    showIntercorr&&h(Modal,{open:true,onClose:()=>setShowIntercorr(null),title:"⚠ Registrar Intercorrência",width:480},
-      h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
-        h(Field,{label:"Tipo"},h(Sel,{value:icForm.type,onChange:v=>setIcForm(p=>({...p,type:v})),options:INTERCORRENCIA_TYPES})),
-        h(Field,{label:"Data"},h(Inp,{type:"date",value:icForm.date,onChange:v=>setIcForm(p=>({...p,date:v}))})),
-        h(Field,{label:"Descrição"},h(TA,{value:icForm.notes,onChange:v=>setIcForm(p=>({...p,notes:v})),placeholder:"Descreva a intercorrência...",rows:3})),
-        h(Field,{label:"Conduta Realizada"},h(TA,{value:icForm.conduct,onChange:v=>setIcForm(p=>({...p,conduct:v})),placeholder:"O que foi feito...",rows:2}))
+    showIntercorr&&h(Modal,{open:true,onClose:()=>{setShowIntercorr(null);setIcForm(blankIc);},title:"⚠ Registrar Intercorrência",width:560},
+      showIntercorr==="global"&&(patient.sessions||[]).length>0&&h(Field,{label:"Vincular a um Procedimento Realizado (opcional)"},
+        h("select",{value:icForm.sessId||"",onChange:e=>applySessionToIcForm(e.target.value),style:IS},
+          h("option",{value:""},"— Nenhuma (intercorrência avulsa) —"),
+          (patient.sessions||[]).map(s=>h("option",{key:s.id,value:s.id},`${s.date} · ${s.procedure}${s.product?" · "+s.product:""}`))
+        )
       ),
-      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},h(Btn,{variant:"ghost",onClick:()=>setShowIntercorr(null)},"Cancelar"),h(Btn,{onClick:()=>saveIntercorrencia(showIntercorr==="global"?(patient.sessions||[])[0]?.id:showIntercorr)},"Registrar"))
+      icForm.sessId&&h("div",{style:{fontSize:11.5,color:P.accent,background:"rgba(157,119,97,.08)",border:`1px solid ${P.border}`,borderRadius:8,padding:"6px 12px",marginBottom:12}},`🔗 Vinculado automaticamente: paciente, procedimento, produto e região do atendimento.`),
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
+        h(Field,{label:"Tipo",third:true},h(Sel,{value:icForm.type,onChange:icfv("type"),options:INTERCORRENCIA_TYPES})),
+        h(Field,{label:"Gravidade",third:true},h(Sel,{value:icForm.severity,onChange:icfv("severity"),options:IC_SEVERITY})),
+        h(Field,{label:"Status",third:true},h(Sel,{value:icForm.status,onChange:icfv("status"),options:IC_STATUS_LIST})),
+        h(Field,{label:"Procedimento Relacionado",half:true},h(Sel,{value:icForm.procedure,onChange:icfv("procedure"),options:["",...procedures]})),
+        h(Field,{label:"Produto Utilizado",half:true},h(Sel,{value:icForm.product,onChange:icfv("product"),options:["",...products]})),
+        h(Field,{label:"Região Afetada",half:true},h(Inp,{value:icForm.region,onChange:icfv("region"),placeholder:"Ex: Malar D, Glabela..."})),
+        h(Field,{label:"Data do Procedimento",half:true},h(Inp,{type:"date",value:icForm.procedureDate,onChange:icfv("procedureDate")})),
+        h(Field,{label:"Data da Intercorrência",half:true},h(Inp,{type:"date",value:icForm.date,onChange:icfv("date")})),
+        h(Field,{label:"Próxima Reavaliação",half:true},h(Inp,{type:"date",value:icForm.nextReavaliacao,onChange:icfv("nextReavaliacao")})),
+        h(Field,{label:"Descrição"},h(TA,{value:icForm.notes,onChange:icfv("notes"),placeholder:"Descreva a intercorrência...",rows:3})),
+        h(Field,{label:"Conduta Inicial Realizada"},h(TA,{value:icForm.conduct,onChange:icfv("conduct"),placeholder:"O que foi feito de imediato (poderá adicionar mais condutas depois)...",rows:2})),
+        h(Field,{label:"Fotos"},
+          h("label",{style:{fontSize:12,color:P.accent,border:`1px solid ${P.border}`,borderRadius:8,padding:"8px 14px",cursor:"pointer",display:"inline-block"}},"📷 Selecionar fotos",h("input",{type:"file",accept:"image/*",multiple:true,style:{display:"none"},onChange:e=>setIcForm(p=>({...p,_photoFiles:[...(p._photoFiles||[]),...[...e.target.files]]}))})),
+          icForm._photoFiles?.length>0&&h("div",{style:{fontSize:11.5,color:P.text3,marginTop:6}},`${icForm._photoFiles.length} foto(s) selecionada(s)`)
+        )
+      ),
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},h(Btn,{variant:"ghost",onClick:()=>{setShowIntercorr(null);setIcForm(blankIc);}},"Cancelar"),h(Btn,{onClick:saveIntercorrencia},"Registrar"))
     ),
     showPlan&&h(Modal,{open:true,onClose:()=>setShowPlan(false),title:"🎯 Novo Plano de Tratamento",width:480},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
@@ -5883,7 +6126,67 @@ function PacotesGlobal({patients,setPatients,onSelectPatient,onNav}){
   );
 }
 
-// ─── ROOT APP ─────────────────────────────────────────────────────────────────
+// ─── INTERCORRÊNCIAS — PAINEL GLOBAL ───────────────────────────────────────────
+function IntercorrenciasGlobal({patients,setPatients,onSelectPatient,onNav,procedures=[],products=[]}){
+  const h=createElement;
+  const[fPaciente,setFPaciente]=useState("");
+  const[fProc,setFProc]=useState("Todos");
+  const[fProd,setFProd]=useState("Todos");
+  const[fSev,setFSev]=useState("Todas");
+  const[fStatus,setFStatus]=useState("Todos");
+  const all=patients.flatMap(p=>(p.intercorrencias||[]).map(ic=>({...ic,patient:p})));
+  const procOptions=["Todos",...Array.from(new Set(all.map(ic=>ic.procedure).filter(Boolean)))];
+  const prodOptions=["Todos",...Array.from(new Set(all.map(ic=>ic.product).filter(Boolean)))];
+  const filtered=all.filter(ic=>
+    (!fPaciente||ic.patient.name.toLowerCase().includes(fPaciente.toLowerCase()))&&
+    (fProc==="Todos"||ic.procedure===fProc)&&
+    (fProd==="Todos"||ic.product===fProd)&&
+    (fSev==="Todas"||icSeverityOf(ic)===fSev)&&
+    (fStatus==="Todos"||icStatusOf(ic)===fStatus)
+  ).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  const stats={
+    total:all.length,
+    acomp:all.filter(ic=>icStatusOf(ic)==="Em Acompanhamento").length,
+    resolv:all.filter(ic=>icStatusOf(ic)==="Resolvida").length,
+    graves:all.filter(ic=>["Grave","Emergencial"].includes(icSeverityOf(ic))).length,
+  };
+  const selStyle={padding:"8px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontSize:12.5,fontFamily:"'DM Sans',sans-serif",cursor:"pointer"};
+  return h("div",null,
+    h(SectionHeader,{title:"Intercorrências",sub:"Painel clínico de intercorrências da clínica"}),
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:18}},
+      [{l:"Total Registradas",v:stats.total,c:P.accent},{l:"Em Acompanhamento",v:stats.acomp,c:"#7aaed4"},{l:"Resolvidas",v:stats.resolv,c:P.green},{l:"Graves / Emergenciais",v:stats.graves,c:P.red}].map(s=>
+        h(Card,{key:s.l,style:{textAlign:"center"}},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},s.l),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:s.c}},s.v)
+        )
+      )
+    ),
+    h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:18}},
+      h(Card,null,
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:10}},"Por Gravidade"),
+        IC_SEVERITY.map(sv=>{const n=all.filter(ic=>icSeverityOf(ic)===sv).length;const cfg=IC_SEVERITY_CFG[sv];return h("div",{key:sv,style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:cfg.color}},sv),h("span",{style:{fontSize:15,fontFamily:"'Cormorant Garamond',serif",color:P.text}},n));})
+      ),
+      h(Card,null,
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:10}},"Por Status"),
+        IC_STATUS_LIST.map(st=>{const n=all.filter(ic=>icStatusOf(ic)===st).length;const cfg=IC_STATUS_CFG[st];return h("div",{key:st,style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:cfg.color}},st),h("span",{style:{fontSize:15,fontFamily:"'Cormorant Garamond',serif",color:P.text}},n));})
+      )
+    ),
+    h("div",{style:{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}},
+      h("input",{value:fPaciente,onChange:e=>setFPaciente(e.target.value),placeholder:"Buscar paciente...",style:{flex:"1 1 200px",padding:"8px 14px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:13,fontFamily:"'DM Sans',sans-serif"}}),
+      h("select",{value:fProc,onChange:e=>setFProc(e.target.value),style:selStyle},procOptions.map(o=>h("option",{key:o,value:o},o))),
+      h("select",{value:fProd,onChange:e=>setFProd(e.target.value),style:selStyle},prodOptions.map(o=>h("option",{key:o,value:o},o))),
+      h("select",{value:fSev,onChange:e=>setFSev(e.target.value),style:selStyle},["Todas",...IC_SEVERITY].map(o=>h("option",{key:o,value:o},o))),
+      h("select",{value:fStatus,onChange:e=>setFStatus(e.target.value),style:selStyle},["Todos",...IC_STATUS_LIST].map(o=>h("option",{key:o,value:o},o)))
+    ),
+    filtered.length===0
+      ?h(Card,{style:{textAlign:"center",padding:40}},
+          h("div",{style:{fontSize:32,marginBottom:12}},all.length===0?"✅":"🔍"),
+          h("div",{style:{color:P.text3,fontSize:14}},all.length===0?"Nenhuma intercorrência registrada na clínica ainda.":"Nenhuma intercorrência encontrada para os filtros selecionados.")
+        )
+      :filtered.map(ic=>h(IntercorrenciaCard,{key:ic.id,ic,patient:ic.patient,setPatients,showPatientName:true,onSelectPatient,onNav}))
+  );
+}
+
 // ─── ROOT APP (com autenticação) ─────────────────────────────────────────────
 function App(){
   const [session, setSession] = useState(null);
@@ -6392,7 +6695,7 @@ function AppInner({ session, onLogout }) {
   }
   function handleSelectPatient(p){setSelectedPatient(p);setPage("prontuario");if(isMobile)setSidebarOpen(false);}
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos Pendentes",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",config:"Configurações"};
+  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos Pendentes",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
   const settings = settingsData;
 
   const nav=[
@@ -6407,6 +6710,7 @@ function AppInner({ session, onLogout }) {
     {k:"pacotes_global",l:"Pacotes",icon:"📦"},
     {k:"vouchers",l:"Vouchers",icon:"🎁"},
     {k:"relatorios",l:"Relatórios",icon:"📊"},
+    {k:"intercorrencias_global",l:"Intercorrências",icon:"⚠",badge:patients.flatMap(p=>p.intercorrencias||[]).filter(ic=>icStatusOf(ic)==="Em Acompanhamento").length||null,badgeColor:P.red},
     {k:"config",l:"Configurações",icon:"⚙️"},
   ];
 
@@ -6550,6 +6854,7 @@ function AppInner({ session, onLogout }) {
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
             page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings}),
+            page==="intercorrencias_global"&&h(IntercorrenciasGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures:procedureNames,products:products.map(p=>typeof p==="string"?p:(p.name||p))}),
             page==="config"&&h(Configuracoes,{procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats})
           )
         )
