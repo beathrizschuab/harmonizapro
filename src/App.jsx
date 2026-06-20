@@ -695,190 +695,6 @@ function buildRegionEvolution(patient){
   return Object.values(byRegion).filter(g=>g.entries.length>0).sort((a,b)=>b.entries.length-a.entries.length);
 }
 
-// ─── REPLAY FACIAL ("Netflix do Rosto") ────────────────────────────────────────
-// Constrói a linha do tempo de "momentos" da paciente: cada sessão com data, enriquecida
-// com a(s) região(ões) tocadas e o objetivo/planejamento vigente naquela época.
-function buildReplayMoments(patient){
-  const sessions=(patient.sessions||[]).filter(s=>s.date);
-  const plans=(patient.planejamento||[])
-    .map(p=>({...p,_dt:parseDMY(p.created)}))
-    .filter(p=>p._dt)
-    .sort((a,b)=>a._dt-b._dt);
-  const moments=sessions.map(s=>{
-    const dt=parseDMY(s.date)||new Date(0);
-    const regions=new Set();
-    matchFaceRegions(s.region).forEach(r=>regions.add(r));
-    matchFaceRegions(s.procedure).forEach(r=>regions.add(r));
-    if(s.faceMap?.points)Object.keys(s.faceMap.points).forEach(pk=>{
-      if(s.faceMap.points[pk]>0)matchFaceRegionsFromPointKey(pk).forEach(r=>regions.add(r));
-    });
-    const candidatos=plans.filter(p=>p._dt<=dt);
-    const objetivo=candidatos.length>0?candidatos[candidatos.length-1]:null;
-    return{...s,_dt:dt,year:dt.getFullYear(),regions:[...regions].map(r=>r.k),objetivo};
-  });
-  moments.sort((a,b)=>a._dt-b._dt);
-  return moments;
-}
-function navBtnStyle(disabled){
-  return{background:disabled?"rgba(255,255,255,.03)":P.card,border:`1px solid ${P.border}`,color:disabled?P.text3:P.text2,borderRadius:8,width:34,height:34,cursor:disabled?"default":"pointer",fontSize:16,flexShrink:0,opacity:disabled?.4:1};
-}
-
-function ReplayFacial({patient}){
-  const h=createElement;
-  const allMoments=useMemo(()=>buildReplayMoments(patient),[patient]);
-  const[filterProc,setFilterProc]=useState("Todos");
-  const[filterYear,setFilterYear]=useState("Todos");
-  const[filterRegion,setFilterRegion]=useState("Todas");
-  const[idx,setIdx]=useState(0);
-  const[playing,setPlaying]=useState(false);
-  const[lightbox,setLightbox]=useState(null);
-
-  const procs=["Todos",...new Set(allMoments.map(m=>m.procedure).filter(Boolean))];
-  const years=["Todos",...new Set(allMoments.map(m=>String(m.year)))];
-  const regionsUsed=FACE_REGIONS.filter(r=>allMoments.some(m=>m.regions.includes(r.k)));
-
-  const moments=allMoments.filter(m=>
-    (filterProc==="Todos"||m.procedure===filterProc)&&
-    (filterYear==="Todos"||String(m.year)===filterYear)&&
-    (filterRegion==="Todas"||m.regions.includes(filterRegion))
-  );
-
-  useEffect(()=>{setIdx(0);setPlaying(false);},[filterProc,filterYear,filterRegion]);
-  useEffect(()=>{if(idx>moments.length-1)setIdx(Math.max(0,moments.length-1));},[moments.length]); // eslint-disable-line
-
-  useEffect(()=>{
-    if(!playing||moments.length===0)return;
-    const t=setInterval(()=>{
-      setIdx(i=>{
-        if(i>=moments.length-1){return i;}
-        return i+1;
-      });
-    },1800);
-    return()=>clearInterval(t);
-  },[playing,moments.length]);
-
-  useEffect(()=>{
-    if(playing&&idx>=moments.length-1)setPlaying(false);
-  },[idx,playing,moments.length]);
-
-  const active=moments[idx];
-
-  const yearTicks=[];
-  if(moments.length>1){
-    const seen=new Set();
-    moments.forEach((m,i)=>{
-      if(!seen.has(m.year)){
-        seen.add(m.year);
-        yearTicks.push({year:m.year,pct:(i/(moments.length-1))*100});
-      }
-    });
-  }
-
-  if(allMoments.length===0){
-    return h(Card,{style:{textAlign:"center",padding:40}},
-      h("div",{style:{fontSize:32,marginBottom:10}},"🎬"),
-      h("div",{style:{color:P.text3,fontSize:13}},"Nenhuma sessão com data registrada ainda. Assim que houver sessões, o Replay Facial vai mostrar a evolução completa da paciente ao longo do tempo.")
-    );
-  }
-
-  return h("div",null,
-    h("div",{style:{fontSize:13,color:P.text3,marginBottom:18}},"Arraste o marcador na linha do tempo (ou aperte ▶ Assistir) para acompanhar a evolução facial da paciente: fotos, procedimentos, produtos, observações, investimentos e objetivos de cada época."),
-    // Filtros
-    h("div",{style:{display:"flex",gap:10,flexWrap:"wrap",marginBottom:20}},
-      h("div",null,
-        h("div",{style:{fontSize:10,color:P.text3,marginBottom:4,textTransform:"uppercase",letterSpacing:".06em"}},"Procedimento"),
-        h("select",{value:filterProc,onChange:e=>setFilterProc(e.target.value),style:{...IS,width:"auto",minWidth:170}},procs.map(p=>h("option",{key:p,value:p},p)))
-      ),
-      h("div",null,
-        h("div",{style:{fontSize:10,color:P.text3,marginBottom:4,textTransform:"uppercase",letterSpacing:".06em"}},"Ano"),
-        h("select",{value:filterYear,onChange:e=>setFilterYear(e.target.value),style:{...IS,width:"auto",minWidth:100}},years.map(y=>h("option",{key:y,value:y},y)))
-      ),
-      regionsUsed.length>0&&h("div",null,
-        h("div",{style:{fontSize:10,color:P.text3,marginBottom:4,textTransform:"uppercase",letterSpacing:".06em"}},"Região"),
-        h("select",{value:filterRegion,onChange:e=>setFilterRegion(e.target.value),style:{...IS,width:"auto",minWidth:170}},
-          h("option",{value:"Todas"},"Todas"),
-          regionsUsed.map(r=>h("option",{key:r.k,value:r.k},r.icon+" "+r.l))
-        )
-      )
-    ),
-    moments.length===0
-      ?h(Card,{style:{textAlign:"center",padding:32}},h("div",{style:{fontSize:28,marginBottom:8}},"🔍"),h("div",{style:{color:P.text3,fontSize:13}},"Nenhum momento encontrado com esses filtros."))
-      :h(Fragment,null,
-        // Linha do tempo / controle deslizante
-        h(Card,{style:{marginBottom:18}},
-          h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:8}},
-            h("button",{onClick:()=>{setPlaying(false);setIdx(i=>Math.max(0,i-1));},disabled:idx===0,style:navBtnStyle(idx===0)},"‹"),
-            h("button",{onClick:()=>setPlaying(p=>!p),style:{background:playing?P.rose:"rgba(157,119,97,.1)",border:`1px solid ${playing?P.rose:"rgba(157,119,97,.4)"}`,color:playing?P.accent3:P.accent,borderRadius:8,padding:"7px 16px",cursor:"pointer",fontSize:13,flexShrink:0,whiteSpace:"nowrap"}},playing?"⏸ Pausar":"▶ Assistir"),
-            h("input",{type:"range",min:0,max:Math.max(0,moments.length-1),value:idx,onChange:e=>{setPlaying(false);setIdx(Number(e.target.value));},style:{flex:1,accentColor:P.rose}}),
-            h("button",{onClick:()=>{setPlaying(false);setIdx(i=>Math.min(moments.length-1,i+1));},disabled:idx===moments.length-1,style:navBtnStyle(idx===moments.length-1)},"›")
-          ),
-          yearTicks.length>1&&h("div",{style:{position:"relative",height:16,margin:"2px 4px 0"}},
-            yearTicks.map(t=>h("div",{key:t.year,style:{position:"absolute",left:t.pct+"%",transform:"translateX(-50%)",fontSize:10.5,color:P.text3}},t.year))
-          ),
-          h("div",{style:{textAlign:"center",marginTop:8,fontSize:11,color:P.text3}},"Momento "+(idx+1)+" de "+moments.length+(active?" · "+active.date:""))
-        ),
-        // Card do momento ativo (o "episódio" sendo assistido)
-        active&&h(Card,{style:{border:"1px solid rgba(92,31,50,.3)"}},
-          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:8}},
-            h("div",null,
-              h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}},
-                h("span",{style:{fontSize:13,fontWeight:700,color:P.accent3,background:"rgba(157,119,97,.12)",border:"1px solid rgba(157,119,97,.25)",borderRadius:8,padding:"3px 10px"}},"📅 "+active.date),
-                active.regions.map(rk=>{
-                  const r=FACE_REGIONS.find(x=>x.k===rk);
-                  return r&&h("span",{key:rk,style:{fontSize:11,color:P.text2,background:P.bg3,border:`1px solid ${P.border}`,borderRadius:14,padding:"2px 9px"}},r.icon+" "+r.l);
-                })
-              ),
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:P.text,marginTop:6}},active.procedure)
-            ),
-            h("div",{style:{textAlign:"right"}},
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:active.paid?P.green:P.yellow}},fmtCurr(active.value||0)),
-              h("div",{style:{fontSize:10,color:P.text3}},active.finStatus||(active.paid?"Pago":"Pendente"))
-            )
-          ),
-          h("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-            h("div",null,
-              h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}},"📦 Produtos e Quantidades"),
-              h("div",{style:{fontSize:13,color:P.text}},(active.product||"—")+(active.dose?" · "+active.dose:"")),
-              active.faceMap?.points&&Object.values(active.faceMap.points).some(v=>v>0)&&
-                h("div",{style:{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}},
-                  Object.entries(active.faceMap.points).filter(([k,v])=>v>0).map(([k,v])=>h("span",{key:k,style:{fontSize:11,padding:"2px 9px",borderRadius:14,background:"rgba(92,31,50,.1)",color:P.accent}},k.replace(/_/g," ")+": "+v+(active.faceMap.type==="botox"?"U":"ml")))
-                )
-            ),
-            (active.notes||active.evolution)&&h("div",null,
-              h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}},"📝 Observações Clínicas"),
-              active.notes&&h("div",{style:{fontSize:13,color:P.text2,marginBottom:4}},active.notes),
-              active.evolution&&h("div",{style:{fontSize:13,color:P.text2}},"Evolução: "+active.evolution)
-            ),
-            h("div",null,
-              h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}},"🎯 Objetivo Definido na Época"),
-              active.objetivo
-                ?h("div",{style:{fontSize:13,color:P.text2,padding:"10px 12px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
-                    h("div",{style:{fontSize:10.5,color:P.text3,marginBottom:3}},(active.objetivo.title||"Planejamento")+" · criado em "+active.objetivo.created),
-                    active.objetivo.text||active.objetivo.notes||active.objetivo.description||"—"
-                  )
-                :h("div",{style:{fontSize:12.5,color:P.text3,fontStyle:"italic"}},"Nenhum objetivo registrado até esta data.")
-            ),
-            (active.intercorrencias||[]).length>0&&h("div",null,
-              h("div",{style:{fontSize:11,color:P.red,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}},"⚠ Intercorrências"),
-              active.intercorrencias.map((it,ii)=>h("div",{key:ii,style:{fontSize:12.5,color:P.red,marginBottom:3}},(it.date||"")+" — "+(it.description||it.desc||it.text||"Intercorrência registrada")))
-            ),
-            h("div",null,
-              h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}},"📸 Fotos do Período"),
-              (active.photos||[]).length===0
-                ?h("div",{style:{fontSize:12.5,color:P.text3}},"Nenhuma foto registrada nesta sessão.")
-                :h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-                    active.photos.map((p,pi)=>h("img",{key:pi,src:typeof p==="string"?p:p.url,onClick:()=>setLightbox({url:typeof p==="string"?p:p.url}),style:{width:84,height:84,objectFit:"cover",borderRadius:8,border:`1px solid ${P.border}`,cursor:"zoom-in"}}))
-                  )
-            )
-          )
-        )
-      ),
-    lightbox&&h("div",{onClick:()=>setLightbox(null),style:{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}},
-      h("img",{src:lightbox.url,onClick:e=>e.stopPropagation(),style:{maxWidth:"90vw",maxHeight:"88vh",borderRadius:10,objectFit:"contain"}})
-    )
-  );
-}
-
 // ─── HELPERS DE ESTOQUE POR LOTE ────────────────────────────────────────────
 function getAvailableLotes(products, productName) {
   if (!productName) return [];
@@ -3427,6 +3243,10 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const _vTemplates=Array.isArray(voucherTemplates)&&voucherTemplates.length?voucherTemplates:DEFAULT_VOUCHER_TEMPLATES;
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
+  const[pFilterProc,setPFilterProc]=useState("Todos");
+  const[pFilterYear,setPFilterYear]=useState("Todos");
+  const[pFilterMonth,setPFilterMonth]=useState("Todos");
+  const[pFilterRegion,setPFilterRegion]=useState("Todas");
   const[editSess,setEditSess]=useState(null);
   const[markerPlanning,setMarkerPlanning]=useState(null); // null | "new" | planObj (planejamento com marcadores)
   const[markerPlanningForSession,setMarkerPlanningForSession]=useState(null); // sessId quando o markerPlanning "new" deve nascer já vinculado a uma sessão
@@ -3483,7 +3303,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[icForm,setIcForm]=useState({type:"Edema",notes:"",conduct:"",date:""});
   const[planForm,setPlanForm]=useState({title:"",steps:"",notes:""});
   const totalSpent=(patient.sessions||[]).reduce((a,s)=>a+s.value,0);
-  const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"fichaRapida",l:"⚡ Ficha Rápida"},{k:"agendaPaciente",l:"📅 Agenda"},{k:"orcamentos",l:"💼 Orçamentos"},{k:"mapa",l:"🗺 Mapa"},{k:"porRegiao",l:"🎬 Replay Facial"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"},{k:"skincare",l:"🧴 Skincare"},{k:"indicacoes",l:"🤝 Indicações"}];
+  const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"fichaRapida",l:"⚡ Ficha Rápida"},{k:"agendaPaciente",l:"📅 Agenda"},{k:"orcamentos",l:"💼 Orçamentos"},{k:"mapa",l:"🗺 Mapa"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"},{k:"skincare",l:"🧴 Skincare"},{k:"indicacoes",l:"🤝 Indicações"}];
   function upd(fn){setPatients(prev=>prev.map(p=>p.id===patient.id?fn(p):p));}
   // Sincroniza sessão → incomes (fonte única de verdade)
   function syncIncome(sess,patName){
@@ -3848,9 +3668,66 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       )
     ),
     // ─── PRONTUÁRIO TAB
-    tab==="prontuario"&&h("div",null,
-      (patient.sessions||[]).length===0&&h(Card,{style:{textAlign:"center",padding:40}},h("div",{style:{fontSize:32,marginBottom:12}},"📋"),h("div",{style:{color:P.text3,fontSize:14}},"Nenhuma sessão."),h(Btn,{style:{marginTop:16},onClick:()=>setShowNewS(true)},"Registrar Primeira Sessão")),
-      (patient.sessions||[]).map(s=>h(Card,{key:s.id,style:{marginBottom:14}},
+    tab==="prontuario"&&(()=>{
+      const allSess=patient.sessions||[];
+      const sessProcs=["Todos",...new Set(allSess.map(s=>s.procedure).filter(Boolean))];
+      const sessYears=["Todos",...new Set(allSess.map(s=>{const d=parseDMY(s.date);return d?String(d.getFullYear()):null;}).filter(Boolean))].sort((a,b)=>b==="Todos"?1:(a==="Todos"?-1:b-a));
+      const regionsUsedP=FACE_REGIONS.filter(r=>allSess.some(s=>{
+        if(matchFaceRegions(s.region).some(x=>x.k===r.k))return true;
+        if(matchFaceRegions(s.procedure).some(x=>x.k===r.k))return true;
+        if(s.faceMap?.points&&Object.keys(s.faceMap.points).some(pk=>s.faceMap.points[pk]>0&&matchFaceRegionsFromPointKey(pk).some(x=>x.k===r.k)))return true;
+        return false;
+      }));
+      const filteredSess=allSess.filter(s=>{
+        if(pFilterProc!=="Todos"&&s.procedure!==pFilterProc)return false;
+        const d=parseDMY(s.date);
+        if(pFilterYear!=="Todos"&&(!d||String(d.getFullYear())!==pFilterYear))return false;
+        if(pFilterMonth!=="Todos"&&(!d||String(d.getMonth()+1)!==pFilterMonth))return false;
+        if(pFilterRegion!=="Todas"){
+          const matched=new Set();
+          matchFaceRegions(s.region).forEach(r=>matched.add(r.k));
+          matchFaceRegions(s.procedure).forEach(r=>matched.add(r.k));
+          if(s.faceMap?.points)Object.keys(s.faceMap.points).forEach(pk=>{if(s.faceMap.points[pk]>0)matchFaceRegionsFromPointKey(pk).forEach(r=>matched.add(r.k));});
+          if(!matched.has(pFilterRegion))return false;
+        }
+        return true;
+      });
+      const hasActiveFilter=pFilterProc!=="Todos"||pFilterYear!=="Todos"||pFilterMonth!=="Todos"||pFilterRegion!=="Todas";
+      return h("div",null,
+      allSess.length===0&&h(Card,{style:{textAlign:"center",padding:40}},h("div",{style:{fontSize:32,marginBottom:12}},"📋"),h("div",{style:{color:P.text3,fontSize:14}},"Nenhuma sessão."),h(Btn,{style:{marginTop:16},onClick:()=>setShowNewS(true)},"Registrar Primeira Sessão")),
+      allSess.length>0&&h(Card,{style:{marginBottom:16}},
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}},
+          h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},"🔍 Filtrar Sessões"),
+          hasActiveFilter&&h("button",{onClick:()=>{setPFilterProc("Todos");setPFilterYear("Todos");setPFilterMonth("Todos");setPFilterRegion("Todas");},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 9px",cursor:"pointer"}},"Limpar filtros")
+        ),
+        h("div",{style:{display:"flex",gap:10,flexWrap:"wrap"}},
+          h("div",null,
+            h("div",{style:{fontSize:10,color:P.text3,marginBottom:4,textTransform:"uppercase",letterSpacing:".06em"}},"Procedimento"),
+            h("select",{value:pFilterProc,onChange:e=>setPFilterProc(e.target.value),style:{...IS,width:"auto",minWidth:170}},sessProcs.map(p=>h("option",{key:p,value:p},p)))
+          ),
+          h("div",null,
+            h("div",{style:{fontSize:10,color:P.text3,marginBottom:4,textTransform:"uppercase",letterSpacing:".06em"}},"Ano"),
+            h("select",{value:pFilterYear,onChange:e=>setPFilterYear(e.target.value),style:{...IS,width:"auto",minWidth:100}},sessYears.map(y=>h("option",{key:y,value:y},y)))
+          ),
+          h("div",null,
+            h("div",{style:{fontSize:10,color:P.text3,marginBottom:4,textTransform:"uppercase",letterSpacing:".06em"}},"Mês"),
+            h("select",{value:pFilterMonth,onChange:e=>setPFilterMonth(e.target.value),style:{...IS,width:"auto",minWidth:130}},
+              h("option",{value:"Todos"},"Todos"),
+              MONTH_NAMES.map((m,i)=>h("option",{key:i,value:String(i+1)},m))
+            )
+          ),
+          regionsUsedP.length>0&&h("div",null,
+            h("div",{style:{fontSize:10,color:P.text3,marginBottom:4,textTransform:"uppercase",letterSpacing:".06em"}},"Área / Região"),
+            h("select",{value:pFilterRegion,onChange:e=>setPFilterRegion(e.target.value),style:{...IS,width:"auto",minWidth:180}},
+              h("option",{value:"Todas"},"Todas"),
+              regionsUsedP.map(r=>h("option",{key:r.k,value:r.k},r.icon+" "+r.l))
+            )
+          )
+        ),
+        hasActiveFilter&&h("div",{style:{fontSize:11.5,color:P.text3,marginTop:10}},filteredSess.length+" de "+allSess.length+" sessão(ões) encontrada(s).")
+      ),
+      allSess.length>0&&filteredSess.length===0&&h(Card,{style:{textAlign:"center",padding:32}},h("div",{style:{fontSize:28,marginBottom:8}},"🔍"),h("div",{style:{color:P.text3,fontSize:13}},"Nenhuma sessão encontrada com esses filtros.")),
+      filteredSess.map(s=>h(Card,{key:s.id,style:{marginBottom:14}},
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}},
           h("div",null,
             h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}},
@@ -3896,8 +3773,8 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           h("label",{style:{fontSize:11,color:P.accent,border:`1px solid ${P.border}`,borderRadius:6,padding:"4px 10px",cursor:"pointer"}},"📎 Docs",h("input",{type:"file",multiple:true,style:{display:"none"},onChange:e=>addMedia(s.id,[...e.target.files],"docs")})),
           h("button",{onClick:()=>setShowIntercorr(s.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"4px 10px",cursor:"pointer"}},"⚠ Intercorrência")
         )
-      ))
-    ),
+      )));
+    })(),
     // ─── MAPA TAB (lista as sessões da paciente; cada sessão tem seu próprio mapa com foto real,
     // com marcadores de produto/lote/quantidade e custo planejado×realizado) ──────────────────
     tab==="mapa"&&h("div",null,
@@ -4015,8 +3892,6 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             ))
       )
     ),
-    // ─── POR REGIÃO TAB ──────────────────────────────────────────────────────
-    tab==="porRegiao"&&h(ReplayFacial,{patient}),
     // ─── INTERCORRÊNCIAS TAB
     tab==="intercorrencias"&&h("div",null,
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
