@@ -137,17 +137,6 @@ function updateIntercorrencia(setPatients,patientId,icId,updater){
   }));
 }
 
-function deleteIntercorrencia(setPatients,patientId,icId){
-  setPatients(prev=>prev.map(p=>{
-    if(p.id!==patientId)return p;
-    return{
-      ...p,
-      intercorrencias:(p.intercorrencias||[]).filter(ic=>ic.id!==icId),
-      sessions:(p.sessions||[]).map(s=>({...s,intercorrencias:(s.intercorrencias||[]).filter(ic=>ic.id!==icId)}))
-    };
-  }));
-}
-
 // ─── FIDELIZAÇÃO ──────────────────────────────────────────────────────────────
 // Critérios automáticos: valor gasto total + nº de sessões (frequência) + nº de indicações feitas
 const LOYALTY_TIERS=[
@@ -2978,8 +2967,6 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
   const[evoText,setEvoText]=useState("");
   const[showCond,setShowCond]=useState(false);
   const[condText,setCondText]=useState("");
-  const[editing,setEditing]=useState(false);
-  const[editForm,setEditForm]=useState(null);
   const sevCfg=IC_SEVERITY_CFG[icSeverityOf(ic)]||IC_SEVERITY_CFG.Leve;
   const stCfg=IC_STATUS_CFG[icStatusOf(ic)]||IC_STATUS_CFG["Em Acompanhamento"];
   const evolutions=icEvolutionsOf(ic);
@@ -3004,58 +2991,6 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
     Promise.all(readers).then(news=>{updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,photos:[...(old.photos||[]),...news]}));});
   }
   function removePhoto(fid){updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,photos:(old.photos||[]).filter(ph=>ph.id!==fid)}));}
-  function startEdit(){
-    setEditForm({type:ic.type||"Edema",severity:ic.severity||"Leve",status:ic.status||"Em Acompanhamento",procedure:ic.procedure||"",product:ic.product||"",region:ic.region||"",procedureDate:ic.procedureDate||"",date:ic.date||todayISO(),notes:ic.notes||"",nextReavaliacao:ic.nextReavaliacao||""});
-    setEditing(true);
-  }
-  function saveEdit(){
-    if(!editForm)return;
-    updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,...editForm}));
-    setEditing(false);setEditForm(null);
-  }
-  function cancelEdit(){setEditing(false);setEditForm(null);}
-  function efv(k){return v=>setEditForm(p=>({...p,[k]:v}));}
-  function handleDelete(){
-    if(!window.confirm("Excluir esta intercorrência? Esta ação não pode ser desfeita."))return;
-    deleteIntercorrencia(setPatients,patient.id,ic.id);
-  }
-  const btnSmall={fontSize:10.5,padding:"3px 9px",borderRadius:6,border:`1px solid ${P.border}`,background:"transparent",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"};
-  // ── Modo edição inline ────────────────────────────────────────────────────
-  if(editing&&editForm){
-    const efvSel=(k,opts)=>h("div",{style:{display:"flex",flexDirection:"column",gap:4,flex:1,minWidth:140}},
-      h("label",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},k==="type"?"Tipo":k==="severity"?"Gravidade":k==="status"?"Status":k==="procedure"?"Procedimento":k==="product"?"Produto":k==="region"?"Região":k==="procedureDate"?"Data Procedimento":k==="date"?"Data Intercorr.":k==="nextReavaliacao"?"Próx. Reavaliação":"Descrição"),
-      h("select",{value:editForm[k],onChange:e=>efv(k)(e.target.value),style:{fontSize:12,padding:"7px 10px",borderRadius:7,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontFamily:"'DM Sans',sans-serif"}},
-        opts.map(o=>h("option",{key:o,value:o},o||"—"))
-      )
-    );
-    const efvInp=(k,type="text",ph="")=>h("div",{style:{display:"flex",flexDirection:"column",gap:4,flex:1,minWidth:140}},
-      h("label",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},k==="region"?"Região":k==="procedureDate"?"Data Procedimento":k==="date"?"Data Intercorr.":"Próx. Reavaliação"),
-      h("input",{type,value:editForm[k],onChange:e=>efv(k)(e.target.value),placeholder:ph,style:{fontSize:12,padding:"7px 10px",borderRadius:7,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontFamily:"'DM Sans',sans-serif"}})
-    );
-    return h(Card,{style:{marginBottom:14,border:`2px solid ${P.accent}55`}},
-      h("div",{style:{fontSize:10,color:P.accent,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10,fontWeight:600}},"✏️ Editando intercorrência"),
-      h("div",{style:{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}},
-        efvSel("type",INTERCORRENCIA_TYPES),
-        efvSel("severity",IC_SEVERITY),
-        efvSel("status",IC_STATUS_LIST)
-      ),
-      h("div",{style:{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}},
-        efvInp("region","text","Ex: Malar D, Glabela..."),
-        efvInp("procedureDate","date"),
-        efvInp("date","date"),
-        efvInp("nextReavaliacao","date")
-      ),
-      h("div",{style:{marginBottom:10}},
-        h("label",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",display:"block",marginBottom:4}},"Descrição"),
-        h("textarea",{value:editForm.notes,onChange:e=>efv("notes")(e.target.value),rows:3,style:{width:"100%",fontSize:12.5,padding:"8px 10px",borderRadius:7,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontFamily:"'DM Sans',sans-serif",resize:"vertical"}})
-      ),
-      h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
-        h("button",{onClick:cancelEdit,style:{...btnSmall,color:P.text2}},"Cancelar"),
-        h("button",{onClick:saveEdit,style:{...btnSmall,background:P.accent,borderColor:P.accent,color:"#fff",fontWeight:600}},"💾 Salvar alterações")
-      )
-    );
-  }
-  // ── Modo visualização normal ──────────────────────────────────────────────
   return h(Card,{style:{marginBottom:14,border:`1px solid ${sevCfg.color}33`}},
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8,marginBottom:8}},
       h("div",null,
@@ -3065,9 +3000,7 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
       ),
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
         h("span",{style:{fontSize:10,padding:"3px 9px",borderRadius:12,background:sevCfg.bg,color:sevCfg.color,fontWeight:600}},icSeverityOf(ic)),
-        h("select",{value:icStatusOf(ic),onChange:e=>changeStatus(e.target.value),style:{fontSize:10.5,padding:"3px 8px",borderRadius:12,background:stCfg.bg,color:stCfg.color,border:`1px solid ${stCfg.color}55`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},IC_STATUS_LIST.map(st=>h("option",{key:st,value:st},st))),
-        h("button",{onClick:startEdit,title:"Editar",style:{...btnSmall,color:P.accent2}},"✏️ Editar"),
-        h("button",{onClick:handleDelete,title:"Excluir",style:{...btnSmall,color:P.red,borderColor:"rgba(192,112,112,.35)"}},"🗑️ Excluir")
+        h("select",{value:icStatusOf(ic),onChange:e=>changeStatus(e.target.value),style:{fontSize:10.5,padding:"3px 8px",borderRadius:12,background:stCfg.bg,color:stCfg.color,border:`1px solid ${stCfg.color}55`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},IC_STATUS_LIST.map(st=>h("option",{key:st,value:st},st)))
       )
     ),
     (ic.procedure||ic.product||ic.region)&&h("div",{style:{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:P.text2,marginBottom:8,padding:"8px 12px",background:P.bg3,borderRadius:8}},
@@ -5097,10 +5030,12 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
       )
     ),
 
-    // ── Abas: Resumo / Fluxo de Caixa ──────────────────────────────────────
-    h("div",{style:{display:"flex",gap:8,marginBottom:16}},
+    // ── Abas: Resumo / Fluxo / DRE / Inadimplência ──────────────────────────
+    h("div",{style:{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}},
       h("button",{onClick:()=>setViewTab("resumo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="resumo"?P.rose:"transparent",border:`1px solid ${viewTab==="resumo"?P.rose:P.border}`,color:viewTab==="resumo"?P.accent3:P.text2}},"Entradas & Despesas"),
-      h("button",{onClick:()=>setViewTab("fluxo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="fluxo"?P.rose:"transparent",border:`1px solid ${viewTab==="fluxo"?P.rose:P.border}`,color:viewTab==="fluxo"?P.accent3:P.text2}},"💵 Fluxo de Caixa")
+      h("button",{onClick:()=>setViewTab("fluxo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="fluxo"?P.rose:"transparent",border:`1px solid ${viewTab==="fluxo"?P.rose:P.border}`,color:viewTab==="fluxo"?P.accent3:P.text2}},"💵 Fluxo de Caixa"),
+      h("button",{onClick:()=>setViewTab("dre"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="dre"?P.rose:"transparent",border:`1px solid ${viewTab==="dre"?P.rose:P.border}`,color:viewTab==="dre"?P.accent3:P.text2}},"📊 DRE & Pagamentos"),
+      h("button",{onClick:()=>setViewTab("inadimplencia"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="inadimplencia"?P.rose:"transparent",border:`1px solid ${viewTab==="inadimplencia"?P.rose:P.border}`,color:viewTab==="inadimplencia"?P.accent3:P.text2}},"⚠ Inadimplência")
     ),
 
     viewTab==="fluxo"?h(Card,null,
@@ -5182,6 +5117,229 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
         h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:P.text3}},"Total Despesas do Mês"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.red}},`− ${fmtCurr(totalExp)}`))
       )
     ),
+
+    // ── ABA: DRE & Pagamentos ───────────────────────────────────────────────
+    viewTab==="dre"&&(()=>{
+      // ── DRE ──
+      const recBruta=received; // receita bruta do mês (pagas)
+      const pendencias=pending;
+      const totalDescontos=monthSessions.filter(s=>s.paid&&s.payMethod==="Cartão Crédito"&&s.taxaMaq>0).reduce((a,s)=>a+(Number(s.value||0)*Number(s.taxaMaq||0)/100),0)
+        + monthIncomesExtra.filter(i=>i.status==="Pago"&&i.payMethod==="Cartão Crédito"&&i.taxaMaq>0).reduce((a,i)=>a+(Number(i.value||0)*Number(i.taxaMaq||0)/100),0);
+      const recLiquida=recBruta-totalDescontos;
+      // Custo de produtos: despesas categoria Produtos do mês
+      const custoProdutos=monthExpenses.filter(e=>e.cat==="Produtos"&&e.status!=="Cancelado").reduce((a,e)=>a+Number(e.value||0),0);
+      const lucroBruto=recLiquida-custoProdutos;
+      const margemBruta=recLiquida>0?Math.round((lucroBruto/recLiquida)*100):0;
+      // Despesas operacionais (tudo exceto Produtos)
+      const despOper=monthExpenses.filter(e=>e.cat!=="Produtos"&&e.status!=="Cancelado").reduce((a,e)=>a+Number(e.value||0),0);
+      const ebitda=lucroBruto-despOper;
+      const margemEbitda=recLiquida>0?Math.round((ebitda/recLiquida)*100):0;
+      // Despesas por categoria
+      const catExp={};
+      monthExpenses.filter(e=>e.status!=="Cancelado").forEach(e=>{catExp[e.cat]=(catExp[e.cat]||0)+Number(e.value||0);});
+      const catExpList=Object.entries(catExp).sort((a,b)=>b[1]-a[1]);
+      const maxCatExp=catExpList[0]?.[1]||1;
+
+      // ── Conciliação por forma de pagamento ──
+      const pmData={};
+      [...monthSessions.filter(s=>s.paid),...monthIncomesExtra.filter(i=>i.status==="Pago")].forEach(s=>{
+        const pm=s.payMethod||"Outro";
+        if(!pmData[pm])pmData[pm]={bruto:0,taxa:0,count:0};
+        const bruto=Number(s.value||0);
+        const taxa=s.payMethod==="Cartão Crédito"&&s.taxaMaq>0?bruto*Number(s.taxaMaq||0)/100:0;
+        pmData[pm].bruto+=bruto; pmData[pm].taxa+=taxa; pmData[pm].count++;
+      });
+      const pmList=Object.entries(pmData).sort((a,b)=>b[1].bruto-a[1].bruto);
+      const pmColors2={"Pix":P.green,"Cartão Crédito":"#7aaed4","Cartão Débito":"#5a8aad","Dinheiro":P.accent,"Transferência":P.rose2,"Pendente":P.yellow};
+
+      // ── Pendências abertas por forma de pagamento ──
+      const pmPending={};
+      [...monthSessions.filter(s=>!s.paid),...monthIncomesExtra.filter(i=>i.status!=="Pago")].forEach(s=>{
+        const pm=s.payMethod||"Pendente";
+        if(!pmPending[pm])pmPending[pm]={valor:0,count:0};
+        pmPending[pm].valor+=Number(s.value||0); pmPending[pm].count++;
+      });
+      const pmPendList=Object.entries(pmPending).sort((a,b)=>b[1].valor-a[1].valor);
+
+      const DRERow=({label,value,indent,bold,divider,color,small})=>h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:divider?"8px 0":"5px 0",borderTop:divider?`1px solid ${P.border}`:"none",marginLeft:indent?16:0}},
+        h("span",{style:{fontSize:small?11:13,color:bold?P.text:P.text2,fontWeight:bold?600:400}},label),
+        h("span",{style:{fontSize:bold?16:13,fontFamily:bold?"'Cormorant Garamond',serif":"'DM Sans',sans-serif",color:color||(value>=0?P.text:P.red),fontWeight:bold?600:400}},
+          value===null?"—":(value>=0?fmtCurr(value):`− ${fmtCurr(Math.abs(value))}`)
+        )
+      );
+
+      return h("div",{style:{display:"flex",flexDirection:"column",gap:18}},
+        // ── DRE ──
+        h(Card,null,
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}},
+            h("div",null,
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text}},"DRE — Demonstrativo de Resultado"),
+              h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},`${MONTH_NAMES[selMonth]} de ${selYear}`)
+            ),
+            h("div",{style:{display:"flex",gap:8}},
+              h("span",{style:{padding:"4px 12px",borderRadius:20,fontSize:11,background:ebitda>=0?"rgba(122,173,138,.14)":"rgba(192,112,112,.14)",color:ebitda>=0?P.green:P.red,fontWeight:600}},ebitda>=0?"✓ Resultado positivo":"⚠ Resultado negativo")
+            )
+          ),
+          h(DRERow,{label:"(+) Receita Bruta",value:recBruta,bold:true,color:P.green}),
+          totalDescontos>0&&h(DRERow,{label:"(−) Taxas de cartão / máquina",value:-totalDescontos,indent:true,small:true}),
+          h(DRERow,{label:"(=) Receita Líquida",value:recLiquida,bold:true,divider:true,color:P.accent}),
+          h(DRERow,{label:"(−) Custo de Produtos (CMV)",value:-custoProdutos,indent:true}),
+          h(DRERow,{label:"(=) Lucro Bruto",value:lucroBruto,bold:true,divider:true,color:lucroBruto>=0?P.green:P.red}),
+          h("div",{style:{display:"flex",justifyContent:"flex-end",marginBottom:4}},
+            h("span",{style:{fontSize:11,color:P.text3}},`Margem bruta: `,h("span",{style:{color:margemBruta>=40?P.green:margemBruta>=20?P.yellow:P.red,fontWeight:600}},margemBruta+"%"))
+          ),
+          h("div",{style:{fontSize:11,color:P.text3,marginBottom:8,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:".06em"}},"Despesas Operacionais"),
+          catExpList.map(([cat,val])=>h(DRERow,{key:cat,label:`• ${cat}`,value:-val,indent:true,small:true})),
+          h(DRERow,{label:"(−) Total Despesas Operacionais",value:-despOper,divider:true}),
+          h(DRERow,{label:"(=) EBITDA / Resultado Operacional",value:ebitda,bold:true,divider:true,color:ebitda>=0?P.green:P.red}),
+          h("div",{style:{display:"flex",justifyContent:"flex-end",marginTop:2}},
+            h("span",{style:{fontSize:11,color:P.text3}},`Margem EBITDA: `,h("span",{style:{color:margemEbitda>=30?P.green:margemEbitda>=10?P.yellow:P.red,fontWeight:600}},margemEbitda+"%"))
+          ),
+          pendencias>0&&h("div",{style:{marginTop:16,padding:"12px 14px",borderRadius:10,background:"rgba(196,169,106,.08)",border:`1px solid ${P.yellow}44`}},
+            h("div",{style:{fontSize:11,color:P.yellow,fontWeight:600,marginBottom:2}},"⏳ Receita pendente de recebimento"),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.yellow}},fmtCurr(pendencias)),
+            h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Se recebido, EBITDA seria "+fmtCurr(ebitda+pendencias))
+          )
+        ),
+
+        // ── Conciliação por método de pagamento ──
+        h(Card,null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:4}},"Conciliação por Forma de Pagamento"),
+          h("div",{style:{fontSize:12,color:P.text3,marginBottom:16}},`Entradas recebidas em ${MONTH_NAMES[selMonth]}`),
+          pmList.length===0
+            ?h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:20}},"Sem recebimentos neste mês")
+            :h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+              pmList.map(([pm,d])=>{
+                const col=pmColors2[pm]||P.accent;
+                const liquido=d.bruto-d.taxa;
+                const pct=Math.round((d.bruto/received)*100);
+                return h("div",{key:pm,style:{padding:"12px 14px",borderRadius:10,background:P.bg3,border:`1px solid ${P.border}`}},
+                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}},
+                    h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+                      h("div",{style:{width:10,height:10,borderRadius:"50%",background:col,flexShrink:0}}),
+                      h("span",{style:{fontSize:13,color:P.text,fontWeight:500}},pm),
+                      h("span",{style:{fontSize:11,color:P.text3}},d.count+" transação"+(d.count>1?"ões":""))
+                    ),
+                    h("div",{style:{textAlign:"right"}},
+                      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:col}},fmtCurr(d.bruto)),
+                      d.taxa>0&&h("div",{style:{fontSize:10,color:P.text3}},`Líq. após taxa: ${fmtCurr(liquido)}`)
+                    )
+                  ),
+                  h("div",{style:{height:4,borderRadius:2,background:P.border,overflow:"hidden"}},
+                    h("div",{style:{height:"100%",width:pct+"%",background:col,borderRadius:2,transition:"width .4s"}})
+                  ),
+                  h("div",{style:{fontSize:10,color:P.text3,marginTop:4,textAlign:"right"}},pct+"% do recebido")
+                );
+              }),
+              totalDescontos>0&&h("div",{style:{marginTop:4,padding:"10px 14px",borderRadius:10,background:"rgba(192,112,112,.06)",border:`1px solid ${P.red}33`}},
+                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                  h("span",{style:{fontSize:12,color:P.text3}},"Total perdido em taxas de cartão"),
+                  h("span",{style:{fontSize:14,color:P.red,fontWeight:600}},`− ${fmtCurr(totalDescontos)}`)
+                )
+              )
+            ),
+          pmPendList.length>0&&h("div",{style:{marginTop:16}},
+            h("div",{style:{fontSize:11,color:P.yellow,fontWeight:600,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}},"⏳ Pendentes de recebimento"),
+            h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+              pmPendList.map(([pm,d])=>h("div",{key:pm,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderRadius:8,background:"rgba(196,169,106,.06)",border:`1px solid ${P.yellow}22`}},
+                h("span",{style:{fontSize:12,color:P.text2}},pm+" · "+d.count+" pendente"+(d.count>1?"s":"")),
+                h("span",{style:{fontSize:13,color:P.yellow,fontWeight:600}},fmtCurr(d.valor))
+              ))
+            )
+          )
+        )
+      );
+    })(),
+
+    // ── ABA: Inadimplência ─────────────────────────────────────────────────
+    viewTab==="inadimplencia"&&(()=>{
+      const today=new Date();
+      // Coleta todas as sessões não pagas de todos os meses
+      const allUnpaid=patients.flatMap(p=>(p.sessions||[])
+        .filter(s=>!s.paid||(s.finStatus&&s.finStatus!=="Pago"&&s.finStatus!=="Cancelado"))
+        .map(s=>({...s,pname:p.name,pid:p.id,pphone:p.phone,pemail:p.email,pstatus:p.status}))
+      );
+      // Agrupa por paciente
+      const byPatient={};
+      allUnpaid.forEach(s=>{
+        if(!byPatient[s.pid])byPatient[s.pid]={pid:s.pid,pname:s.pname,pphone:s.pphone,pemail:s.pemail,pstatus:s.pstatus,sessions:[],total:0,oldest:null};
+        byPatient[s.pid].sessions.push(s);
+        byPatient[s.pid].total+=Number(s.value||0);
+        const d=parseAnyDate(s.date);
+        if(d&&(!byPatient[s.pid].oldest||d<byPatient[s.pid].oldest))byPatient[s.pid].oldest=d;
+      });
+      const inadList=Object.values(byPatient).sort((a,b)=>b.total-a.total);
+      const totalInad=inadList.reduce((a,p)=>a+p.total,0);
+      const avgDays=inadList.length>0?Math.round(inadList.filter(p=>p.oldest).reduce((a,p)=>a+Math.floor((today-p.oldest)/864e5),0)/Math.max(inadList.filter(p=>p.oldest).length,1)):0;
+
+      // Sessões do mês atual pendentes
+      const monthPend=monthSessions.filter(s=>!s.paid).length;
+
+      function urgencia(oldest){
+        if(!oldest)return{l:"Recente",c:P.yellow,bg:"rgba(196,169,106,.12)"};
+        const dias=Math.floor((today-oldest)/864e5);
+        if(dias>90)return{l:">90 dias",c:P.red,bg:"rgba(192,112,112,.14)"};
+        if(dias>30)return{l:`${dias} dias`,c:P.yellow,bg:"rgba(196,169,106,.12)"};
+        return{l:`${dias} dias`,c:P.accent,bg:`rgba(157,119,97,.1)`};
+      }
+
+      return h("div",null,
+        // KPIs
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
+          [
+            {l:"Devedoras",v:String(inadList.length)+" pacientes",c:P.red},
+            {l:"Total em Aberto",v:fmtCurr(totalInad),c:P.yellow},
+            {l:"Atraso médio",v:avgDays+" dias",c:avgDays>60?P.red:P.yellow}
+          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:k.c}},k.v)
+          ))
+        ),
+        inadList.length===0
+          ?h(Card,{style:{textAlign:"center",padding:40}},
+              h("div",{style:{fontSize:32,marginBottom:12}},"✓"),
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.green,marginBottom:6}},"Nenhuma inadimplência"),
+              h("div",{style:{fontSize:13,color:P.text3}},"Todas as sessões registradas foram pagas.")
+            )
+          :h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+            inadList.map(p=>{
+              const urg=urgencia(p.oldest);
+              return h(Card,{key:p.pid,style:{border:`1px solid ${urg.c}33`}},
+                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}},
+                  h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                    h("div",{style:{width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${P.rose},${P.gold})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:P.accent3,flexShrink:0}},
+                      p.pname.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()
+                    ),
+                    h("div",null,
+                      h("div",{style:{fontSize:14,color:P.text,fontWeight:600}},p.pname),
+                      p.pphone&&h("div",{style:{fontSize:11,color:P.text3}},p.pphone)
+                    )
+                  ),
+                  h("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}},
+                    h("span",{style:{fontSize:11,padding:"3px 10px",borderRadius:20,background:urg.bg,color:urg.c,fontWeight:600}},urg.l),
+                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.red}},fmtCurr(p.total))
+                  )
+                ),
+                h("div",{style:{display:"flex",flexDirection:"column",gap:4}},
+                  p.sessions.map((s,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text2,padding:"5px 10px",borderRadius:7,background:P.bg3}},
+                    h("span",null,`${s.date} — ${s.procedure}`),
+                    h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+                      h("span",{style:{color:P.yellow}},fmtCurr(s.value)),
+                      h("select",{value:s.finStatus||"Pendente",onChange:e=>{const newSt=e.target.value;setPatients(prev=>prev.map(pat=>pat.id!==p.pid?pat:{...pat,sessions:(pat.sessions||[]).map(ses=>ses.id!==s.id?ses:{...ses,finStatus:newSt,paid:newSt==="Pago"})}));},style:{fontSize:10,padding:"2px 6px",borderRadius:8,color:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},
+                        FIN_STATUS.map(st=>h("option",{key:st,value:st},st))
+                      )
+                    )
+                  ))
+                ),
+                h("div",{style:{display:"flex",gap:8,marginTop:12,justifyContent:"flex-end"}},
+                  p.pphone&&h("a",{href:`https://wa.me/55${p.pphone.replace(/\D/g,"")}?text=Olá ${p.pname.split(" ")[0]}, tudo bem? Passando para lembrar sobre o pagamento pendente de ${fmtCurr(p.total)} referente à(s) sua(s) sessão(ões). Ficamos à disposição!`,target:"_blank",rel:"noopener noreferrer",style:{fontSize:12,padding:"6px 14px",borderRadius:8,background:"rgba(122,173,138,.15)",border:"1px solid rgba(122,173,138,.3)",color:P.green,textDecoration:"none",cursor:"pointer"}},"💬 WhatsApp"),
+                  p.pemail&&h("a",{href:`mailto:${p.pemail}?subject=Lembrete de pagamento&body=Olá ${p.pname.split(" ")[0]}, tudo bem?%0A%0APassando para lembrar sobre o pagamento pendente de ${fmtCurr(p.total)}.%0A%0AAbraços!`,style:{fontSize:12,padding:"6px 14px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,textDecoration:"none"}},"✉ E-mail")
+                )
+              );
+            })
+          )
+      );
+    })(),
 
     h(Modal,{open:showNewInc,onClose:()=>{setShowNewInc(false);setEditInc(null);},title:editInc?"✎ Editar Entrada":"＋ Nova Entrada Manual",width:520},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
