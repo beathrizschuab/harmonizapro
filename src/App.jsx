@@ -5250,6 +5250,15 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
   const ifv=k=>v=>setIncForm(p=>({...p,[k]:v}));
   const h=createElement;
 
+  // ── Filtros de Entradas & Despesas ──────────────────────────────────────
+  const[filterPeriod,setFilterPeriod]=useState("month"); // month | day | week | quarter | year | custom
+  const[filterDateFrom,setFilterDateFrom]=useState("");
+  const[filterDateTo,setFilterDateTo]=useState("");
+  const[filterSearch,setFilterSearch]=useState("");
+  const[filterCat,setFilterCat]=useState("");
+  const[filterPayMethod,setFilterPayMethod]=useState("");
+  const[filterStatus,setFilterStatus]=useState("");
+
   function prevMonth(){ if(selMonth===0){setSelMonth(11);setSelYear(y=>y-1);} else setSelMonth(m=>m-1); }
   function nextMonth(){ if(selMonth===11){setSelMonth(0);setSelYear(y=>y+1);} else setSelMonth(m=>m+1); }
   function goToday(){ setSelMonth(now.getMonth()); setSelYear(now.getFullYear()); }
@@ -5257,11 +5266,98 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
 
   const allS=patients.flatMap((p,i)=>(p.sessions||[]).map(s=>({...s,pname:p.name,pi:i,pid:p.id})));
 
-  // Filtra pelo mês selecionado
+  // Filtra pelo mês selecionado (usado em resumos, gráficos, DRE, fluxo)
   const inMonth=d=>{ const dt=parseAnyDate(d); return dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear; };
   const monthSessions=allS.filter(s=>inMonth(s.date));
   const monthIncomesExtra=incomes.filter(i=>!i.sessRef&&inMonth(i.date));
   const monthExpenses=expenses.filter(e=>inMonth(e.date));
+
+  // ── Função de período para os filtros de lista ───────────────────────────
+  function inFilterPeriod(dateStr){
+    const dt=parseAnyDate(dateStr);
+    if(!dt)return false;
+    const today=new Date(); today.setHours(12,0,0,0);
+    if(filterPeriod==="day"){
+      return dt.toDateString()===today.toDateString();
+    }
+    if(filterPeriod==="week"){
+      const dow=today.getDay();
+      const mon=new Date(today); mon.setDate(today.getDate()-dow+1); mon.setHours(0,0,0,0);
+      const sun=new Date(mon); sun.setDate(mon.getDate()+6); sun.setHours(23,59,59,999);
+      return dt>=mon&&dt<=sun;
+    }
+    if(filterPeriod==="month") return dt.getMonth()===selMonth&&dt.getFullYear()===selYear;
+    if(filterPeriod==="quarter"){
+      const q=Math.floor(selMonth/3);
+      return Math.floor(dt.getMonth()/3)===q&&dt.getFullYear()===selYear;
+    }
+    if(filterPeriod==="year") return dt.getFullYear()===selYear;
+    if(filterPeriod==="custom"){
+      const from=filterDateFrom?new Date(filterDateFrom+"T00:00:00"):null;
+      const to=filterDateTo?new Date(filterDateTo+"T23:59:59"):null;
+      return (!from||dt>=from)&&(!to||dt<=to);
+    }
+    return true;
+  }
+
+  // Listas filtradas para a aba "Entradas & Despesas"
+  const filteredSessions=allS.filter(s=>{
+    if(!inFilterPeriod(s.date))return false;
+    if(filterSearch&&!(`${s.pname} ${s.procedure}`).toLowerCase().includes(filterSearch.toLowerCase()))return false;
+    if(filterPayMethod&&s.payMethod!==filterPayMethod)return false;
+    if(filterStatus){
+      if(filterStatus==="Pago"&&!s.paid)return false;
+      if(filterStatus==="Pendente"&&s.paid)return false;
+      if(filterStatus==="Parcial"&&s.finStatus!=="Parcial")return false;
+      if(filterStatus==="Cancelado"&&s.finStatus!=="Cancelado")return false;
+    }
+    return true;
+  });
+  const filteredIncomesExtra=incomes.filter(i=>{
+    if(i.sessRef)return false;
+    if(!inFilterPeriod(i.date))return false;
+    if(filterSearch&&!(i.desc||i.patientName||"").toLowerCase().includes(filterSearch.toLowerCase()))return false;
+    if(filterPayMethod&&i.payMethod!==filterPayMethod)return false;
+    if(filterStatus&&i.status!==filterStatus)return false;
+    return true;
+  });
+  const filteredExpenses=expenses.filter(e=>{
+    if(!inFilterPeriod(e.date))return false;
+    if(filterSearch&&!(e.desc||"").toLowerCase().includes(filterSearch.toLowerCase()))return false;
+    if(filterCat&&e.cat!==filterCat)return false;
+    if(filterStatus&&e.status!==filterStatus)return false;
+    return true;
+  });
+
+  const activeFiltersCount=[
+    filterPeriod!=="month"?1:0,
+    filterSearch?1:0,
+    filterCat?1:0,
+    filterPayMethod?1:0,
+    filterStatus?1:0,
+  ].reduce((a,b)=>a+b,0);
+
+  // ── Caixa automático ────────────────────────────────────────────────────
+  const todayStr=todayISO();
+  const caixaHoje=Array.isArray(caixa)?caixa.find(c=>c&&c.date===todayStr)||null:null;
+  const todaySessions=allS.filter(s=>s.paid&&parseAnyDate(s.date)&&parseAnyDate(s.date).toDateString()===new Date().toDateString());
+  const todayIncomes=(incomes||[]).filter(i=>i&&!i.sessRef&&i.status==="Pago"&&parseAnyDate(i.date)&&parseAnyDate(i.date).toDateString()===new Date().toDateString());
+  const todayTotalSistema=todaySessions.reduce((a,s)=>a+Number(s.value||0),0)+todayIncomes.reduce((a,i)=>a+Number(i.value||0),0);
+
+  function abrirCaixaAuto(){
+    if(caixaHoje)return;
+    const novo={id:Date.now(),date:todayStr,status:"aberto",openedAt:new Date().toISOString(),openedBy:settings?.doctorName||"",openingAmount:0,openingNotes:"Abertura automática pelo sistema",movements:[],closedAt:null,closedBy:"",countedByMethod:null,closingNotes:""};
+    setCaixa(prev=>[...(Array.isArray(prev)?prev.filter(c=>c&&c.date!==todayStr):[]),novo]);
+  }
+  function fecharCaixaAuto(){
+    if(!caixaHoje||caixaHoje.status==="fechado")return;
+    const byMethod={};
+    CAIXA_METHODS.forEach(m=>byMethod[m]=0);
+    [...todaySessions,...todayIncomes].forEach(s=>{const m=s.payMethod;if(byMethod[m]!=null)byMethod[m]+=Number(s.value||0);});
+    const movs=caixaHoje.movements||[];
+    byMethod.Dinheiro=(byMethod.Dinheiro||0)+(movs.filter(m=>m.type==="suprimento").reduce((a,m)=>a+Number(m.value||0),0))-(movs.filter(m=>m.type==="sangria").reduce((a,m)=>a+Number(m.value||0),0))+Number(caixaHoje.openingAmount||0);
+    setCaixa(prev=>prev.map(c=>c.id!==caixaHoje.id?c:{...c,status:"fechado",closedAt:new Date().toISOString(),closedBy:settings?.doctorName||"",countedByMethod:byMethod,closingNotes:"Fechamento automático pelo sistema"}));
+  }
 
   const sessionsRec=monthSessions.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0);
   const incomesRec=monthIncomesExtra.filter(i=>i.status==="Pago").reduce((a,i)=>a+Number(i.value||0),0);
@@ -5355,6 +5451,24 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
       h("button",{onClick:nextMonth,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"→")
     ),
 
+    // ── Banner status do caixa de hoje ───────────────────────────────────────
+    isCurrentMonth&&h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,padding:"10px 16px",borderRadius:12,marginBottom:16,border:`1px solid ${caixaHoje?.status==="fechado"?P.gold+"55":caixaHoje?.status==="aberto"?P.green+"55":P.border}`,background:caixaHoje?.status==="fechado"?"rgba(196,169,106,.06)":caixaHoje?.status==="aberto"?"rgba(122,173,138,.06)":P.card}},
+      h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+        h("span",{style:{fontSize:20}},caixaHoje?.status==="fechado"?"🔒":caixaHoje?.status==="aberto"?"🔓":"⚪"),
+        h("div",null,
+          h("div",{style:{fontSize:13,fontWeight:600,color:caixaHoje?.status==="fechado"?P.gold:caixaHoje?.status==="aberto"?P.green:P.text3}},
+            caixaHoje?.status==="fechado"?"Caixa de hoje fechado":caixaHoje?.status==="aberto"?"Caixa de hoje aberto":"Caixa de hoje não aberto"
+          ),
+          h("div",{style:{fontSize:11,color:P.text3}},todayTotalSistema>0?`Sistema registrou ${fmtCurr(todayTotalSistema)} hoje`:"Sem entradas registradas hoje")
+        )
+      ),
+      h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+        !caixaHoje&&h("button",{onClick:abrirCaixaAuto,style:{fontSize:12,padding:"6px 14px",borderRadius:8,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:P.rose,border:"none",color:P.accent3,fontWeight:600}},"🔓 Abrir Caixa Hoje"),
+        caixaHoje?.status==="aberto"&&h("button",{onClick:fecharCaixaAuto,style:{fontSize:12,padding:"6px 14px",borderRadius:8,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"rgba(196,169,106,.15)",border:`1px solid ${P.gold}55`,color:P.gold,fontWeight:600}},"🔒 Fechar Caixa Automaticamente"),
+        h("button",{onClick:()=>setViewTab("caixa"),style:{fontSize:12,padding:"6px 14px",borderRadius:8,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid ${P.border}`,color:P.text2}},"Ver detalhes →")
+      )
+    ),
+
     setGoals&&h(MetaFaturamento,{received,selMonth,selYear,goals:goals||{},setGoals,prevMonthReceived}),
 
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
@@ -5412,15 +5526,62 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
         ))
       )
     ):
+    // ── Barra de filtros ─────────────────────────────────────────────────────
+    h("div",{style:{padding:"14px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12,marginBottom:16}},
+      h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}},
+        h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+          h("span",{style:{fontSize:13,color:P.text,fontWeight:600}},"Filtros"),
+          activeFiltersCount>0&&h("span",{style:{fontSize:10,padding:"2px 8px",borderRadius:20,background:P.rose,color:P.accent3,fontWeight:700}},activeFiltersCount+" ativo"+(activeFiltersCount>1?"s":""))
+        ),
+        activeFiltersCount>0&&h("button",{onClick:()=>{setFilterPeriod("month");setFilterSearch("");setFilterCat("");setFilterPayMethod("");setFilterStatus("");setFilterDateFrom("");setFilterDateTo("");},style:{fontSize:11,color:P.text3,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 10px",cursor:"pointer"}},"✕ Limpar")
+      ),
+      h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}},
+        [["month","Mês atual"],["day","Hoje"],["week","Esta semana"],["quarter","Trimestre"],["year","Este ano"],["custom","Personalizado"]].map(([k,l])=>
+          h("button",{key:k,onClick:()=>setFilterPeriod(k),style:{fontSize:11.5,padding:"5px 12px",borderRadius:20,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${filterPeriod===k?P.rose:P.border}`,background:filterPeriod===k?P.rose:"transparent",color:filterPeriod===k?P.accent3:P.text2}},l)
+        )
+      ),
+      filterPeriod==="custom"&&h("div",{style:{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}},
+        h("div",{style:{display:"flex",alignItems:"center",gap:6}},
+          h("span",{style:{fontSize:11,color:P.text3}},"De"),
+          h("input",{type:"date",value:filterDateFrom,onChange:e=>setFilterDateFrom(e.target.value),style:{fontSize:12,padding:"5px 8px",borderRadius:8,border:`1px solid ${P.border}`,background:P.bg3,color:P.text,fontFamily:"'DM Sans',sans-serif"}})
+        ),
+        h("div",{style:{display:"flex",alignItems:"center",gap:6}},
+          h("span",{style:{fontSize:11,color:P.text3}},"até"),
+          h("input",{type:"date",value:filterDateTo,onChange:e=>setFilterDateTo(e.target.value),style:{fontSize:12,padding:"5px 8px",borderRadius:8,border:`1px solid ${P.border}`,background:P.bg3,color:P.text,fontFamily:"'DM Sans',sans-serif"}})
+        )
+      ),
+      h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+        h("input",{type:"text",placeholder:"🔍 Buscar por descrição / paciente...",value:filterSearch,onChange:e=>setFilterSearch(e.target.value),style:{flex:"1 1 200px",fontSize:12,padding:"7px 12px",borderRadius:8,border:`1px solid ${filterSearch?P.rose:P.border}`,background:P.bg3,color:P.text,fontFamily:"'DM Sans',sans-serif",outline:"none"}}),
+        h("select",{value:filterCat,onChange:e=>setFilterCat(e.target.value),style:{fontSize:12,padding:"7px 10px",borderRadius:8,border:`1px solid ${filterCat?P.rose:P.border}`,background:P.bg3,color:filterCat?P.text:P.text3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer"}},
+          h("option",{value:""},"Categoria"),
+          EXPENSE_CATS.map(c=>h("option",{key:c,value:c},c))
+        ),
+        h("select",{value:filterPayMethod,onChange:e=>setFilterPayMethod(e.target.value),style:{fontSize:12,padding:"7px 10px",borderRadius:8,border:`1px solid ${filterPayMethod?P.rose:P.border}`,background:P.bg3,color:filterPayMethod?P.text:P.text3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer"}},
+          h("option",{value:""},"Pagamento"),
+          PAY_METHODS.map(m=>h("option",{key:m,value:m},m))
+        ),
+        h("select",{value:filterStatus,onChange:e=>setFilterStatus(e.target.value),style:{fontSize:12,padding:"7px 10px",borderRadius:8,border:`1px solid ${filterStatus?P.rose:P.border}`,background:P.bg3,color:filterStatus?P.text:P.text3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer"}},
+          h("option",{value:""},"Status"),
+          FIN_STATUS.map(s=>h("option",{key:s,value:s},s))
+        )
+      ),
+      h("div",{style:{display:"flex",gap:16,marginTop:12,flexWrap:"wrap"}},
+        h("span",{style:{fontSize:11,color:P.text3}},"Exibindo:"),
+        h("span",{style:{fontSize:11,color:P.green,fontWeight:600}},`↑ ${fmtCurr(filteredSessions.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0)+filteredIncomesExtra.filter(i=>i.status==="Pago").reduce((a,i)=>a+Number(i.value||0),0))} recebido`),
+        h("span",{style:{fontSize:11,color:P.red,fontWeight:600}},`↓ ${fmtCurr(filteredExpenses.reduce((a,e)=>a+Number(e.value||0),0))} em despesas`),
+        h("span",{style:{fontSize:11,color:P.text3}},`${filteredSessions.length+filteredIncomesExtra.length} entrada(s) · ${filteredExpenses.length} despesa(s)`)
+      )
+    ),
+
     h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
       h(Card,null,
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Entradas"),
           h(Btn,{onClick:()=>{setEditInc(null);setIncForm(blankInc);setShowNewInc(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Entrada Extra")
         ),
-        h("div",{style:{marginBottom:10}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},h("div",null,h("div",{style:{fontSize:11,color:P.text3}},"🔄 Sessões auto-sincronizadas do prontuário"),h("div",{style:{fontSize:10,color:P.text3,marginTop:1}},monthSessions.length+" total · "+monthSessions.filter(s=>s.paid).length+" pagas")),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green}},fmtCurr(sessionsRec)))),
-        monthSessions.length===0&&h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"10px 0"}},"Nenhuma sessão neste mês"),
-        monthSessions.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((s,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
+        h("div",{style:{marginBottom:10}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},h("div",null,h("div",{style:{fontSize:11,color:P.text3}},"🔄 Sessões auto-sincronizadas do prontuário"),h("div",{style:{fontSize:10,color:P.text3,marginTop:1}},filteredSessions.length+" resultado(s)")),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green}},fmtCurr(filteredSessions.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0))))),
+        filteredSessions.length===0&&h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"10px 0"}},"Nenhuma sessão no período"),
+        filteredSessions.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((s,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
           h("div",null,h("div",{style:{fontSize:13,color:P.text}},`${s.pname} — ${s.procedure}`),h("div",{style:{fontSize:11,color:P.text3}},`${s.date} · ${s.payMethod}${s.payMethod==="Cartão Crédito"&&s.parcelas>1?" · "+s.parcelas+"x de "+fmtCurr(s.value/s.parcelas):""}`)  ),
           h("div",{style:{display:"flex",alignItems:"center",gap:8}},
             h("div",{style:{textAlign:"right"}},
@@ -5430,9 +5591,9 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
             h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.pid,s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
           )
         )),
-        monthIncomesExtra.length>0&&h("div",null,
+        filteredIncomesExtra.length>0&&h("div",null,
           h("div",{style:{fontSize:11,color:P.text3,margin:"10px 0 6px"}},"＋ Entradas extras (não vinculadas a sessões):"),
-          monthIncomesExtra.map((inc,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
+          filteredIncomesExtra.map((inc,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
             h("div",null,h("div",{style:{fontSize:13,color:P.text}},inc.desc||inc.patientName||"Entrada"),h("div",{style:{fontSize:11,color:P.text3}},`${inc.date} · ${inc.payMethod}${inc.payMethod==="Cartão Crédito"&&inc.parcelas>1?" · "+inc.parcelas+"x":""}`)),
             h("div",{style:{display:"flex",alignItems:"center",gap:8}},
               h("div",null,
@@ -5451,8 +5612,8 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Despesas"),
           h(Btn,{onClick:()=>{setEditExp(null);setForm(blankExp);setShowNewExp(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Despesa")
         ),
-        monthExpenses.length===0&&h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"10px 0"}},"Nenhuma despesa neste mês"),
-        monthExpenses.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((e,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${P.border}`}},
+        filteredExpenses.length===0&&h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"10px 0"}},"Nenhuma despesa no período"),
+        filteredExpenses.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((e,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${P.border}`}},
           h("div",null,h("div",{style:{fontSize:13,color:P.text}},e.desc),h("div",{style:{fontSize:11,color:P.text3}},`${e.date} · ${e.cat}`)),
           h("div",{style:{display:"flex",alignItems:"center",gap:8}},
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.red}},`− ${fmtCurr(e.value)}`),
@@ -5460,7 +5621,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
             h("button",{onClick:()=>delExp(e.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
           )
         )),
-        h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:P.text3}},"Total Despesas do Mês"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.red}},`− ${fmtCurr(totalExp)}`))
+        h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:P.text3}},"Total no período"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.red}},`− ${fmtCurr(filteredExpenses.reduce((a,e)=>a+Number(e.value||0),0))}`))
       )
     ),
 
