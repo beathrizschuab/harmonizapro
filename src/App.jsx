@@ -1061,45 +1061,112 @@ function MarkerDot({m,idx,active,onClick}){
       border:`2px solid ${active?"#fff":(m.done?P.green:P.accent3)}`,
       display:"flex",alignItems:"center",justifyContent:"center",
       color:"#fff",fontSize:10.5,fontWeight:700,cursor:onClick?"pointer":"default",
-      boxShadow:"0 2px 7px rgba(0,0,0,.55)",transition:"all .12s",fontFamily:"'DM Sans',sans-serif"
+      boxShadow:"0 2px 7px rgba(0,0,0,.55)",transition:"all .12s",fontFamily:"'DM Sans',sans-serif",
+      zIndex:5
     }
   },idx+1);
 }
-function MarkerPhotoPlanner({initial,allProducts,patientPhotos,onSave,onClose}){
+function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSave,onClose}){
   const h=createElement;
   const[baseImage,setBaseImage]=useState(initial?.baseImage||null);
   const[markers,setMarkers]=useState(initial?.markers||[]);
+  const[shapes,setShapes]=useState(initial?.shapes||[]); // desenho livre: setas/círculos sobre a foto
   const[selectedId,setSelectedId]=useState(null);
   const[showPicker,setShowPicker]=useState(!initial?.baseImage);
+  const[mode,setMode]=useState("marker"); // "marker" | "arrow" | "circle"
+  const[drawColor,setDrawColor]=useState("#E1594A");
+  const drawStartRef=useRef(null);
+  const[drawingPreview,setDrawingPreview]=useState(null);
   const imgWrapRef=useRef();
+  const DRAW_COLORS=["#E1594A","#F5A623","#4A90E2","#7ED321","#ffffff"];
 
   function handleFileUpload(file){
     const r=new FileReader();
-    r.onload=e=>{setBaseImage(e.target.result);setMarkers([]);setSelectedId(null);setShowPicker(false);};
+    r.onload=e=>{setBaseImage(e.target.result);setMarkers([]);setShapes([]);setSelectedId(null);setShowPicker(false);};
     r.readAsDataURL(file);
   }
-  function pickExisting(url){setBaseImage(url);setMarkers([]);setSelectedId(null);setShowPicker(false);}
+  function pickExisting(url){setBaseImage(url);setMarkers([]);setShapes([]);setSelectedId(null);setShowPicker(false);}
+
+  function pctFromEvent(e){
+    const rect=imgWrapRef.current.getBoundingClientRect();
+    const xPct=((e.clientX-rect.left)/rect.width)*100;
+    const yPct=((e.clientY-rect.top)/rect.height)*100;
+    return{xPct:Math.max(0,Math.min(100,xPct)),yPct:Math.max(0,Math.min(100,yPct))};
+  }
+
   function addMarkerAt(e){
     if(!imgWrapRef.current)return;
+    if(mode!=="marker")return; // modos de desenho tratam o clique via mousedown/mouseup próprios
     const rect=imgWrapRef.current.getBoundingClientRect();
     const xPct=((e.clientX-rect.left)/rect.width)*100;
     const yPct=((e.clientY-rect.top)/rect.height)*100;
     const id=Date.now()+Math.random();
-    const novo={id,xPct:Math.max(1.5,Math.min(98.5,xPct)),yPct:Math.max(1.5,Math.min(98.5,yPct)),plannedProduct:"",plannedQty:"",plannedUnit:"U",actualProduct:"",actualQty:"",actualUnit:"",done:false,notes:""};
+    const novo={id,xPct:Math.max(1.5,Math.min(98.5,xPct)),yPct:Math.max(1.5,Math.min(98.5,yPct)),
+      plannedProduct:"",plannedQty:"",plannedUnit:"U",plannedLoteId:"",
+      actualProduct:"",actualQty:"",actualUnit:"",actualLoteId:"",loteDebitado:false,
+      done:false,notes:""};
     setMarkers(m=>[...m,novo]);
     setSelectedId(id);
   }
   function updateMarker(id,patch){setMarkers(m=>m.map(mk=>mk.id===id?{...mk,...patch}:mk));}
   function removeMarker(id){setMarkers(m=>m.filter(mk=>mk.id!==id));if(selectedId===id)setSelectedId(null);}
+  function removeShape(id){setShapes(s=>s.filter(sh=>sh.id!==id));}
+
+  // Marca/desmarca como realizado. O débito real do lote só acontece ao Salvar (handleSave),
+  // para evitar debitar estoque de um marcador cuja alteração acabe sendo descartada (modal fechado sem salvar).
   function toggleDone(m){
-    updateMarker(m.id,{
-      done:!m.done,
-      actualProduct:m.done?m.actualProduct:(m.actualProduct||m.plannedProduct),
-      actualQty:m.done?m.actualQty:(m.actualQty||m.plannedQty),
-      actualUnit:m.done?m.actualUnit:(m.actualUnit||m.plannedUnit)
-    });
+    if(!m.done){
+      updateMarker(m.id,{
+        done:true,
+        actualProduct:m.actualProduct||m.plannedProduct,
+        actualQty:m.actualQty||m.plannedQty,
+        actualUnit:m.actualUnit||m.plannedUnit,
+        actualLoteId:m.actualLoteId||m.plannedLoteId
+      });
+    } else {
+      // Desmarcar não devolve o lote automaticamente (evita inconsistência); apenas reabre o status.
+      updateMarker(m.id,{done:false});
+    }
   }
-  function handleSave(){onSave({baseImage,markers});}
+
+  function handleSave(){
+    // Debita do estoque os marcadores recém-marcados como "Realizado" que ainda não foram debitados.
+    let finalMarkers=markers;
+    if(setProducts){
+      finalMarkers=markers.map(m=>{
+        if(m.done&&!m.loteDebitado&&m.actualLoteId&&Number(m.actualQty)>0){
+          debitarLote(setProducts,m.actualProduct||m.plannedProduct,m.actualLoteId,m.actualQty);
+          return{...m,loteDebitado:true};
+        }
+        return m;
+      });
+    }
+    onSave({baseImage,markers:finalMarkers,shapes});
+  }
+
+  // ── Desenho livre (seta / círculo) ──
+  function onWrapMouseDown(e){
+    if(mode==="marker")return;
+    e.preventDefault();
+    drawStartRef.current=pctFromEvent(e);
+  }
+  function onWrapMouseMove(e){
+    if(mode==="marker"||!drawStartRef.current)return;
+    const pos=pctFromEvent(e);
+    setDrawingPreview({...drawStartRef.current,x2:pos.xPct,y2:pos.yPct});
+  }
+  function onWrapMouseUp(e){
+    if(mode==="marker"||!drawStartRef.current)return;
+    const start=drawStartRef.current;
+    const pos=pctFromEvent(e);
+    drawStartRef.current=null;
+    setDrawingPreview(null);
+    if(Math.abs(pos.xPct-start.xPct)<1&&Math.abs(pos.yPct-start.yPct)<1)return; // clique sem arrastar, ignora
+    setShapes(s=>[...s,{id:Date.now()+Math.random(),type:mode,x1:start.xPct,y1:start.yPct,x2:pos.xPct,y2:pos.yPct,color:drawColor}]);
+  }
+  function onWrapClick(e){
+    if(mode==="marker")addMarkerAt(e);
+  }
 
   const cu=name=>markerUnitCost(allProducts,name);
   const totalPlanned=markers.reduce((a,m)=>a+(Number(m.plannedQty)||0)*cu(m.plannedProduct),0);
@@ -1111,6 +1178,52 @@ function MarkerPhotoPlanner({initial,allProducts,patientPhotos,onSave,onClose}){
   const diff=totalActual-totalActualPlannedPortion;
   const selected=markers.find(m=>m.id===selectedId);
   const prodOptions=["",...(allProducts||[]).map(p=>p.name)];
+  const plannedLotes=selected?getAvailableLotes(allProducts||[],selected.plannedProduct):[];
+  const actualLotes=selected?getAvailableLotes(allProducts||[],selected.actualProduct||selected.plannedProduct):[];
+
+  const TOOLS=[
+    {k:"marker",icon:"📍",label:"Marcador"},
+    {k:"arrow",icon:"➜",label:"Seta"},
+    {k:"circle",icon:"○",label:"Círculo / Área"},
+  ];
+
+  // Nota: o SVG usa coordenadas percentuais (viewBox 0..100) para acompanhar o redimensionamento responsivo da foto.
+  // Em fotos com proporção muito diferente de 1:1, círculos podem ficar levemente ovalados — efeito sutil e aceitável
+  // para anotação clínica; a espessura da linha permanece constante via vectorEffect="non-scaling-stroke".
+  function renderShapeSvg(){
+    return h("svg",{style:{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"},viewBox:"0 0 100 100",preserveAspectRatio:"none"},
+      shapes.map(sh=>{
+        if(sh.type==="arrow"){
+          const angle=Math.atan2(sh.y2-sh.y1,sh.x2-sh.x1);
+          const hs=2.6;
+          return h("g",{key:sh.id},
+            h("line",{x1:sh.x1,y1:sh.y1,x2:sh.x2,y2:sh.y2,stroke:sh.color,strokeWidth:0.5,vectorEffect:"non-scaling-stroke"}),
+            h("polygon",{points:`${sh.x2},${sh.y2} ${sh.x2-hs*Math.cos(angle-0.45)},${sh.y2-hs*Math.sin(angle-0.45)} ${sh.x2-hs*Math.cos(angle+0.45)},${sh.y2-hs*Math.sin(angle+0.45)}`,fill:sh.color})
+          );
+        }
+        if(sh.type==="circle"){
+          const rx=Math.abs(sh.x2-sh.x1)/2,ry=Math.abs(sh.y2-sh.y1)/2;
+          const cx=sh.x1+(sh.x2-sh.x1)/2,cy=sh.y1+(sh.y2-sh.y1)/2;
+          return h("ellipse",{key:sh.id,cx,cy,rx:Math.max(rx,0.6),ry:Math.max(ry,0.6),fill:"none",stroke:sh.color,strokeWidth:0.5,vectorEffect:"non-scaling-stroke"});
+        }
+        return null;
+      }),
+      drawingPreview&&mode!=="marker"&&(()=>{
+        const sh={x1:drawingPreview.xPct,y1:drawingPreview.yPct,x2:drawingPreview.x2,y2:drawingPreview.y2};
+        if(mode==="arrow"){
+          const angle=Math.atan2(sh.y2-sh.y1,sh.x2-sh.x1);
+          const hs=2.6;
+          return h("g",null,
+            h("line",{x1:sh.x1,y1:sh.y1,x2:sh.x2,y2:sh.y2,stroke:drawColor,strokeWidth:0.5,strokeDasharray:"1.5,1",vectorEffect:"non-scaling-stroke"}),
+            h("polygon",{points:`${sh.x2},${sh.y2} ${sh.x2-hs*Math.cos(angle-0.45)},${sh.y2-hs*Math.sin(angle-0.45)} ${sh.x2-hs*Math.cos(angle+0.45)},${sh.y2-hs*Math.sin(angle+0.45)}`,fill:drawColor,opacity:0.7})
+          );
+        }
+        const rx=Math.abs(sh.x2-sh.x1)/2,ry=Math.abs(sh.y2-sh.y1)/2;
+        const cx=sh.x1+(sh.x2-sh.x1)/2,cy=sh.y1+(sh.y2-sh.y1)/2;
+        return h("ellipse",{cx,cy,rx:Math.max(rx,0.6),ry:Math.max(ry,0.6),fill:"none",stroke:drawColor,strokeWidth:0.5,strokeDasharray:"1.5,1",vectorEffect:"non-scaling-stroke"});
+      })()
+    );
+  }
 
   if(showPicker||!baseImage){
     return h("div",{style:{position:"fixed",inset:0,background:"rgba(8,4,6,.97)",zIndex:3000,display:"flex",flexDirection:"column",alignItems:"center",padding:"24px 16px",overflow:"auto",gap:16}},
@@ -1133,18 +1246,37 @@ function MarkerPhotoPlanner({initial,allProducts,patientPhotos,onSave,onClose}){
 
   return h("div",{style:{position:"fixed",inset:0,background:"rgba(8,4,6,.97)",zIndex:3000,display:"flex",flexDirection:"column",padding:"14px 16px",overflow:"auto",gap:12}},
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,flexShrink:0}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent3}},"📍 Planejamento com Marcadores"),
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent3}},"📍 Mapa Facial · Foto da Paciente"),
       h("div",{style:{display:"flex",gap:8}},
         h("button",{onClick:()=>setShowPicker(true),style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,cursor:"pointer",fontSize:12.5}},"🔄 Trocar foto"),
         h("button",{onClick:handleSave,style:{padding:"7px 18px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,cursor:"pointer",fontSize:13,fontWeight:600}},"💾 Salvar"),
         h("button",{onClick:onClose,style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text3,cursor:"pointer",fontSize:13}},"✕")
       )
     ),
-    h("div",{style:{fontSize:11.5,color:P.text3,flexShrink:0}},"Clique em qualquer ponto da foto para adicionar um marcador. Clique num marcador existente para editá-lo."),
+    // Toolbar: modo (marcador/seta/círculo) + cor do desenho
+    h("div",{style:{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",padding:"8px 12px",background:P.bg2,borderRadius:10,border:`1px solid ${P.border}`,flexShrink:0}},
+      h("div",{style:{display:"flex",gap:4}},
+        TOOLS.map(t=>h("button",{key:t.k,onClick:()=>setMode(t.k),title:t.label,style:{padding:"6px 12px",borderRadius:7,border:`1px solid ${mode===t.k?P.rose:P.border}`,background:mode===t.k?P.rose:"transparent",color:mode===t.k?P.accent3:P.text2,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:6,fontFamily:"'DM Sans',sans-serif"}},t.icon,t.label))
+      ),
+      mode!=="marker"&&h(Fragment,null,
+        h("div",{style:{width:1,height:22,background:P.border}}),
+        h("div",{style:{display:"flex",gap:4,alignItems:"center"}},
+          DRAW_COLORS.map(c=>h("button",{key:c,onClick:()=>setDrawColor(c),style:{width:18,height:18,borderRadius:"50%",background:c,border:`2px solid ${drawColor===c?P.accent3:"rgba(255,255,255,.2)"}`,cursor:"pointer",transform:drawColor===c?"scale(1.15)":"none"}}))
+        )
+      ),
+      h("div",{style:{fontSize:11,color:P.text3,marginLeft:"auto"}},
+        mode==="marker"?"Clique na foto para adicionar um marcador numerado.":"Clique e arraste sobre a foto para desenhar.")
+    ),
     h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",flex:1,minHeight:0}},
       h("div",{style:{flex:"1 1 420px",minWidth:280,display:"flex",alignItems:"flex-start",justifyContent:"center"}},
-        h("div",{ref:imgWrapRef,onClick:addMarkerAt,style:{position:"relative",display:"inline-block",cursor:"crosshair",borderRadius:10,overflow:"hidden",border:`1px solid ${P.border}`,maxWidth:"100%",lineHeight:0}},
+        h("div",{
+          ref:imgWrapRef,
+          onClick:onWrapClick,
+          onMouseDown:onWrapMouseDown,onMouseMove:onWrapMouseMove,onMouseUp:onWrapMouseUp,onMouseLeave:()=>{drawStartRef.current=null;setDrawingPreview(null);},
+          style:{position:"relative",display:"inline-block",cursor:mode==="marker"?"crosshair":"crosshair",borderRadius:10,overflow:"hidden",border:`1px solid ${P.border}`,maxWidth:"100%",lineHeight:0}
+        },
           h("img",{src:baseImage,draggable:false,style:{display:"block",maxWidth:"100%",maxHeight:"70vh",userSelect:"none"}}),
+          renderShapeSvg(),
           markers.map((m,i)=>h(MarkerDot,{key:m.id,m,idx:i,active:selectedId===m.id,onClick:e=>{e.stopPropagation();setSelectedId(m.id);}}))
         )
       ),
@@ -1168,7 +1300,7 @@ function MarkerPhotoPlanner({initial,allProducts,patientPhotos,onSave,onClose}){
               ),
               h("div",null,
                 h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Produto previsto"),
-                h(Sel,{value:selected.plannedProduct,onChange:v=>updateMarker(selected.id,{plannedProduct:v,plannedUnit:guessMarkerUnit(v)}),options:prodOptions})
+                h(Sel,{value:selected.plannedProduct,onChange:v=>updateMarker(selected.id,{plannedProduct:v,plannedUnit:guessMarkerUnit(v),plannedLoteId:""}),options:prodOptions})
               ),
               h("div",{style:{display:"flex",gap:8}},
                 h("div",{style:{flex:1}},
@@ -1178,6 +1310,13 @@ function MarkerPhotoPlanner({initial,allProducts,patientPhotos,onSave,onClose}){
                 h("div",{style:{width:64}},
                   h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Un."),
                   h(Inp,{value:selected.plannedUnit,onChange:v=>updateMarker(selected.id,{plannedUnit:v})})
+                )
+              ),
+              plannedLotes.length>0&&h("div",null,
+                h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Lote previsto (reserva)"),
+                h("select",{value:selected.plannedLoteId||"",onChange:e=>updateMarker(selected.id,{plannedLoteId:e.target.value}),style:IS},
+                  h("option",{value:""},"Sem lote definido"),
+                  plannedLotes.map(l=>h("option",{key:l.id,value:String(l.id)},l.codigo+" — "+l.qtd+" disponível"+(l.validade?" · val "+l.validade:"")))
                 )
               ),
               selected.plannedProduct&&h("div",{style:{fontSize:11,color:P.text3}},"Custo estimado: "+fmtCurr((Number(selected.plannedQty)||0)*cu(selected.plannedProduct))),
@@ -1192,7 +1331,7 @@ function MarkerPhotoPlanner({initial,allProducts,patientPhotos,onSave,onClose}){
                 selected.done&&h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
                   h("div",null,
                     h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Produto realizado"),
-                    h(Sel,{value:selected.actualProduct||selected.plannedProduct,onChange:v=>updateMarker(selected.id,{actualProduct:v}),options:prodOptions})
+                    h(Sel,{value:selected.actualProduct||selected.plannedProduct,onChange:v=>updateMarker(selected.id,{actualProduct:v,actualLoteId:""}),options:prodOptions})
                   ),
                   h("div",{style:{display:"flex",gap:8}},
                     h("div",{style:{flex:1}},
@@ -1204,6 +1343,15 @@ function MarkerPhotoPlanner({initial,allProducts,patientPhotos,onSave,onClose}){
                       h(Inp,{value:selected.actualUnit||selected.plannedUnit,onChange:v=>updateMarker(selected.id,{actualUnit:v})})
                     )
                   ),
+                  actualLotes.length>0&&h("div",null,
+                    h("label",{style:{display:"block",fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Lote utilizado"),
+                    h("select",{value:selected.actualLoteId||"",onChange:e=>updateMarker(selected.id,{actualLoteId:e.target.value}),style:IS,disabled:selected.loteDebitado},
+                      h("option",{value:""},"Selecionar lote..."),
+                      actualLotes.map(l=>h("option",{key:l.id,value:String(l.id)},l.codigo+" — "+l.qtd+" disponível"+(l.validade?" · val "+l.validade:"")))
+                    ),
+                    selected.loteDebitado&&h("div",{style:{fontSize:10,color:P.green,marginTop:4}},"✓ Estoque já debitado deste lote"),
+                    !selected.loteDebitado&&selected.actualLoteId&&h("div",{style:{fontSize:10,color:P.yellow,marginTop:4}},"⚠ Salve para debitar do estoque")
+                  ),
                   h("div",{style:{fontSize:11,color:P.text3}},"Custo real: "+fmtCurr((Number(selected.actualQty)||0)*cu(selected.actualProduct||selected.plannedProduct)))
                 )
               )
@@ -1211,6 +1359,13 @@ function MarkerPhotoPlanner({initial,allProducts,patientPhotos,onSave,onClose}){
           : h("div",{style:{background:P.bg3,border:`1px dashed ${P.border}`,borderRadius:10,padding:20,textAlign:"center",color:P.text3,fontSize:12.5,flexShrink:0}},
               markers.length===0?"Clique em qualquer ponto da foto para adicionar o primeiro marcador.":"Selecione um marcador na foto (ou na lista abaixo) para editar."
             ),
+        shapes.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em"}},"Anotações desenhadas"),
+          shapes.map((sh,i)=>h("div",{key:sh.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,fontSize:11.5}},
+            h("span",{style:{color:P.text2,display:"flex",alignItems:"center",gap:6}},h("span",{style:{width:10,height:10,borderRadius:"50%",background:sh.color,display:"inline-block"}}),(sh.type==="arrow"?"➜ Seta":"○ Círculo")+" "+(i+1)),
+            h("button",{onClick:()=>removeShape(sh.id),style:{background:"transparent",border:"none",color:P.text3,cursor:"pointer",fontSize:13}},"✕")
+          ))
+        ),
         markers.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
           markers.map((m,i)=>h("div",{key:m.id,onClick:()=>setSelectedId(m.id),style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",borderRadius:8,background:selectedId===m.id?P.card2:P.bg3,border:`1px solid ${selectedId===m.id?P.rose:P.border}`,cursor:"pointer",fontSize:11.5}},
             h("span",{style:{color:P.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},(i+1)+". "+(m.plannedProduct||"sem produto")+(m.plannedQty?(" · "+m.plannedQty+(m.plannedUnit||"")):"")),
@@ -3044,6 +3199,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[planAnnotating,setPlanAnnotating]=useState(null); // null | "new" | planObj
   const[markerPlanning,setMarkerPlanning]=useState(null); // null | "new" | planObj (planejamento com marcadores)
   const patientPhotoGallery=useMemo(()=>getPatientPhotoGallery(patient),[patient.profilePhoto,patient.sessions]);
+  const mapPlans=useMemo(()=>(patient.planejamento||[]).filter(pl=>pl.markerPlan),[patient.planejamento]);
   const[showNewPkg,setShowNewPkg]=useState(false);
   const[pkgForm,setPkgForm]=useState({name:"",procedure:"",total:4,price:"",notes:""});
   // ─ Orçamentos ─
@@ -3162,7 +3318,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   }
   function deletePlan(id){if(window.confirm("Excluir planejamento?"))upd(p=>({...p,planejamento:(p.planejamento||[]).filter(pl=>pl.id!==id)}));}
   function saveMarkerPlanNew(data){
-    const pl={id:Date.now(),title:"Planejamento com Marcadores",steps:[],notes:"",done:false,created:new Date().toLocaleDateString("pt-BR"),markerPlan:data};
+    const pl={id:Date.now(),title:"Mapa Facial",steps:[],notes:"",done:false,created:new Date().toLocaleDateString("pt-BR"),markerPlan:data};
     upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
     setMarkerPlanning(null);
   }
@@ -3450,21 +3606,91 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         )
       ))
     ),
-    // ─── MAPA TAB
+    // ─── MAPA TAB (foto da paciente + marcadores: produto, lote, quantidade, custo planejado×realizado)
     tab==="mapa"&&h("div",null,
-      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}},
-        [{title:"💉 Toxina",type:"botox"},{title:"✨ Preenchimento",type:"filler"},{title:"🧵 Fios",type:"thread"}].map(mt=>{
-          const sess=(patient.sessions||[]).find(s=>s.faceMap?.type===mt.type);
-          return h(Card,{key:mt.type},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:14}},mt.title),sess?h(FaceMapEditor,{sessionMap:sess.faceMap,onChange:()=>{},readOnly:true}):h("div",{style:{textAlign:"center",padding:"20px 0",color:P.text3,fontSize:13}},"Nenhuma sessão."),sess&&h("div",{style:{fontSize:11,color:P.text3,marginTop:8}},`Sessão: ${sess.date}`));
+      // MarkerPhotoPlanner fullscreen — mesmo estado/handlers usados na tab Planejamento
+      markerPlanning&&h(MarkerPhotoPlanner,{
+        initial:markerPlanning==="new"?null:markerPlanning.markerPlan,
+        allProducts,
+        setProducts,
+        patientPhotos:patientPhotoGallery,
+        onClose:()=>setMarkerPlanning(null),
+        onSave:data=>{
+          if(markerPlanning==="new") saveMarkerPlanNew(data);
+          else saveMarkerPlan(markerPlanning.id,data);
+        }
+      }),
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}},
+        h("div",null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Mapa Facial"),
+          h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},"Marque regiões direto na foto da paciente, com produto, lote e quantidade.")
+        ),
+        h(Btn,{onClick:()=>setMarkerPlanning("new"),style:{fontSize:12}},"📍 Novo Mapa com Foto")
+      ),
+      mapPlans.length===0&&h(Card,{style:{textAlign:"center",padding:40}},
+        h("div",{style:{fontSize:32,marginBottom:12}},"🗺"),
+        h("div",{style:{color:P.text3,fontSize:14,marginBottom:16}},"Nenhum mapa registrado ainda."),
+        h(Btn,{onClick:()=>setMarkerPlanning("new")},"📍 Criar Mapa com Foto")
+      ),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:14}},
+        mapPlans.map(pl=>{
+          const mp=pl.markerPlan;
+          const cu=name=>markerUnitCost(allProducts,name);
+          const mpTotal=(mp.markers||[]).length;
+          const mpDone=(mp.markers||[]).filter(m=>m.done).length;
+          const mpPlanned=(mp.markers||[]).reduce((a,m)=>a+(Number(m.plannedQty)||0)*cu(m.plannedProduct),0);
+          const doneList=(mp.markers||[]).filter(m=>m.done);
+          const mpActual=doneList.reduce((a,m)=>a+(Number(m.actualQty)||0)*cu(m.actualProduct||m.plannedProduct),0);
+          const doneListPlannedCost=doneList.reduce((a,m)=>a+(Number(m.plannedQty)||0)*cu(m.plannedProduct),0);
+          const mpDiff=mpActual-doneListPlannedCost;
+          return h(Card,{key:pl.id,style:{padding:0,overflow:"hidden"}},
+            h("div",{style:{display:"flex",gap:0,flexWrap:"wrap"}},
+              mp.baseImage&&h("div",{style:{width:200,flexShrink:0,position:"relative",cursor:"pointer",lineHeight:0},onClick:()=>setMarkerPlanning(pl)},
+                h("img",{src:mp.baseImage,alt:"mapa facial",style:{width:"100%",height:"100%",objectFit:"cover",display:"block",minHeight:160}}),
+                (mp.markers||[]).map((m,mi)=>h("div",{key:mi,style:{position:"absolute",left:m.xPct+"%",top:m.yPct+"%",transform:"translate(-50%,-50%)",width:18,height:18,borderRadius:"50%",background:m.done?"rgba(122,173,138,.92)":"rgba(157,119,97,.92)",border:"1.5px solid rgba(255,255,255,.9)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:9,fontWeight:700}},mi+1)),
+                h("div",{style:{position:"absolute",inset:0,background:"rgba(0,0,0,.0)",display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .2s"},
+                  onMouseEnter:e=>e.currentTarget.style.opacity=1,onMouseLeave:e=>e.currentTarget.style.opacity=0},
+                  h("div",{style:{background:"rgba(0,0,0,.7)",borderRadius:8,padding:"6px 12px",color:"#fff",fontSize:12,fontWeight:600}},"✎ Editar")
+                )
+              ),
+              h("div",{style:{flex:1,minWidth:240,padding:"14px 16px",display:"flex",flexDirection:"column",gap:8}},
+                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:6}},
+                  h("div",null,
+                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:2}},pl.title||"Mapa Facial"),
+                    h("div",{style:{fontSize:11,color:P.text3}},
+                      "Criado em "+pl.created,
+                      pl.updatedAt&&h("span",{style:{marginLeft:8,color:P.accent}},"· Editado em "+pl.updatedAt),
+                      h("span",{style:{marginLeft:8,fontSize:10,color:P.accent,background:"rgba(157,119,97,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(157,119,97,.3)"}},"📍 "+mpDone+"/"+mpTotal+" marcadores realizados")
+                    )
+                  ),
+                  h("div",{style:{display:"flex",gap:5,flexShrink:0}},
+                    h("button",{onClick:()=>setMarkerPlanning(pl),style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},"✎ Editar Mapa"),
+                    h("button",{onClick:()=>deletePlan(pl.id),style:{padding:"5px 8px",borderRadius:7,background:"transparent",border:"1px solid rgba(192,112,112,.2)",color:P.red,cursor:"pointer",fontSize:11}},"🗑")
+                  )
+                ),
+                h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",padding:"8px 10px",background:P.bg3,borderRadius:8}},
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Custo planejado"),h("div",{style:{fontSize:14,color:P.accent3}},fmtCurr(mpPlanned))),
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Custo realizado"),h("div",{style:{fontSize:14,color:P.green}},fmtCurr(mpActual))),
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Diferença"),h("div",{style:{fontSize:14,color:mpDiff>0?P.red:(mpDiff<0?P.green:P.text2)}},(mpDiff>0?"+":"")+fmtCurr(mpDiff)))
+                ),
+                (mp.markers||[]).length>0&&h("div",{style:{display:"flex",flexWrap:"wrap",gap:5}},
+                  (mp.markers||[]).map((m,mi)=>h("span",{key:mi,style:{fontSize:10.5,padding:"3px 9px",borderRadius:20,background:m.done?"rgba(122,173,138,.12)":"rgba(157,119,97,.12)",color:m.done?P.green:P.accent}},
+                    (mi+1)+". "+(m.plannedProduct||"sem produto")+(m.plannedQty?(" · "+m.plannedQty+(m.plannedUnit||"")):"")+(m.done?" ✓":"")
+                  ))
+                )
+              )
+            )
+          );
         })
       ),
       h(Card,{style:{marginTop:14}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Histórico de Mapas"),
-        (patient.sessions||[]).filter(s=>s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)).length===0?h("div",{style:{color:P.text3,fontSize:13}},"Nenhum mapa registrado.")
-        :(patient.sessions||[]).filter(s=>s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)).map((s,i)=>h("div",{key:i,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`,display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:6}},
-          h("span",{style:{fontSize:13,color:P.text}},`${s.date} · ${s.procedure}`),
-          h("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},Object.entries(s.faceMap.points||{}).filter(([,v])=>v>0).map(([k,v])=>h("span",{key:k,style:{fontSize:10,padding:"2px 8px",borderRadius:12,background:`rgba(92,31,50,.1)`,color:P.accent}},`${k.replace(/_/g," ")}: ${v}${s.faceMap.type==="botox"?"U":"ml"}`)))
-        ))
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Mapas de Sessões Anteriores (registro rápido)"),
+        (patient.sessions||[]).filter(s=>s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)).length===0
+          ?h("div",{style:{color:P.text3,fontSize:13}},"Nenhum mapa de sessão registrado.")
+          :(patient.sessions||[]).filter(s=>s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)).map((s,i)=>h("div",{key:i,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`,display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:6}},
+              h("span",{style:{fontSize:13,color:P.text}},`${s.date} · ${s.procedure}`),
+              h("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},Object.entries(s.faceMap.points||{}).filter(([,v])=>v>0).map(([k,v])=>h("span",{key:k,style:{fontSize:10,padding:"2px 8px",borderRadius:12,background:`rgba(92,31,50,.1)`,color:P.accent}},`${k.replace(/_/g," ")}: ${v}${s.faceMap.type==="botox"?"U":"ml"}`)))
+            ))
       )
     ),
     // ─── POR REGIÃO TAB ──────────────────────────────────────────────────────
@@ -3556,6 +3782,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       markerPlanning&&h(MarkerPhotoPlanner,{
         initial:markerPlanning==="new"?null:markerPlanning.markerPlan,
         allProducts,
+        setProducts,
         patientPhotos:patientPhotoGallery,
         onClose:()=>setMarkerPlanning(null),
         onSave:data=>{
@@ -3563,14 +3790,18 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           else saveMarkerPlan(markerPlanning.id,data);
         }
       }),
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Planejamento Facial"),
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:8}},
+        h("div",null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Planejamento Facial"),
+          h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Mapas com marcadores criados aqui também aparecem na tab 🗺 Mapa.")
+        ),
         h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
           h(Btn,{variant:"ghost",onClick:()=>setShowPlan(true),style:{fontSize:12}},"＋ Plano de Texto"),
           h(Btn,{variant:"ghost",onClick:()=>{setPlanAnnotating("new");},style:{fontSize:12}},"🖼 Plano com Foto"),
           h(Btn,{onClick:()=>setMarkerPlanning("new"),style:{fontSize:12}},"📍 Plano com Marcadores")
         )
       ),
+      h("div",{style:{marginBottom:16}}),
       (patient.planejamento||[]).length===0&&h(Card,{style:{textAlign:"center",padding:40}},
         h("div",{style:{fontSize:32,marginBottom:12}},"🎯"),
         h("div",{style:{color:P.text3,fontSize:14,marginBottom:16}},"Nenhum planejamento criado."),
