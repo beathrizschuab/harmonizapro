@@ -1939,7 +1939,7 @@ function IndicacoesTab({patient,patients,onSelectPatient,fmtCurr}){
   );
 }
 
-function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig}){
+function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers}){
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
   const[editSess,setEditSess]=useState(null);
@@ -1956,6 +1956,10 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const blankOrc={title:"",items:[],value:"",status:"espera",obs:"",created:"",expiry:""};
   const[orcForm,setOrcForm]=useState(blankOrc);
   const[orcItemInput,setOrcItemInput]=useState("");
+  const[showQuickVoucher,setShowQuickVoucher]=useState(false);
+  const blankQV={template:"classico",fromName:"",message:"",validUntil:"",type:"valor",value:"",procedures:[],procInput:""};
+  const[qvForm,setQvForm]=useState(blankQV);
+  const qvfv=k=>v=>setQvForm(p=>({...p,[k]:v}));
   const h=createElement;
   const today=new Date();
   const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",finStatus:"Pendente",paid:false,notes:"",evolution:"",useFaceMap:false,returnReminderDays:14,loteId:"",qtdUsada:""};
@@ -2148,7 +2152,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       const _last=_sorted[0]||null;
       const _ret=(()=>{if(!_last||!Number(_last.returnReminderDays))return null;const sd=parseDMY(_last.date);if(!sd)return null;const rd=new Date(sd);rd.setDate(rd.getDate()+Number(_last.returnReminderDays));const dias=Math.ceil((rd-new Date())/(1000*60*60*24));return{date:rd.toLocaleDateString("pt-BR"),dias,procedure:_last.procedure};})();
       const _pkgs=(patient.sessions_packages||[]).filter(pkg=>pkg.active!==false&&pkg.done<pkg.total);
-      const _vouchers=(patient.vouchers||[]).filter(v=>!v.used&&(!v.expiry||parseDMY(v.expiry)>=new Date()));
+      const _vouchers=(Array.isArray(vouchers)?vouchers:[]).filter(v=>v.toName&&v.toName.trim().toLowerCase()===patient.name.trim().toLowerCase()).filter(v=>{const st=voucherStatus(v);return st==="ativo"||st==="parcial";});
       const _pending=(patient.sessions||[]).filter(s=>!s.paid).reduce((a,s)=>a+s.value,0);
       return h("div",null,
         h(Card,{style:{marginBottom:14,border:"1px solid rgba(192,112,112,.35)",background:"rgba(192,112,112,.04)"}},
@@ -2180,9 +2184,30 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           )
         ),
         h(Card,{style:{border:`1px solid ${_vouchers.length>0?"rgba(155,122,173,.4)":P.border}`}},
-          h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:_vouchers.length>0?14:0}},h("span",{style:{fontSize:20}},"🎟️"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Vouchers Ativos"),_vouchers.length>0&&h("span",{style:{fontSize:11,fontWeight:700,color:"#fff",background:"#9b7aad",padding:"2px 8px",borderRadius:20}},_vouchers.length)),
+          h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:_vouchers.length>0?14:0,flexWrap:"wrap",gap:8}},
+            h("div",{style:{display:"flex",alignItems:"center",gap:10}},h("span",{style:{fontSize:20}},"🎟️"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Vouchers Ativos"),_vouchers.length>0&&h("span",{style:{fontSize:11,fontWeight:700,color:"#fff",background:"#9b7aad",padding:"2px 8px",borderRadius:20}},_vouchers.length)),
+            h("div",{style:{display:"flex",gap:6}},
+              setVouchers&&h("button",{onClick:()=>setShowQuickVoucher(true),style:{fontSize:11,color:"#fff",background:"#9b7aad",border:"none",borderRadius:8,padding:"5px 12px",cursor:"pointer",fontWeight:600}},"＋ Presentear"),
+              onNavVouchers&&h("button",{onClick:onNavVouchers,style:{fontSize:11,color:"#9b7aad",background:"transparent",border:"1px solid rgba(155,122,173,.35)",borderRadius:8,padding:"4px 12px",cursor:"pointer"}},"Ver todos →")
+            )
+          ),
           _vouchers.length===0?h("div",{style:{fontSize:13,color:P.text3}},"Nenhum voucher ativo.")
-          :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},_vouchers.map((v,i)=>h("div",{key:i,style:{padding:"12px 14px",background:"rgba(155,122,173,.07)",borderRadius:10,border:"1px solid rgba(155,122,173,.25)"}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},h("div",null,h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},v.code||v.name||"Voucher"),v.desc&&h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},v.desc)),h("div",{style:{textAlign:"right"}},v.value&&h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:"#9b7aad"}},typeof v.value==="number"?fmtCurr(v.value):v.value),v.expiry&&h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},"Válido até "+v.expiry))))))
+          :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},_vouchers.map((v,i)=>{
+            const saldo=v.type==="valor"?Number(v.value)-Number(v.usedValue||0):null;
+            return h("div",{key:i,style:{padding:"12px 14px",background:"rgba(155,122,173,.07)",borderRadius:10,border:"1px solid rgba(155,122,173,.25)"}},
+              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                h("div",null,
+                  h("div",{style:{fontSize:13,color:P.text,fontWeight:600,fontFamily:"monospace"}},v.code),
+                  h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},v.type==="valor"?"De "+(v.fromName||"—"):"🎁 "+(v.procedures||[]).join(", "))
+                ),
+                h("div",{style:{textAlign:"right"}},
+                  v.type==="valor"&&h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:"#9b7aad"}},fmtCurr(saldo)),
+                  v.validUntil&&h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},"Válido até "+new Date(v.validUntil+"T12:00").toLocaleDateString("pt-BR"))
+                )
+              ),
+              onNavVouchers&&h("button",{onClick:onNavVouchers,style:{marginTop:8,fontSize:11,color:"#9b7aad",background:"rgba(155,122,173,.12)",border:"1px solid rgba(155,122,173,.3)",borderRadius:6,padding:"4px 10px",cursor:"pointer"}},"Resgatar voucher →")
+            );
+          }))
         )
       );
     })(),
@@ -2579,6 +2604,54 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Field,{label:"Próx. Retorno"},h(Inp,{value:patForm.nextReturn||"",onChange:pfv("nextReturn"),placeholder:"DD/MM/AAAA"}))
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},h(Btn,{variant:"ghost",onClick:()=>setEditPat(false)},"Cancelar"),h(Btn,{onClick:savePat},"Salvar Alterações"))
+    ),
+    // ─── MODAL: PRESENTEAR COM VOUCHER (criação rápida a partir da ficha) ─────
+    setVouchers&&h(Modal,{open:showQuickVoucher,onClose:()=>{setShowQuickVoucher(false);setQvForm(blankQV);},title:"🎁 Presentear "+patient.name,width:560},
+      h("div",{style:{marginBottom:16}},
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:8,textTransform:"uppercase",letterSpacing:".08em"}},"Escolha o template"),
+        h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+          VOUCHER_TEMPLATES.map(t=>h("button",{key:t.k,onClick:()=>qvfv("template")(t.k),style:{padding:"8px 14px",borderRadius:10,fontSize:12,cursor:"pointer",border:`2px solid ${qvForm.template===t.k?P.accent:"transparent"}`,background:t.grad,color:"#fff",fontFamily:"'DM Sans',sans-serif"}},t.l))
+        )
+      ),
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
+        h(Field,{label:"Para",half:true},h(Inp,{value:patient.name,onChange:()=>{},style:{opacity:.7}})),
+        h(Field,{label:"De (presenteador)",half:true},h(Inp,{value:qvForm.fromName,onChange:qvfv("fromName"),placeholder:"Quem está presenteando"})),
+        h(Field,{label:"Mensagem (opcional)"},h(TA,{value:qvForm.message,onChange:qvfv("message"),placeholder:"Uma mensagem especial...",rows:2})),
+        h(Field,{label:"Validade",half:true},h(Inp,{type:"date",value:qvForm.validUntil,onChange:qvfv("validUntil")})),
+        h(Field,{label:"Tipo de Voucher",half:true},h(Sel,{value:qvForm.type,onChange:qvfv("type"),options:["valor","procedimento"]})),
+      ),
+      qvForm.type==="valor"
+        ? h(Field,{label:"Valor em Crédito (R$)"},h(Inp,{value:qvForm.value,onChange:qvfv("value"),placeholder:"Ex: 300"}))
+        : h("div",{style:{marginTop:4}},
+            h("div",{style:{fontSize:11,color:P.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".08em"}},"Procedimentos incluídos"),
+            h("div",{style:{display:"flex",gap:8,marginBottom:8}},
+              h(Inp,{value:qvForm.procInput,onChange:qvfv("procInput"),placeholder:"Ex: Toxina Botulínica"}),
+              h(Btn,{variant:"ghost",onClick:()=>{if(qvForm.procInput.trim())setQvForm(p=>({...p,procedures:[...p.procedures,p.procInput.trim()],procInput:""}));},style:{flexShrink:0}},"+ Adicionar")
+            ),
+            h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+              qvForm.procedures.map((p,i)=>h("span",{key:i,style:{display:"flex",alignItems:"center",gap:6,fontSize:12,padding:"4px 10px",borderRadius:14,background:P.rose,color:P.accent3}},p,
+                h("span",{onClick:()=>setQvForm(prev=>({...prev,procedures:prev.procedures.filter((_,idx)=>idx!==i)})),style:{cursor:"pointer",fontWeight:700}},"×")
+              ))
+            )
+          ),
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:18}},
+        h(Btn,{variant:"ghost",onClick:()=>{setShowQuickVoucher(false);setQvForm(blankQV);}},"Cancelar"),
+        h(Btn,{onClick:()=>{
+          if(!qvForm.fromName){alert("Informe quem está presenteando.");return;}
+          if(qvForm.type==="valor"&&(!qvForm.value||Number(qvForm.value)<=0)){alert("Informe o valor do voucher.");return;}
+          if(qvForm.type==="procedimento"&&qvForm.procedures.length===0){alert("Adicione ao menos um procedimento.");return;}
+          const nv={
+            id:Date.now(), code:genVoucherCode(), createdAt:Date.now(),
+            template:qvForm.template, toName:patient.name, fromName:qvForm.fromName,
+            message:qvForm.message, validUntil:qvForm.validUntil,
+            type:qvForm.type, value:qvForm.type==="valor"?Number(qvForm.value):0, usedValue:0,
+            procedures:qvForm.type==="procedimento"?qvForm.procedures:[],
+            used:false, status:"ativo", redemptions:[],
+          };
+          setVouchers(prev=>[...prev,nv]);
+          setShowQuickVoucher(false); setQvForm(blankQV);
+        }},"Gerar Voucher")
+      )
     )
   );
 }
@@ -4010,7 +4083,12 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav}){
         )
       ),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
-        h(Field,{label:"Para quem (presenteado)",half:true},h(Inp,{value:form.toName,onChange:fv("toName"),placeholder:"Nome de quem vai receber"})),
+        h(Field,{label:"Para quem (presenteado)",half:true},
+          h("div",null,
+            createElement("input",{value:form.toName,onChange:e=>fv("toName")(e.target.value),placeholder:"Nome de quem vai receber",list:"voucher-patients-list",style:IS}),
+            h("datalist",{id:"voucher-patients-list"},(Array.isArray(patients)?patients:[]).map(p=>h("option",{key:p.id,value:p.name})))
+          )
+        ),
         h(Field,{label:"De (presenteador)",half:true},h(Inp,{value:form.fromName,onChange:fv("fromName"),placeholder:"Nome de quem está presenteando"})),
         h(Field,{label:"Mensagem (opcional)"},h(TA,{value:form.message,onChange:fv("message"),placeholder:"Uma mensagem especial para acompanhar o presente...",rows:2})),
         h(Field,{label:"Validade",half:true},h(Inp,{type:"date",value:form.validUntil,onChange:fv("validUntil")})),
@@ -4358,7 +4436,7 @@ function AppInner({ session, onLogout }) {
             page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,proceduresFull:procedures,locations:locationNames}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
-            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig}),
+            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers")}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
