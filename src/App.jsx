@@ -3797,6 +3797,305 @@ function App(){
   return createElement(AppInner, { session, onLogout: () => supabase.auth.signOut() });
 }
 
+// ─── VOUCHER / GIFT CARD ──────────────────────────────────────────────────────
+const VOUCHER_TEMPLATES=[
+  {k:"aniversario",l:"🎂 Aniversário",grad:"linear-gradient(135deg,#d88aa8,#f0c987)"},
+  {k:"namorados",l:"💕 Dia dos Namorados",grad:"linear-gradient(135deg,#c0617e,#e0937a)"},
+  {k:"natal",l:"🎄 Natal",grad:"linear-gradient(135deg,#3f7a5e,#c0617e)"},
+  {k:"maes",l:"💐 Dia das Mães",grad:"linear-gradient(135deg,#d49bc4,#f3d39e)"},
+  {k:"classico",l:"✦ Clássico HarmonizaPro",grad:`linear-gradient(135deg,${P.rose},${P.gold})`},
+];
+function genVoucherCode(){
+  const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s="";for(let i=0;i<8;i++)s+=chars[Math.floor(Math.random()*chars.length)];
+  return "HP-"+s.slice(0,4)+"-"+s.slice(4);
+}
+function voucherStatus(v){
+  if(v.status==="cancelado")return "cancelado";
+  const exp=v.validUntil?new Date(v.validUntil+"T23:59:59"):null;
+  const expired=exp&&exp<new Date();
+  if(v.type==="valor"){
+    const saldo=Number(v.value)-Number(v.usedValue||0);
+    if(saldo<=0)return "usado";
+    if(expired)return "expirado";
+    return saldo<Number(v.value)?"parcial":"ativo";
+  } else {
+    if(v.used)return "usado";
+    if(expired)return "expirado";
+    return "ativo";
+  }
+}
+const VOUCHER_STATUS_CFG={
+  ativo:{l:"Ativo",color:P.green,bg:"rgba(122,173,138,.13)"},
+  parcial:{l:"Parcialmente Usado",color:P.yellow,bg:"rgba(196,169,106,.13)"},
+  usado:{l:"Utilizado",color:P.text3,bg:"rgba(255,255,255,.05)"},
+  expirado:{l:"Expirado",color:P.red,bg:"rgba(192,112,112,.13)"},
+  cancelado:{l:"Cancelado",color:P.red,bg:"rgba(192,112,112,.08)"},
+};
+
+function VoucherCard({v,onClick}){
+  const h=createElement;
+  const st=voucherStatus(v);
+  const cfg=VOUCHER_STATUS_CFG[st];
+  const tpl=VOUCHER_TEMPLATES.find(t=>t.k===v.template)||VOUCHER_TEMPLATES[4];
+  const saldo=v.type==="valor"?Number(v.value)-Number(v.usedValue||0):null;
+  return h(Card,{onClick,style:{cursor:"pointer",padding:0,overflow:"hidden",opacity:(st==="usado"||st==="cancelado")?.65:1}},
+    h("div",{style:{background:tpl.grad,padding:"14px 16px",color:"#fff"}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
+        h("div",null,
+          h("div",{style:{fontSize:10,letterSpacing:".1em",textTransform:"uppercase",opacity:.85}},tpl.l),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,marginTop:2}},v.toName)
+        ),
+        h("span",{style:{fontSize:10,padding:"3px 9px",borderRadius:12,background:"rgba(255,255,255,.22)",fontWeight:600,whiteSpace:"nowrap"}},cfg.l)
+      )
+    ),
+    h("div",{style:{padding:"12px 16px"}},
+      h("div",{style:{fontSize:11,color:P.text3,marginBottom:6}},"De: "+(v.fromName||"—")),
+      v.type==="valor"
+        ?h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}},
+            h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Saldo disponível"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:saldo>0?P.green:P.text3}},fmtCurr(saldo))),
+            Number(v.usedValue)>0&&h("div",{style:{textAlign:"right"}},h("div",{style:{fontSize:9,color:P.text3}},"de "+fmtCurr(v.value)))
+          )
+        :h("div",{style:{fontSize:13,color:P.text,marginBottom:6}},"🎁 "+(v.procedures||[]).join(", ")),
+      h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:11,color:P.text3,paddingTop:8,borderTop:`1px solid ${P.border}`}},
+        h("span",null,"Código: ",h("b",{style:{color:P.accent,fontFamily:"monospace"}},v.code)),
+        v.validUntil&&h("span",null,"Val: "+new Date(v.validUntil+"T12:00").toLocaleDateString("pt-BR"))
+      )
+    )
+  );
+}
+
+function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav}){
+  const h=createElement;
+  const[showNew,setShowNew]=useState(false);
+  const[viewing,setViewing]=useState(null);
+  const[redeemSearch,setRedeemSearch]=useState("");
+  const[redeemTarget,setRedeemTarget]=useState(null);
+  const[redeemValue,setRedeemValue]=useState("");
+  const[filterStatus,setFilterStatus]=useState("todos");
+  const[search,setSearch]=useState("");
+
+  const blank={template:"classico",toName:"",fromName:"",message:"",validUntil:"",type:"valor",value:"",procedures:[],procInput:""};
+  const[form,setForm]=useState(blank);
+  const fv=k=>v=>setForm(p=>({...p,[k]:v}));
+
+  const vouchersArr=Array.isArray(vouchers)?vouchers:[];
+  const enriched=vouchersArr.map(v=>({...v,_status:voucherStatus(v)}));
+  const stats={
+    total:enriched.length,
+    ativos:enriched.filter(v=>v._status==="ativo"||v._status==="parcial").length,
+    usados:enriched.filter(v=>v._status==="usado").length,
+    valorEmCirculacao:enriched.filter(v=>v.type==="valor"&&(v._status==="ativo"||v._status==="parcial")).reduce((a,v)=>a+(Number(v.value)-Number(v.usedValue||0)),0),
+  };
+  const filtered=enriched.filter(v=>{
+    const mf=filterStatus==="todos"||v._status===filterStatus;
+    const ms=!search||v.toName.toLowerCase().includes(search.toLowerCase())||v.fromName.toLowerCase().includes(search.toLowerCase())||v.code.toLowerCase().includes(search.toLowerCase());
+    return mf&&ms;
+  }).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+
+  function createVoucher(){
+    if(!form.toName||!form.fromName){alert("Preencha o nome de quem recebe e quem está presenteando.");return;}
+    if(form.type==="valor"&&(!form.value||Number(form.value)<=0)){alert("Informe o valor do voucher.");return;}
+    if(form.type==="procedimento"&&form.procedures.length===0){alert("Adicione ao menos um procedimento.");return;}
+    const nv={
+      id:Date.now(), code:genVoucherCode(), createdAt:Date.now(),
+      template:form.template, toName:form.toName, fromName:form.fromName,
+      message:form.message, validUntil:form.validUntil,
+      type:form.type, value:form.type==="valor"?Number(form.value):0, usedValue:0,
+      procedures:form.type==="procedimento"?form.procedures:[],
+      used:false, status:"ativo",
+      redemptions:[],
+    };
+    setVouchers(prev=>[...prev,nv]);
+    setShowNew(false); setForm(blank); setViewing(nv);
+  }
+
+  function addProcTag(){
+    if(!form.procInput.trim())return;
+    setForm(p=>({...p,procedures:[...p.procedures,p.procInput.trim()],procInput:""}));
+  }
+  function removeProcTag(i){ setForm(p=>({...p,procedures:p.procedures.filter((_,idx)=>idx!==i)})); }
+
+  function cancelVoucher(id){
+    if(!window.confirm("Cancelar este voucher? Essa ação não poderá ser desfeita."))return;
+    setVouchers(prev=>prev.map(v=>v.id===id?{...v,status:"cancelado"}:v));
+    setViewing(null);
+  }
+
+  // ── Resgate ──────────────────────────────────────────────────────────────
+  const redeemMatches=redeemSearch.trim().length<2?[]:enriched.filter(v=>{
+    const st=v._status;
+    if(st!=="ativo"&&st!=="parcial")return false;
+    return v.code.toLowerCase().includes(redeemSearch.toLowerCase())||v.toName.toLowerCase().includes(redeemSearch.toLowerCase());
+  });
+
+  function openRedeem(v){ setRedeemTarget(v); setRedeemValue(v.type==="valor"?String(Number(v.value)-Number(v.usedValue||0)):""); }
+
+  function confirmRedeem(){
+    if(!redeemTarget)return;
+    const v=redeemTarget;
+    if(v.type==="valor"){
+      const useVal=Number(redeemValue);
+      const saldo=Number(v.value)-Number(v.usedValue||0);
+      if(!useVal||useVal<=0||useVal>saldo){alert("Valor inválido. Saldo disponível: "+fmtCurr(saldo));return;}
+      setVouchers(prev=>prev.map(x=>x.id!==v.id?x:{
+        ...x, usedValue:Number(x.usedValue||0)+useVal,
+        redemptions:[...(x.redemptions||[]),{date:new Date().toLocaleDateString("pt-BR"),value:useVal}]
+      }));
+    } else {
+      setVouchers(prev=>prev.map(x=>x.id!==v.id?x:{
+        ...x, used:true,
+        redemptions:[...(x.redemptions||[]),{date:new Date().toLocaleDateString("pt-BR"),value:0,procedures:x.procedures}]
+      }));
+    }
+    setRedeemTarget(null); setRedeemValue(""); setRedeemSearch("");
+  }
+
+  const filterBtns=[{k:"todos",l:"Todos"},{k:"ativo",l:"Ativos"},{k:"parcial",l:"Parciais"},{k:"usado",l:"Utilizados"},{k:"expirado",l:"Expirados"},{k:"cancelado",l:"Cancelados"}];
+
+  return h("div",null,
+    h(SectionHeader,{title:"Vouchers / Gift Cards",sub:`${stats.total} vouchers criados`,action:h(Btn,{onClick:()=>setShowNew(true)},"🎁 Novo Voucher")}),
+
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
+      [{l:"Total Emitidos",v:stats.total,c:P.accent},{l:"Ativos",v:stats.ativos,c:P.green},{l:"Utilizados",v:stats.usados,c:P.text3},{l:"Em Circulação",v:fmtCurr(stats.valorEmCirculacao),c:P.gold}].map(k=>
+        h(Card,{key:k.l,style:{textAlign:"center"}},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)
+        )
+      )
+    ),
+
+    // ── Caixa de resgate rápido ────────────────────────────────────────────
+    h(Card,{style:{marginBottom:22,border:`1px solid rgba(196,169,106,.3)`}},
+      h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:12}},
+        h("span",{style:{fontSize:18}},"🔎"),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Resgatar Voucher"),
+      ),
+      h("input",{value:redeemSearch,onChange:e=>setRedeemSearch(e.target.value),placeholder:"Buscar por código (ex: HP-AB12-CD34) ou nome do presenteado...",style:{...IS,width:"100%",padding:"10px 14px"}}),
+      redeemSearch.trim().length>=2&&h("div",{style:{marginTop:10}},
+        redeemMatches.length===0
+          ? h("div",{style:{fontSize:12,color:P.text3,padding:"8px 0"}},"Nenhum voucher ativo encontrado com esse termo.")
+          : redeemMatches.map(v=>h("div",{key:v.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:P.bg3,borderRadius:8,marginBottom:6,border:`1px solid ${P.border}`}},
+              h("div",null,
+                h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},v.toName+" · "+h("span",{style:{fontFamily:"monospace",color:P.accent}},v.code)),
+                h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},v.type==="valor"?("Saldo: "+fmtCurr(Number(v.value)-Number(v.usedValue||0))):("🎁 "+(v.procedures||[]).join(", ")))
+              ),
+              h(Btn,{onClick:()=>openRedeem(v),style:{fontSize:12,padding:"6px 14px"}},"Resgatar")
+            ))
+      )
+    ),
+
+    h("div",{style:{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}},
+      h("input",{value:search,onChange:e=>setSearch(e.target.value),placeholder:"🔍 Buscar por nome ou código...",style:{...IS,flex:1,minWidth:200,padding:"8px 14px"}}),
+      h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},filterBtns.map(f=>
+        h("button",{key:f.k,onClick:()=>setFilterStatus(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filterStatus===f.k?P.rose:"transparent",border:`1px solid ${filterStatus===f.k?P.rose:P.border}`,color:filterStatus===f.k?P.accent3:P.text2}},f.l)
+      ))
+    ),
+
+    filtered.length===0&&h(Card,{style:{textAlign:"center",padding:40}},
+      h("div",{style:{fontSize:32,marginBottom:12}},"🎁"),
+      h("div",{style:{color:P.text3,fontSize:14}},enriched.length===0?"Nenhum voucher criado ainda. Que tal presentear alguém especial?":"Nenhum voucher encontrado com esse filtro.")
+    ),
+
+    h("div",{className:"resp-grid-vouchers",style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}},
+      filtered.map(v=>h(VoucherCard,{key:v.id,v,onClick:()=>setViewing(v)}))
+    ),
+
+    // ── Modal: Novo Voucher ─────────────────────────────────────────────────
+    h(Modal,{open:showNew,onClose:()=>{setShowNew(false);setForm(blank);},title:"🎁 Novo Voucher / Gift Card",width:560},
+      h("div",{style:{marginBottom:16}},
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:8,textTransform:"uppercase",letterSpacing:".08em"}},"Escolha o template"),
+        h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+          VOUCHER_TEMPLATES.map(t=>h("button",{key:t.k,onClick:()=>fv("template")(t.k),style:{padding:"8px 14px",borderRadius:10,fontSize:12,cursor:"pointer",border:`2px solid ${form.template===t.k?P.accent:"transparent"}`,background:t.grad,color:"#fff",fontFamily:"'DM Sans',sans-serif"}},t.l))
+        )
+      ),
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
+        h(Field,{label:"Para quem (presenteado)",half:true},h(Inp,{value:form.toName,onChange:fv("toName"),placeholder:"Nome de quem vai receber"})),
+        h(Field,{label:"De (presenteador)",half:true},h(Inp,{value:form.fromName,onChange:fv("fromName"),placeholder:"Nome de quem está presenteando"})),
+        h(Field,{label:"Mensagem (opcional)"},h(TA,{value:form.message,onChange:fv("message"),placeholder:"Uma mensagem especial para acompanhar o presente...",rows:2})),
+        h(Field,{label:"Validade",half:true},h(Inp,{type:"date",value:form.validUntil,onChange:fv("validUntil")})),
+        h(Field,{label:"Tipo de Voucher",half:true},h(Sel,{value:form.type,onChange:fv("type"),options:["valor","procedimento"]})),
+      ),
+      form.type==="valor"
+        ? h(Field,{label:"Valor em Crédito (R$)"},h(Inp,{value:form.value,onChange:fv("value"),placeholder:"Ex: 300"}))
+        : h("div",{style:{marginTop:4}},
+            h("div",{style:{fontSize:11,color:P.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".08em"}},"Procedimentos incluídos"),
+            h("div",{style:{display:"flex",gap:8,marginBottom:8}},
+              h(Inp,{value:form.procInput,onChange:fv("procInput"),placeholder:"Ex: Toxina Botulínica"}),
+              h(Btn,{variant:"ghost",onClick:addProcTag,style:{flexShrink:0}},"+ Adicionar")
+            ),
+            h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+              form.procedures.map((p,i)=>h("span",{key:i,style:{display:"flex",alignItems:"center",gap:6,fontSize:12,padding:"4px 10px",borderRadius:14,background:P.rose,color:P.accent3}},p,
+                h("span",{onClick:()=>removeProcTag(i),style:{cursor:"pointer",fontWeight:700}},"×")
+              ))
+            )
+          ),
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:18}},
+        h(Btn,{variant:"ghost",onClick:()=>{setShowNew(false);setForm(blank);}},"Cancelar"),
+        h(Btn,{onClick:createVoucher},"Gerar Voucher")
+      )
+    ),
+
+    // ── Modal: Visualizar Voucher ───────────────────────────────────────────
+    viewing&&h(Modal,{open:!!viewing,onClose:()=>setViewing(null),title:"Detalhes do Voucher",width:480},
+      (()=>{
+        const v=enriched.find(x=>x.id===viewing.id)||viewing;
+        const tpl=VOUCHER_TEMPLATES.find(t=>t.k===v.template)||VOUCHER_TEMPLATES[4];
+        const st=voucherStatus(v); const cfg=VOUCHER_STATUS_CFG[st];
+        return h("div",null,
+          h("div",{style:{background:tpl.grad,borderRadius:12,padding:20,color:"#fff",marginBottom:16,textAlign:"center"}},
+            h("div",{style:{fontSize:11,letterSpacing:".12em",textTransform:"uppercase",opacity:.85,marginBottom:6}},tpl.l),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,marginBottom:4}},"Para "+v.toName),
+            h("div",{style:{fontSize:13,opacity:.9}},"Com carinho, "+v.fromName),
+            v.message&&h("div",{style:{fontSize:13,fontStyle:"italic",marginTop:12,opacity:.95,padding:"0 10px"}},"“"+v.message+"”"),
+            h("div",{style:{marginTop:16,fontFamily:"monospace",fontSize:18,letterSpacing:".06em",background:"rgba(255,255,255,.2)",borderRadius:8,padding:"6px 14px",display:"inline-block"}},v.code)
+          ),
+          h("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:10}},
+            h("span",{style:{fontSize:12,color:P.text3}},"Status"),
+            h("span",{style:{fontSize:12,padding:"2px 10px",borderRadius:12,background:cfg.bg,color:cfg.color,fontWeight:600}},cfg.l)
+          ),
+          v.type==="valor"
+            ?h("div",{style:{marginBottom:10}},
+                h("div",{style:{display:"flex",justifyContent:"space-between"}},h("span",{style:{fontSize:12,color:P.text3}},"Valor total"),h("span",{style:{fontSize:13,color:P.text}},fmtCurr(v.value))),
+                h("div",{style:{display:"flex",justifyContent:"space-between"}},h("span",{style:{fontSize:12,color:P.text3}},"Já utilizado"),h("span",{style:{fontSize:13,color:P.yellow}},fmtCurr(v.usedValue||0))),
+                h("div",{style:{display:"flex",justifyContent:"space-between"}},h("span",{style:{fontSize:12,color:P.text3,fontWeight:600}},"Saldo disponível"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.green}},fmtCurr(Number(v.value)-Number(v.usedValue||0))))
+              )
+            :h("div",{style:{marginBottom:10}},
+                h("div",{style:{fontSize:12,color:P.text3,marginBottom:4}},"Procedimentos incluídos:"),
+                h("div",{style:{fontSize:13,color:P.text}},(v.procedures||[]).join(", ")),
+                h("div",{style:{fontSize:12,color:v.used?P.text3:P.green,marginTop:6}},v.used?"✓ Já utilizado":"Disponível para uso")
+              ),
+          v.validUntil&&h("div",{style:{fontSize:12,color:P.text3,marginBottom:10}},"Validade: "+new Date(v.validUntil+"T12:00").toLocaleDateString("pt-BR")),
+          (v.redemptions||[]).length>0&&h("div",{style:{marginTop:12,paddingTop:12,borderTop:`1px solid ${P.border}`}},
+            h("div",{style:{fontSize:11,color:P.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".08em"}},"Histórico de uso"),
+            v.redemptions.map((r,i)=>h("div",{key:i,style:{fontSize:12,color:P.text2,padding:"4px 0"}},r.date+" — "+(r.value>0?fmtCurr(r.value):(r.procedures||[]).join(", "))))
+          ),
+          h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:18}},
+            (st==="ativo"||st==="parcial")&&h(Btn,{variant:"ghost",onClick:()=>cancelVoucher(v.id),style:{color:P.red}},"Cancelar Voucher"),
+            (st==="ativo"||st==="parcial")&&h(Btn,{onClick:()=>{setViewing(null);openRedeem(v);}},"Resgatar Agora")
+          )
+        );
+      })()
+    ),
+
+    // ── Modal: Confirmar Resgate ────────────────────────────────────────────
+    redeemTarget&&h(Modal,{open:!!redeemTarget,onClose:()=>setRedeemTarget(null),title:"Confirmar Resgate",width:420},
+      h("div",{style:{marginBottom:14}},
+        h("div",{style:{fontSize:13,color:P.text,marginBottom:4}},redeemTarget.toName+" · "+h("span",{style:{fontFamily:"monospace",color:P.accent}},redeemTarget.code)),
+        redeemTarget.type==="valor"
+          ?h("div",{style:{fontSize:12,color:P.text3}},"Saldo disponível: "+fmtCurr(Number(redeemTarget.value)-Number(redeemTarget.usedValue||0)))
+          :h("div",{style:{fontSize:12,color:P.text3}},"Procedimentos: "+(redeemTarget.procedures||[]).join(", "))
+      ),
+      redeemTarget.type==="valor"&&h(Field,{label:"Valor a utilizar agora (R$)"},h(Inp,{value:redeemValue,onChange:setRedeemValue,placeholder:"0,00"})),
+      redeemTarget.type==="procedimento"&&h("div",{style:{fontSize:12,color:P.text2,padding:"10px 0"}},"Ao confirmar, este voucher será marcado como totalmente utilizado."),
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16}},
+        h(Btn,{variant:"ghost",onClick:()=>setRedeemTarget(null)},"Cancelar"),
+        h(Btn,{onClick:confirmRedeem},"Confirmar Resgate")
+      )
+    )
+  );
+}
+
 function AppInner({ session, onLogout }) {
   const[patientsRaw,setPatients,loadingPatients]=useSupaTable("patients",INIT_PATIENTS);
   const[agendaRaw,setAgenda,loadingAgenda]=useSupaTable("agenda",INIT_AGENDA);
@@ -3818,6 +4117,7 @@ function AppInner({ session, onLogout }) {
     produtos:["Vitamina C","Retinol","Ácido Glicólico","Ácido Hialurônico","Protetor Solar FPS 50+","Niacinamida","Peptídeos","Bakuchiol","AHA/BHA","Ceramidas","Água Micelar","Hidratante Facial"],
     frequencias:["Diário","Noturno","2x por semana","Semanal","Mensal","Conforme necessário"]
   });
+  const[vouchersRaw,setVouchers,loadingVouchers]=useSupaTable("vouchers",[]);
 
   // ── Blindagem extra: garante que dados que devem ser array nunca virem outra coisa ──
   // (proteção redundante caso algum dado venha corrompido do Supabase)
@@ -3831,6 +4131,7 @@ function AppInner({ session, onLogout }) {
   const locations=Array.isArray(locationsRaw)?locationsRaw:[];
   const returnRules=Array.isArray(returnRulesRaw)?returnRulesRaw:[];
   const procCats=Array.isArray(procCatsRaw)?procCatsRaw:[];
+  const vouchers=Array.isArray(vouchersRaw)?vouchersRaw:[];
   // Todos os useState ANTES de qualquer return condicional (regra dos hooks)
   const[page,setPage]=useState("dashboard");
   const[selectedPatient,setSelectedPatient]=useState(null);
@@ -3905,7 +4206,7 @@ function AppInner({ session, onLogout }) {
   }
   function handleSelectPatient(p){setSelectedPatient(p);setPage("prontuario");if(isMobile)setSidebarOpen(false);}
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos Pendentes",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",relatorios:"Relatórios",config:"Configurações"};
+  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos Pendentes",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",config:"Configurações"};
   const settings = settingsData;
 
   const nav=[
@@ -3918,6 +4219,7 @@ function AppInner({ session, onLogout }) {
     {k:"estoque",l:"Estoque",icon:"🧴",badge:criticalStock||null,badgeColor:P.yellow},
     {k:"financeiro",l:"Financeiro",icon:"💰"},
     {k:"pacotes_global",l:"Pacotes",icon:"📦"},
+    {k:"vouchers",l:"Vouchers",icon:"🎁"},
     {k:"relatorios",l:"Relatórios",icon:"📊"},
     {k:"config",l:"Configurações",icon:"⚙️"},
   ];
@@ -4060,6 +4362,7 @@ function AppInner({ session, onLogout }) {
             page==="estoque"&&h(Estoque,{products,setProducts}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
+            page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures}),
             page==="config"&&h(Configuracoes,{procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats})
           )
