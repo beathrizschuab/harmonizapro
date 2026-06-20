@@ -115,6 +115,43 @@ const parseDMY=s=>{if(!s)return null;const[d,m,y]=s.split("/");return new Date(`
 const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
 const todayISO=()=>new Date().toISOString().slice(0,10);
 
+// ─── FIDELIZAÇÃO ──────────────────────────────────────────────────────────────
+// Critérios automáticos: valor gasto total + nº de sessões (frequência) + nº de indicações feitas
+const LOYALTY_TIERS=[
+  {k:"diamante",l:"Diamante",stars:4,color:"#9ec7e8",bg:"rgba(158,199,232,.14)",minScore:85},
+  {k:"ouro",l:"Ouro",stars:3,color:"#c4a96a",bg:"rgba(196,169,106,.14)",minScore:55},
+  {k:"prata",l:"Prata",stars:2,color:"#b9c0c9",bg:"rgba(185,192,201,.14)",minScore:28},
+  {k:"bronze",l:"Bronze",stars:1,color:"#c08a5a",bg:"rgba(192,138,90,.14)",minScore:0},
+];
+// Pesos: valor gasto (até 50pts), frequência/sessões (até 30pts), indicações (até 20pts)
+function calcLoyalty(patient,allPatients){
+  const sessions=patient.sessions||[];
+  const totalSpent=sessions.reduce((a,s)=>a+(s.paid?Number(s.value||0):0),0);
+  const sessionCount=sessions.length;
+  const referrals=(Array.isArray(allPatients)?allPatients:[]).filter(p=>p.indicadoPor&&p.indicadoPor.trim().toLowerCase()===patient.name.trim().toLowerCase()).length;
+
+  // Normaliza cada critério numa escala de 0-100 e aplica peso
+  const spentScore=Math.min(totalSpent/6000,1)*50;        // R$6.000+ = pontuação máxima
+  const freqScore=Math.min(sessionCount/12,1)*30;          // 12+ sessões = pontuação máxima
+  const referralScore=Math.min(referrals/5,1)*20;          // 5+ indicações = pontuação máxima
+  const score=spentScore+freqScore+referralScore;
+
+  const tier=LOYALTY_TIERS.find(t=>score>=t.minScore)||LOYALTY_TIERS[LOYALTY_TIERS.length-1];
+  // Próximo nível e quanto falta
+  const idx=LOYALTY_TIERS.findIndex(t=>t.k===tier.k);
+  const next=idx>0?LOYALTY_TIERS[idx-1]:null;
+  return {tier,score:Math.round(score),totalSpent,sessionCount,referrals,next,pointsToNext:next?Math.max(0,Math.ceil(next.minScore-score)):0};
+}
+function LoyaltyBadge({patient,allPatients,size="md"}){
+  const h=createElement;
+  const{tier}=calcLoyalty(patient,allPatients);
+  const fs=size==="sm"?10:size==="lg"?13:11;
+  const pad=size==="sm"?"1px 6px":size==="lg"?"3px 11px":"2px 8px";
+  return h("span",{title:tier.l+" · "+"★".repeat(tier.stars),style:{fontSize:fs,padding:pad,borderRadius:20,background:tier.bg,color:tier.color,fontWeight:700,whiteSpace:"nowrap",letterSpacing:".02em"}},
+    "★".repeat(tier.stars)+" "+tier.l
+  );
+}
+
 // ─── HELPERS DE ESTOQUE POR LOTE ────────────────────────────────────────────
 function getAvailableLotes(products, productName) {
   if (!productName) return [];
@@ -1734,7 +1771,8 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
           h("div",{style:{flex:1,minWidth:0}},
             h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:2}},
               h("div",{style:{fontSize:14,color:P.text,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},p.name),
-              h(StatusBadge,{status:p._autoStatus||p.status})
+              h(StatusBadge,{status:p._autoStatus||p.status}),
+              h(LoyaltyBadge,{patient:p,allPatients:patients,size:"sm"})
             ),
             h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:3}},
               h("span",{style:{fontSize:12,color:P.text3}},(calcAge||p.age)+" anos"),
@@ -2177,6 +2215,29 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             _ret.dias<0&&h("div",{style:{padding:"8px 14px",background:"rgba(192,112,112,.1)",border:"1px solid rgba(192,112,112,.25)",borderRadius:8,fontSize:12,color:P.red,fontWeight:500}},"⚠ Retorno em atraso — entre em contato!")
           ):h("div",{style:{fontSize:13,color:P.text3}},"Nenhum retorno configurado.")
         ),
+        (()=>{
+          const loy=calcLoyalty(patient,patients);
+          const{tier,next,pointsToNext,totalSpent,sessionCount,referrals}=loy;
+          const idx=LOYALTY_TIERS.findIndex(t=>t.k===tier.k);
+          const prevMin=idx<LOYALTY_TIERS.length-1?LOYALTY_TIERS[idx].minScore:0;
+          const nextMin=next?next.minScore:100;
+          const pct=next?Math.min(100,Math.max(0,((loy.score-prevMin)/(nextMin-prevMin))*100)):100;
+          return h(Card,{style:{marginBottom:14,border:`1px solid ${tier.color}55`}},
+            h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}},
+              h("div",{style:{display:"flex",alignItems:"center",gap:10}},h("span",{style:{fontSize:20}},"🏆"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Fidelização")),
+              h(LoyaltyBadge,{patient,allPatients:patients,size:"lg"})
+            ),
+            h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}},
+              h("div",{style:{textAlign:"center",padding:"8px 4px",background:P.bg3,borderRadius:8}},h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Total Gasto"),h("div",{style:{fontSize:15,color:P.text,marginTop:3}},fmtCurr(totalSpent))),
+              h("div",{style:{textAlign:"center",padding:"8px 4px",background:P.bg3,borderRadius:8}},h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Sessões"),h("div",{style:{fontSize:15,color:P.text,marginTop:3}},sessionCount)),
+              h("div",{style:{textAlign:"center",padding:"8px 4px",background:P.bg3,borderRadius:8}},h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Indicações"),h("div",{style:{fontSize:15,color:P.text,marginTop:3}},referrals))
+            ),
+            next?h("div",null,
+              h("div",{style:{height:6,borderRadius:3,background:P.border,overflow:"hidden",marginBottom:6}},h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${tier.color},${next.color})`,borderRadius:3}})),
+              h("div",{style:{fontSize:11,color:P.text3}},`Faltam ${pointsToNext} pontos para o nível `,h("b",{style:{color:next.color}},"★".repeat(next.stars)+" "+next.l))
+            ):h("div",{style:{fontSize:12,color:tier.color,fontWeight:600}},"🎉 Nível máximo de fidelidade atingido!")
+          );
+        })(),
         h(Card,{style:{marginBottom:14,border:`1px solid ${_pkgs.length>0?"rgba(157,119,97,.35)":P.border}`}},
           h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:_pkgs.length>0?14:0}},
             h("div",{style:{display:"flex",alignItems:"center",gap:10}},h("span",{style:{fontSize:20}},"📦"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Pacotes Ativos"),_pkgs.length>0&&h("span",{style:{fontSize:11,fontWeight:700,color:P.accent3,background:P.rose,padding:"2px 8px",borderRadius:20}},_pkgs.length)),
