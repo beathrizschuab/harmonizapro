@@ -328,6 +328,61 @@ async function generatePatientDossier(patient,{products,settings}={}){
   doc.save(fileName);
 }
 
+// ─── EVOLUÇÃO POR REGIÃO DA FACE ──────────────────────────────────────────────
+// Regiões-mãe padronizadas com palavras-chave para agrupar o texto livre digitado em "region"
+// e também as chaves usadas no FaceMapEditor (faceMap.points), ex: "glabela_c" → Testa/Glabela
+const FACE_REGIONS=[
+  {k:"testa",l:"Testa / Glabela",icon:"🟪",kw:["testa","glabela","frontal","ruga"],pointKw:["glabela","frontal"]},
+  {k:"olheira",l:"Olheira / Periorbital",icon:"👁",kw:["olheira","periorbital","pé de galinha","olhos","região dos olhos"],pointKw:["olheira","pegalinha","periorbital"]},
+  {k:"malar",l:"Malar / Maçãs do Rosto",icon:"🍑",kw:["malar","maçã","bochecha","zigomático"],pointKw:["malar","zigoma"]},
+  {k:"nariz",l:"Nariz",icon:"👃",kw:["nariz","nasal","rinomodelação"],pointKw:["nariz","nasal"]},
+  {k:"labios",l:"Lábios",icon:"💋",kw:["lábio","labial","boca"],pointKw:["labio","lip"]},
+  {k:"sulco",l:"Sulco Nasolabial",icon:"〜",kw:["sulco","nasolabial","bigode chinês"],pointKw:["sulco","nasolabial"]},
+  {k:"mento",l:"Mento / Queixo",icon:"🔻",kw:["mento","queixo"],pointKw:["mento","queixo"]},
+  {k:"mandibula",l:"Mandíbula",icon:"📐",kw:["mandíbula","mandibula","jowls","contorno facial","ângulo da face"],pointKw:["mandibula","jowl"]},
+  {k:"marionete",l:"Linhas de Marionete",icon:"⌒",kw:["marionete"],pointKw:["marionete"]},
+  {k:"temporal",l:"Têmporas",icon:"⬭",kw:["têmpora","temporal"],pointKw:["tempora"]},
+  {k:"pescoco",l:"Pescoço / Papada",icon:"⬇",kw:["pescoço","papada","cervical"],pointKw:["pescoco","papada"]},
+  {k:"peGalinha",l:"Pés de Galinha",icon:"〈〉",kw:["pé de galinha","pe de galinha","periocular"],pointKw:["pegalinha"]},
+];
+function normalize(s){ return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
+// Dado o texto livre de "region" ou as chaves do faceMap.points, retorna a(s) região(ões)-mãe correspondentes
+function matchFaceRegions(text){
+  const t=normalize(text);
+  if(!t)return [];
+  return FACE_REGIONS.filter(r=>r.kw.some(k=>t.includes(normalize(k))));
+}
+function matchFaceRegionsFromPointKey(key){
+  const t=normalize(key);
+  return FACE_REGIONS.filter(r=>r.pointKw.some(k=>t.includes(normalize(k))));
+}
+// Constrói, para uma paciente, o agrupamento completo por região: aplicações, produtos, fotos, datas, intercorrências
+function buildRegionEvolution(patient){
+  const sessions=patient.sessions||[];
+  const byRegion={};
+  FACE_REGIONS.forEach(r=>byRegion[r.k]={region:r,entries:[]});
+  sessions.forEach(s=>{
+    const matched=new Set();
+    matchFaceRegions(s.region).forEach(r=>matched.add(r.k));
+    matchFaceRegions(s.procedure).forEach(r=>matched.add(r.k));
+    if(s.faceMap?.points)Object.keys(s.faceMap.points).forEach(pk=>{
+      if(s.faceMap.points[pk]>0)matchFaceRegionsFromPointKey(pk).forEach(r=>matched.add(r.k));
+    });
+    if(matched.size===0)return;
+    matched.forEach(rk=>{
+      byRegion[rk].entries.push({
+        date:s.date, procedure:s.procedure, product:s.product, dose:s.dose,
+        value:s.value, paid:s.paid, photos:s.photos||[], notes:s.notes, evolution:s.evolution,
+        intercorrencias:s.intercorrencias||[],
+        points:s.faceMap?.points?Object.entries(s.faceMap.points).filter(([k,v])=>v>0&&matchFaceRegionsFromPointKey(k).some(r=>r.k===rk)):[],
+        unit:s.faceMap?.type==="botox"?"U":"ml",
+      });
+    });
+  });
+  Object.values(byRegion).forEach(g=>g.entries.sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0))));
+  return Object.values(byRegion).filter(g=>g.entries.length>0).sort((a,b)=>b.entries.length-a.entries.length);
+}
+
 // ─── HELPERS DE ESTOQUE POR LOTE ────────────────────────────────────────────
 function getAvailableLotes(products, productName) {
   if (!productName) return [];
@@ -2172,6 +2227,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[orcForm,setOrcForm]=useState(blankOrc);
   const[orcItemInput,setOrcItemInput]=useState("");
   const[showQuickVoucher,setShowQuickVoucher]=useState(false);
+  const[selectedRegion,setSelectedRegion]=useState(null);
   const[generatingDossie,setGeneratingDossie]=useState(false);
   async function handleGenerateDossie(){
     setGeneratingDossie(true);
@@ -2199,7 +2255,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[icForm,setIcForm]=useState({type:"Edema",notes:"",conduct:"",date:""});
   const[planForm,setPlanForm]=useState({title:"",steps:"",notes:""});
   const totalSpent=(patient.sessions||[]).reduce((a,s)=>a+s.value,0);
-  const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"fichaRapida",l:"⚡ Ficha Rápida"},{k:"orcamentos",l:"💼 Orçamentos"},{k:"mapa",l:"🗺 Mapa"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"},{k:"skincare",l:"🧴 Skincare"},{k:"indicacoes",l:"🤝 Indicações"}];
+  const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"fichaRapida",l:"⚡ Ficha Rápida"},{k:"orcamentos",l:"💼 Orçamentos"},{k:"mapa",l:"🗺 Mapa"},{k:"porRegiao",l:"🧭 Por Região"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"},{k:"skincare",l:"🧴 Skincare"},{k:"indicacoes",l:"🤝 Indicações"}];
   function upd(fn){setPatients(prev=>prev.map(p=>p.id===patient.id?fn(p):p));}
   // Sincroniza sessão → incomes (fonte única de verdade)
   function syncIncome(sess,patName){
@@ -2576,6 +2632,67 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         ))
       )
     ),
+    // ─── POR REGIÃO TAB ──────────────────────────────────────────────────────
+    tab==="porRegiao"&&(()=>{
+      const regionGroups=buildRegionEvolution(patient);
+      return h("div",null,
+        h("div",{style:{fontSize:13,color:P.text3,marginBottom:18}},"Clique numa região para ver todo o histórico: aplicações, produtos, quantidades, fotos, datas e intercorrências."),
+        regionGroups.length===0?h(Card,{style:{textAlign:"center",padding:40}},
+          h("div",{style:{fontSize:32,marginBottom:10}},"🧭"),
+          h("div",{style:{color:P.text3,fontSize:13}},"Nenhuma região identificada ainda. Preencha o campo 'Região' nas sessões (ex: Mandíbula, Lábios, Malar) para começar a ver a evolução aqui.")
+        ):h("div",null,
+          h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}},
+            regionGroups.map(g=>h("button",{key:g.region.k,onClick:()=>setSelectedRegion(selectedRegion===g.region.k?null:g.region.k),style:{padding:"8px 14px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:6,background:selectedRegion===g.region.k?P.rose:P.card,border:`1px solid ${selectedRegion===g.region.k?P.rose:P.border}`,color:selectedRegion===g.region.k?P.accent3:P.text2}},
+              h("span",null,g.region.icon),h("span",null,g.region.l),h("span",{style:{fontSize:10,opacity:.75}},"("+g.entries.length+")")
+            ))
+          ),
+          (()=>{
+            const active=selectedRegion?regionGroups.find(g=>g.region.k===selectedRegion):regionGroups[0];
+            if(!active)return null;
+            const totalVal=active.entries.reduce((a,e)=>a+(e.paid?Number(e.value||0):0),0);
+            const totalPhotos=active.entries.reduce((a,e)=>a+(e.photos||[]).length,0);
+            const totalInterc=active.entries.reduce((a,e)=>a+(e.intercorrencias||[]).length,0);
+            return h(Card,null,
+              h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:6}},
+                h("span",{style:{fontSize:22}},active.region.icon),
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},active.region.l)
+              ),
+              h("div",{style:{display:"flex",gap:20,marginBottom:18,flexWrap:"wrap"}},
+                h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Aplicações"),h("div",{style:{fontSize:16,color:P.text}},active.entries.length)),
+                h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Investido"),h("div",{style:{fontSize:16,color:P.green}},fmtCurr(totalVal))),
+                h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Fotos"),h("div",{style:{fontSize:16,color:P.text}},totalPhotos)),
+                totalInterc>0&&h("div",null,h("div",{style:{fontSize:9,color:P.red,textTransform:"uppercase"}},"Intercorrências"),h("div",{style:{fontSize:16,color:P.red}},totalInterc))
+              ),
+              h("div",{style:{display:"flex",flexDirection:"column",gap:12}},
+                active.entries.map((e,i)=>h("div",{key:i,style:{padding:"14px 16px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
+                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:6}},
+                    h("div",null,
+                      h("div",{style:{fontSize:14,color:P.text,fontWeight:600}},e.date+" — "+e.procedure),
+                      h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},(e.product||"—")+(e.dose?" · "+e.dose:""))
+                    ),
+                    h("div",{style:{textAlign:"right"}},
+                      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:e.paid?P.green:P.yellow}},fmtCurr(e.value||0)),
+                      h("div",{style:{fontSize:10,color:P.text3}},e.paid?"Pago":"Pendente")
+                    )
+                  ),
+                  e.points.length>0&&h("div",{style:{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}},
+                    e.points.map(([k,v])=>h("span",{key:k,style:{fontSize:11,padding:"2px 9px",borderRadius:14,background:"rgba(92,31,50,.1)",color:P.accent}},k.replace(/_/g," ")+": "+v+e.unit))
+                  ),
+                  e.notes&&h("div",{style:{fontSize:12,color:P.text2,marginBottom:4}},"📝 "+e.notes),
+                  e.evolution&&h("div",{style:{fontSize:12,color:P.text2,marginBottom:4}},"📈 "+e.evolution),
+                  (e.intercorrencias||[]).length>0&&h("div",{style:{marginTop:6,padding:"8px 10px",background:"rgba(192,112,112,.08)",border:"1px solid rgba(192,112,112,.2)",borderRadius:8}},
+                    e.intercorrencias.map((it,ii)=>h("div",{key:ii,style:{fontSize:11.5,color:P.red}},"⚠ "+(it.date||"")+" — "+(it.description||it.desc||it.text||"Intercorrência registrada")))
+                  ),
+                  (e.photos||[]).length>0&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}},
+                    e.photos.map((p,pi)=>h("img",{key:pi,src:typeof p==="string"?p:p.url,style:{width:64,height:64,borderRadius:8,objectFit:"cover",border:`1px solid ${P.border}`}}))
+                  )
+                ))
+              )
+            );
+          })()
+        )
+      );
+    })(),
     // ─── INTERCORRÊNCIAS TAB
     tab==="intercorrencias"&&h("div",null,
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
