@@ -2445,9 +2445,10 @@ function MetaFaturamento({received,selMonth,selYear,goals,setGoals,prevMonthRece
 }
 
 // ─── META POR PROCEDIMENTO ────────────────────────────────────────────────────
-// Metas de faturamento (R$) por procedimento, por mês. Reaproveita a mesma
-// tabela "goals" (key-value), usando chaves no formato "AAAA-MM::proc::Nome".
-const procGoalKey=(y,m,proc)=>`${y}-${String(m+1).padStart(2,"0")}::proc::${proc}`;
+// Metas de QUANTIDADE (nº de pacientes/atendimentos) por procedimento, por mês.
+// Reaproveita a mesma tabela "goals" (key-value), usando chaves no formato
+// "AAAA-MM::procQty::Nome".
+const procGoalKey=(y,m,proc)=>`${y}-${String(m+1).padStart(2,"0")}::procQty::${proc}`;
 
 function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,setGoals,compact=false,onNav}){
   const h=createElement;
@@ -2455,11 +2456,11 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
   const safeGoals=goals||{};
 
   const inMonth=d=>{const dt=parseAnyDate(d);return dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear;};
-  const recByProc=useMemo(()=>{
+  const countByProc=useMemo(()=>{
     const map={};
-    patients.flatMap(p=>p.sessions||[]).filter(s=>s.paid&&inMonth(s.date)).forEach(s=>{
+    patients.flatMap(p=>p.sessions||[]).filter(s=>inMonth(s.date)).forEach(s=>{
       const k=s.procedure||"Outro";
-      map[k]=(map[k]||0)+Number(s.value||0);
+      map[k]=(map[k]||0)+1;
     });
     return map;
   },[patients,selMonth,selYear]);
@@ -2467,7 +2468,7 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
   const definedProcs=Object.keys(safeGoals).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)).filter(Boolean);
   const rows=definedProcs.map(proc=>{
     const meta=Number(safeGoals[prefix+proc])||0;
-    const received=recByProc[proc]||0;
+    const received=countByProc[proc]||0;
     const pct=meta>0?(received/meta)*100:0;
     return{proc,meta,received,pct};
   }).sort((a,b)=>a.pct-b.pct);
@@ -2515,7 +2516,7 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
           return h("div",{key:r.proc},
             h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4,gap:8}},
               h("span",{style:{color:P.text2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},r.proc),
-              h("span",{style:{color:barColor,fontWeight:600,flexShrink:0}},`${Math.round(r.pct)}%`)
+              h("span",{style:{color:barColor,fontWeight:600,flexShrink:0}},`${r.received}/${r.meta}`)
             ),
             h("div",{style:{width:"100%",height:6,background:P.bg3,borderRadius:10,overflow:"hidden"}},
               h("div",{style:{width:`${Math.min(r.pct,100)}%`,height:"100%",background:`linear-gradient(90deg,${P.rose},${barColor})`,borderRadius:10,transition:"width .5s cubic-bezier(.4,0,.2,1)"}})
@@ -2546,8 +2547,8 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
       // Linha de edição para um procedimento novo (ainda sem meta salva)
       editingProc&&!rows.some(r=>r.proc===editingProc)&&h("div",{key:"new_"+editingProc,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:P.bg3,borderRadius:8}},
         h("div",{style:{flex:1,fontSize:13,color:P.text}},editingProc),
-        h("span",{style:{fontSize:12,color:P.text3}},"R$"),
-        h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(editingProc);if(e.key==="Escape")setEditingProc(null);},placeholder:"ex: 5000",style:{width:100,background:P.card,border:`1px solid ${P.accent}`,borderRadius:8,padding:"6px 10px",color:P.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}}),
+        h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(editingProc);if(e.key==="Escape")setEditingProc(null);},placeholder:"ex: 10",style:{width:80,background:P.card,border:`1px solid ${P.accent}`,borderRadius:8,padding:"6px 10px",color:P.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none",textAlign:"center"}}),
+        h("span",{style:{fontSize:12,color:P.text3}},"pacientes/mês"),
         h("button",{onClick:()=>saveMeta(editingProc),style:{background:P.rose,border:"none",borderRadius:8,color:P.accent3,cursor:"pointer",padding:"6px 14px",fontSize:12,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},"Salvar"),
         h("button",{onClick:()=>setEditingProc(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text3,cursor:"pointer",padding:"6px 10px",fontSize:12,fontFamily:"'DM Sans',sans-serif"}},"✕")
       ),
@@ -2559,13 +2560,13 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
             h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},r.proc),
             isEditing
               ?h("div",{style:{display:"flex",alignItems:"center",gap:6}},
-                  h("span",{style:{fontSize:11,color:P.text3}},"R$"),
-                  h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(r.proc);if(e.key==="Escape")setEditingProc(null);},style:{width:90,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"5px 8px",color:P.text,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:"none"}}),
+                  h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(r.proc);if(e.key==="Escape")setEditingProc(null);},style:{width:64,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"5px 8px",color:P.text,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:"none",textAlign:"center"}}),
+                  h("span",{style:{fontSize:11,color:P.text3}},"pacientes/mês"),
                   h("button",{onClick:()=>saveMeta(r.proc),style:{background:P.rose,border:"none",borderRadius:6,color:P.accent3,cursor:"pointer",padding:"5px 10px",fontSize:11,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},"✓"),
                   h("button",{onClick:()=>setEditingProc(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"5px 8px",fontSize:11,fontFamily:"'DM Sans',sans-serif"}},"✕")
                 )
               :h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}},
-                  h("span",{style:{fontSize:12.5,color:barColor,fontWeight:600}},`${fmtCurr(r.received)} / ${fmtCurr(r.meta)}`),
+                  h("span",{style:{fontSize:12.5,color:barColor,fontWeight:600}},`${r.received} de ${r.meta} paciente${r.meta!==1?"s":""}`),
                   h("span",{style:{fontSize:11,fontWeight:700,padding:"1px 8px",borderRadius:12,background:r.pct>=100?"rgba(122,173,138,.15)":"rgba(157,119,97,.12)",color:barColor}},`${Math.round(r.pct)}%`),
                   h("button",{onClick:()=>openEdit(r.proc,r.meta),title:"Editar meta",style:{background:"transparent",border:"none",color:P.text3,cursor:"pointer",fontSize:13,padding:2}},"✎"),
                   h("button",{onClick:()=>removeMeta(r.proc),title:"Remover meta",style:{background:"transparent",border:"none",color:P.text3,cursor:"pointer",fontSize:13,padding:2}},"🗑")
