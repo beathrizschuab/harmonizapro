@@ -5500,6 +5500,14 @@ function drawCoverImg(ctx,img,x,y,w,h){
   else{sw=img.naturalWidth;sh=sw/tr;sx=0;sy=(img.naturalHeight-sh)/2;}
   ctx.drawImage(img,sx,sy,sw,sh,x,y,w,h);
 }
+function drawContainImg(ctx,img,x,y,w,h){
+  // Encaixa a foto inteira na área (sem cortar), centralizada, com fundo preenchido
+  const ir=img.naturalWidth/img.naturalHeight, tr=w/h;
+  let dw,dh,dx,dy;
+  if(ir>tr){dw=w;dh=w/ir;dx=x;dy=y+(h-dh)/2;}
+  else{dh=h;dw=h*ir;dx=x+(w-dw)/2;dy=y;}
+  ctx.drawImage(img,0,0,img.naturalWidth,img.naturalHeight,dx,dy,dw,dh);
+}
 function drawCaptionBar(ctx,x,w,h,label,sub){
   const barH=92;
   ctx.fillStyle="rgba(10,5,6,.66)";
@@ -5519,8 +5527,8 @@ async function buildComparisonCanvas(antes,depois,clinicName){
   canvas.width=halfW*2;canvas.height=H;
   const ctx=canvas.getContext("2d");
   ctx.fillStyle="#160b0e";ctx.fillRect(0,0,canvas.width,canvas.height);
-  drawCoverImg(ctx,imgA,0,0,halfW,H);
-  drawCoverImg(ctx,imgB,halfW,0,halfW,H);
+  drawContainImg(ctx,imgA,0,0,halfW,H);
+  drawContainImg(ctx,imgB,halfW,0,halfW,H);
   ctx.fillStyle="#E1D2C6";ctx.fillRect(halfW-2,0,4,H);
   drawCaptionBar(ctx,0,halfW,H,"ANTES",fmtSubLegenda(antes));
   drawCaptionBar(ctx,halfW,halfW,H,"DEPOIS",fmtSubLegenda(depois));
@@ -5584,8 +5592,8 @@ function BeforeAfterSlider({beforeUrl,afterUrl,beforeLabel,afterLabel,beforeSub,
     onTouchStart:onDown,
     style:{position:"relative",width:"100%",height:height||340,borderRadius:12,overflow:"hidden",border:`1px solid ${P.border}`,cursor:"ew-resize",userSelect:"none",background:"#000",touchAction:"none"}
   },
-    h("img",{src:afterUrl,draggable:false,alt:"depois",style:{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",display:"block",pointerEvents:"none"}}),
-    h("img",{src:beforeUrl,draggable:false,alt:"antes",style:{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",display:"block",pointerEvents:"none",clipPath:`inset(0 ${100-pos}% 0 0)`}}),
+    h("img",{src:afterUrl,draggable:false,alt:"depois",style:{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain",background:"#000",display:"block",pointerEvents:"none"}}),
+    h("img",{src:beforeUrl,draggable:false,alt:"antes",style:{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain",background:"#000",display:"block",pointerEvents:"none",clipPath:`inset(0 ${100-pos}% 0 0)`}}),
     h("div",{style:{position:"absolute",top:0,bottom:0,left:pos+"%",width:2,background:"#fff",transform:"translateX(-1px)",boxShadow:"0 0 8px rgba(0,0,0,.6)",pointerEvents:"none"}}),
     h("div",{style:{position:"absolute",top:"50%",left:pos+"%",width:38,height:38,borderRadius:"50%",background:"#fff",transform:"translate(-50%,-50%)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 12px rgba(0,0,0,.45)",pointerEvents:"none",color:"#3a2a2a",fontSize:15,fontWeight:700}},"↔"),
     h("div",{style:{...badgeStyle,top:10,left:10}},beforeLabel||"ANTES"),
