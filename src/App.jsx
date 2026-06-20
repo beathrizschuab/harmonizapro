@@ -137,6 +137,17 @@ function updateIntercorrencia(setPatients,patientId,icId,updater){
   }));
 }
 
+function deleteIntercorrencia(setPatients,patientId,icId){
+  setPatients(prev=>prev.map(p=>{
+    if(p.id!==patientId)return p;
+    return{
+      ...p,
+      intercorrencias:(p.intercorrencias||[]).filter(ic=>ic.id!==icId),
+      sessions:(p.sessions||[]).map(s=>({...s,intercorrencias:(s.intercorrencias||[]).filter(ic=>ic.id!==icId)}))
+    };
+  }));
+}
+
 // ─── FIDELIZAÇÃO ──────────────────────────────────────────────────────────────
 // Critérios automáticos: valor gasto total + nº de sessões (frequência) + nº de indicações feitas
 const LOYALTY_TIERS=[
@@ -2967,6 +2978,8 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
   const[evoText,setEvoText]=useState("");
   const[showCond,setShowCond]=useState(false);
   const[condText,setCondText]=useState("");
+  const[editing,setEditing]=useState(false);
+  const[editForm,setEditForm]=useState(null);
   const sevCfg=IC_SEVERITY_CFG[icSeverityOf(ic)]||IC_SEVERITY_CFG.Leve;
   const stCfg=IC_STATUS_CFG[icStatusOf(ic)]||IC_STATUS_CFG["Em Acompanhamento"];
   const evolutions=icEvolutionsOf(ic);
@@ -2991,6 +3004,58 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
     Promise.all(readers).then(news=>{updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,photos:[...(old.photos||[]),...news]}));});
   }
   function removePhoto(fid){updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,photos:(old.photos||[]).filter(ph=>ph.id!==fid)}));}
+  function startEdit(){
+    setEditForm({type:ic.type||"Edema",severity:ic.severity||"Leve",status:ic.status||"Em Acompanhamento",procedure:ic.procedure||"",product:ic.product||"",region:ic.region||"",procedureDate:ic.procedureDate||"",date:ic.date||todayISO(),notes:ic.notes||"",nextReavaliacao:ic.nextReavaliacao||""});
+    setEditing(true);
+  }
+  function saveEdit(){
+    if(!editForm)return;
+    updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,...editForm}));
+    setEditing(false);setEditForm(null);
+  }
+  function cancelEdit(){setEditing(false);setEditForm(null);}
+  function efv(k){return v=>setEditForm(p=>({...p,[k]:v}));}
+  function handleDelete(){
+    if(!window.confirm("Excluir esta intercorrência? Esta ação não pode ser desfeita."))return;
+    deleteIntercorrencia(setPatients,patient.id,ic.id);
+  }
+  const btnSmall={fontSize:10.5,padding:"3px 9px",borderRadius:6,border:`1px solid ${P.border}`,background:"transparent",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"};
+  // ── Modo edição inline ────────────────────────────────────────────────────
+  if(editing&&editForm){
+    const efvSel=(k,opts)=>h("div",{style:{display:"flex",flexDirection:"column",gap:4,flex:1,minWidth:140}},
+      h("label",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},k==="type"?"Tipo":k==="severity"?"Gravidade":k==="status"?"Status":k==="procedure"?"Procedimento":k==="product"?"Produto":k==="region"?"Região":k==="procedureDate"?"Data Procedimento":k==="date"?"Data Intercorr.":k==="nextReavaliacao"?"Próx. Reavaliação":"Descrição"),
+      h("select",{value:editForm[k],onChange:e=>efv(k)(e.target.value),style:{fontSize:12,padding:"7px 10px",borderRadius:7,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontFamily:"'DM Sans',sans-serif"}},
+        opts.map(o=>h("option",{key:o,value:o},o||"—"))
+      )
+    );
+    const efvInp=(k,type="text",ph="")=>h("div",{style:{display:"flex",flexDirection:"column",gap:4,flex:1,minWidth:140}},
+      h("label",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},k==="region"?"Região":k==="procedureDate"?"Data Procedimento":k==="date"?"Data Intercorr.":"Próx. Reavaliação"),
+      h("input",{type,value:editForm[k],onChange:e=>efv(k)(e.target.value),placeholder:ph,style:{fontSize:12,padding:"7px 10px",borderRadius:7,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontFamily:"'DM Sans',sans-serif"}})
+    );
+    return h(Card,{style:{marginBottom:14,border:`2px solid ${P.accent}55`}},
+      h("div",{style:{fontSize:10,color:P.accent,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10,fontWeight:600}},"✏️ Editando intercorrência"),
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}},
+        efvSel("type",INTERCORRENCIA_TYPES),
+        efvSel("severity",IC_SEVERITY),
+        efvSel("status",IC_STATUS_LIST)
+      ),
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}},
+        efvInp("region","text","Ex: Malar D, Glabela..."),
+        efvInp("procedureDate","date"),
+        efvInp("date","date"),
+        efvInp("nextReavaliacao","date")
+      ),
+      h("div",{style:{marginBottom:10}},
+        h("label",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",display:"block",marginBottom:4}},"Descrição"),
+        h("textarea",{value:editForm.notes,onChange:e=>efv("notes")(e.target.value),rows:3,style:{width:"100%",fontSize:12.5,padding:"8px 10px",borderRadius:7,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontFamily:"'DM Sans',sans-serif",resize:"vertical"}})
+      ),
+      h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
+        h("button",{onClick:cancelEdit,style:{...btnSmall,color:P.text2}},"Cancelar"),
+        h("button",{onClick:saveEdit,style:{...btnSmall,background:P.accent,borderColor:P.accent,color:"#fff",fontWeight:600}},"💾 Salvar alterações")
+      )
+    );
+  }
+  // ── Modo visualização normal ──────────────────────────────────────────────
   return h(Card,{style:{marginBottom:14,border:`1px solid ${sevCfg.color}33`}},
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8,marginBottom:8}},
       h("div",null,
@@ -3000,7 +3065,9 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
       ),
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
         h("span",{style:{fontSize:10,padding:"3px 9px",borderRadius:12,background:sevCfg.bg,color:sevCfg.color,fontWeight:600}},icSeverityOf(ic)),
-        h("select",{value:icStatusOf(ic),onChange:e=>changeStatus(e.target.value),style:{fontSize:10.5,padding:"3px 8px",borderRadius:12,background:stCfg.bg,color:stCfg.color,border:`1px solid ${stCfg.color}55`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},IC_STATUS_LIST.map(st=>h("option",{key:st,value:st},st)))
+        h("select",{value:icStatusOf(ic),onChange:e=>changeStatus(e.target.value),style:{fontSize:10.5,padding:"3px 8px",borderRadius:12,background:stCfg.bg,color:stCfg.color,border:`1px solid ${stCfg.color}55`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},IC_STATUS_LIST.map(st=>h("option",{key:st,value:st},st))),
+        h("button",{onClick:startEdit,title:"Editar",style:{...btnSmall,color:P.accent2}},"✏️ Editar"),
+        h("button",{onClick:handleDelete,title:"Excluir",style:{...btnSmall,color:P.red,borderColor:"rgba(192,112,112,.35)"}},"🗑️ Excluir")
       )
     ),
     (ic.procedure||ic.product||ic.region)&&h("div",{style:{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:P.text2,marginBottom:8,padding:"8px 12px",background:P.bg3,borderRadius:8}},
