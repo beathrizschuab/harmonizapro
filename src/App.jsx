@@ -3244,15 +3244,25 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
   const[editSess,setEditSess]=useState(null);
-  const[editingMapSessId,setEditingMapSessId]=useState(null); // id da sessão cujo mapa simples está sendo editado fora do form da sessão
-  const editingMapSess=useMemo(()=>editingMapSessId?(patient.sessions||[]).find(s=>s.id===editingMapSessId)||null:null,[editingMapSessId,patient.sessions]);
+  const[markerPlanning,setMarkerPlanning]=useState(null); // null | "new" | planObj (planejamento com marcadores)
+  const[markerPlanningForSession,setMarkerPlanningForSession]=useState(null); // sessId quando o markerPlanning "new" deve nascer já vinculado a uma sessão
+  const patientPhotoGallery=useMemo(()=>getPatientPhotoGallery(patient),[patient.profilePhoto,patient.sessions]);
+  const mapPlans=useMemo(()=>(patient.planejamento||[]).filter(pl=>pl.markerPlan),[patient.planejamento]);
+  const mapPlanBySession=useMemo(()=>{
+    const idx={};
+    mapPlans.forEach(pl=>{ if(pl.sessionId) idx[pl.sessionId]=pl; });
+    return idx;
+  },[mapPlans]);
+  // Abre o mapa com foto vinculado a uma sessão: se já existe, edita; senão, cria novo já amarrado a essa sessão.
+  function openMapForSession(sess){
+    const existing=mapPlanBySession[sess.id];
+    if(existing){ setMarkerPlanning(existing); }
+    else { setMarkerPlanningForSession(sess.id); setMarkerPlanning("new"); }
+  }
   const[editPat,setEditPat]=useState(false);
   const[showIntercorr,setShowIntercorr]=useState(null);
   const[showPlan,setShowPlan]=useState(false);
   const[planAnnotating,setPlanAnnotating]=useState(null); // null | "new" | planObj
-  const[markerPlanning,setMarkerPlanning]=useState(null); // null | "new" | planObj (planejamento com marcadores)
-  const patientPhotoGallery=useMemo(()=>getPatientPhotoGallery(patient),[patient.profilePhoto,patient.sessions]);
-  const mapPlans=useMemo(()=>(patient.planejamento||[]).filter(pl=>pl.markerPlan),[patient.planejamento]);
   const[showNewPkg,setShowNewPkg]=useState(false);
   const[pkgForm,setPkgForm]=useState({name:"",procedure:"",total:4,price:"",notes:""});
   // ─ Orçamentos ─
@@ -3344,12 +3354,6 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     }
     setShowNewS(false);setEditSess(null);setSForm(blankS);
   }
-  // Salva o mapa facial (FaceMap simples) de uma sessão já existente, sem mexer em nenhum outro
-  // campo da sessão (produto, valor, estoque, etc) — permite registrar o mapa depois, no dia a dia,
-  // sem precisar reabrir o cadastro completo da sessão.
-  function saveSessionFaceMap(sessId,faceMapData){
-    upd(p=>({...p,sessions:(p.sessions||[]).map(x=>x.id===sessId?{...x,faceMap:faceMapData}:x)}));
-  }
   function toggleFinStatus(sessId,newSt){
     upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,finStatus:newSt,paid:newSt==="Pago"}:s)}));
     // Sincronizar com Financeiro
@@ -3362,7 +3366,14 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     if(sess?.stockDebit&&Number(sess.stockDebit.qty)>0){
       estornarLote(setProducts,sess.stockDebit.product,sess.stockDebit.loteId,sess.stockDebit.qty,`Estorno · sessão excluída (${patient.name})`);
     }
-    upd(p=>({...p,sessions:(p.sessions||[]).filter(s=>s.id!==id)}));
+    // Se havia um mapa com foto vinculado a esta sessão, ele não é apagado (preserva o registro clínico
+    // e qualquer débito de estoque já feito pelos marcadores) — só perde o vínculo e passa a aparecer
+    // como mapa avulso.
+    upd(p=>({
+      ...p,
+      sessions:(p.sessions||[]).filter(s=>s.id!==id),
+      planejamento:(p.planejamento||[]).map(pl=>pl.sessionId===id?{...pl,sessionId:null}:pl)
+    }));
   }
   function addMedia(sessId,files,type){
     const readers=files.map(f=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,type:f.type,url:e.target.result,date:new Date().toLocaleDateString("pt-BR")});r.readAsDataURL(f);}));
@@ -3400,13 +3411,13 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     upd(p=>({...p,planejamento:(p.planejamento||[]).filter(pl=>pl.id!==id)}));
   }
   function saveMarkerPlanNew(data){
-    const pl={id:Date.now(),title:"Mapa Facial",steps:[],notes:"",done:false,created:new Date().toLocaleDateString("pt-BR"),markerPlan:data};
+    const pl={id:Date.now(),title:markerPlanningForSession?"Mapa Facial · Sessão":"Mapa Facial",steps:[],notes:"",done:false,created:new Date().toLocaleDateString("pt-BR"),markerPlan:data,sessionId:markerPlanningForSession||null};
     upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
-    setMarkerPlanning(null);
+    setMarkerPlanning(null);setMarkerPlanningForSession(null);
   }
   function saveMarkerPlan(planId,data){
     upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>pl.id===planId?{...pl,markerPlan:data,updatedAt:new Date().toLocaleDateString("pt-BR")}:pl)}));
-    setMarkerPlanning(null);
+    setMarkerPlanning(null);setMarkerPlanningForSession(null);
   }
 
   function togglePlanStep(planId,stepIdx){
@@ -3670,7 +3681,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:s.finStatus==="Pago"?P.green:s.finStatus==="Pendente"?P.yellow:P.red}},fmtCurr(s.value)),
             s.payMethod==="Cartão Crédito"&&s.parcelas>1&&h("div",{style:{fontSize:11,color:P.accent,background:"rgba(157,119,97,.1)",borderRadius:8,padding:"2px 8px",fontWeight:600}},`${s.parcelas}x ${fmtCurr(s.value/s.parcelas)}`),
             h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.id,e.target.value),style:{fontSize:11,padding:"3px 8px",borderRadius:12,color:s.finStatus==="Pago"?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st))),
-            h("button",{onClick:()=>setEditingMapSessId(s.id),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"🗺 Mapa"),
+            h("button",{onClick:()=>openMapForSession(s),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},mapPlanBySession[s.id]?"🗺 Editar Mapa":"🗺 Mapa"),
             h("button",{onClick:()=>{setEditSess(s);setSForm({...s,value:String(s.value),finStatus:s.finStatus||"Pendente"});setShowNewS(true);},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"✎"),
             h("button",{onClick:()=>delSession(s.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"🗑")
           )
@@ -3679,9 +3690,22 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         s.notes&&h("div",{style:{background:P.bg3,borderRadius:8,padding:"10px 14px",marginBottom:8}},h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"Notas"),h("div",{style:{fontSize:13,color:P.text2,lineHeight:1.6}},s.notes)),
         s.evolution&&h("div",{style:{background:`rgba(92,31,50,.06)`,borderRadius:8,padding:"10px 14px",border:`1px solid rgba(92,31,50,.15)`,marginBottom:8}},h("div",{style:{fontSize:9.5,color:P.accent,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"Evolução / Retorno"),h("div",{style:{fontSize:13,color:P.text2,lineHeight:1.6}},s.evolution)),
         s.returnReminderDays&&h("div",{style:{fontSize:11,color:P.text3,marginBottom:8}},`⏰ Lembrete de retorno: ${s.returnReminderDays} dias após procedimento`),
-        s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)
-          ?h("div",{onClick:()=>setEditingMapSessId(s.id),style:{padding:"8px 12px",background:P.bg3,borderRadius:8,marginBottom:8,cursor:"pointer"},title:"Clique para editar o mapa"},h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},`Mapa · ${s.faceMap.type}`),h("div",{style:{display:"flex",gap:5,flexWrap:"wrap"}},Object.entries(s.faceMap.points||{}).filter(([,v])=>v>0).map(([k,v])=>h("span",{key:k,style:{fontSize:11,padding:"3px 9px",borderRadius:20,background:`rgba(92,31,50,.1)`,color:P.accent}},`${k.replace(/_/g," ")}: ${v}${s.faceMap.type==="botox"?"U":"ml"}`))))
-          :h("div",{onClick:()=>setEditingMapSessId(s.id),style:{padding:"8px 12px",background:"transparent",border:`1px dashed ${P.border}`,borderRadius:8,marginBottom:8,cursor:"pointer",fontSize:11.5,color:P.text3,textAlign:"center"}},"🗺 Mapa facial ainda não preenchido — clique para registrar"),
+        (()=>{
+          const mp=mapPlanBySession[s.id];
+          if(mp&&mp.markerPlan?.baseImage){
+            const mk=mp.markerPlan.markers||[];
+            return h("div",{onClick:()=>openMapForSession(s),style:{display:"flex",gap:10,alignItems:"center",padding:"8px 10px",background:P.bg3,borderRadius:8,marginBottom:8,cursor:"pointer"},title:"Clique para editar o mapa"},
+              h("div",{style:{width:46,height:46,borderRadius:6,overflow:"hidden",flexShrink:0,position:"relative",border:`1px solid ${P.border}`}},
+                h("img",{src:mp.markerPlan.baseImage,style:{width:"100%",height:"100%",objectFit:"cover",display:"block"}})
+              ),
+              h("div",{style:{flex:1,minWidth:0}},
+                h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:3}},"Mapa com Foto"),
+                h("div",{style:{fontSize:11.5,color:P.text2}},`${mk.length} marcador${mk.length===1?"":"es"} · ${mk.filter(m=>m.done).length} realizado${mk.filter(m=>m.done).length===1?"":"s"}`)
+              )
+            );
+          }
+          return h("div",{onClick:()=>openMapForSession(s),style:{padding:"8px 12px",background:"transparent",border:`1px dashed ${P.border}`,borderRadius:8,marginBottom:8,cursor:"pointer",fontSize:11.5,color:P.text3,textAlign:"center"}},"🗺 Mapa facial (com foto) ainda não preenchido — clique para registrar");
+        })(),
         (s.intercorrencias||[]).length>0&&h("div",{style:{marginBottom:8,padding:"8px 12px",background:"rgba(192,112,112,.06)",borderRadius:8,border:"1px solid rgba(192,112,112,.18)"}},h("div",{style:{fontSize:10,color:P.red,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"⚠ Intercorrências"),(s.intercorrencias||[]).map((ic,i)=>h("div",{key:i,style:{fontSize:12,color:P.text2}},`${ic.date} · ${ic.type}: ${ic.notes}`))),
         (s.photos||[]).length>0&&h("div",{style:{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}},(s.photos||[]).slice(0,4).map(ph=>h("img",{key:ph.id,src:ph.url,alt:ph.name,style:{width:58,height:58,objectFit:"cover",borderRadius:6,border:`1px solid ${P.border}`}})),(s.photos||[]).length>4&&h("div",{style:{width:58,height:58,borderRadius:6,background:P.card2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:P.text3}},`+${(s.photos||[]).length-4}`)),
         h("div",{style:{display:"flex",gap:8,marginTop:10}},
@@ -3691,7 +3715,8 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         )
       ))
     ),
-    // ─── MAPA TAB (foto da paciente + marcadores: produto, lote, quantidade, custo planejado×realizado)
+    // ─── MAPA TAB (lista as sessões da paciente; cada sessão tem seu próprio mapa com foto real,
+    // com marcadores de produto/lote/quantidade e custo planejado×realizado) ──────────────────
     tab==="mapa"&&h("div",null,
       // MarkerPhotoPlanner fullscreen — mesmo estado/handlers usados na tab Planejamento
       markerPlanning&&h(MarkerPhotoPlanner,{
@@ -3699,7 +3724,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         allProducts,
         setProducts,
         patientPhotos:patientPhotoGallery,
-        onClose:()=>setMarkerPlanning(null),
+        onClose:()=>{setMarkerPlanning(null);setMarkerPlanningForSession(null);},
         onSave:data=>{
           if(markerPlanning==="new") saveMarkerPlanNew(data);
           else saveMarkerPlan(markerPlanning.id,data);
@@ -3708,18 +3733,28 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}},
         h("div",null,
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Mapa Facial"),
-          h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},"Marque regiões direto na foto da paciente, com produto, lote e quantidade.")
+          h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},"Cada sessão pode ter seu próprio mapa, com marcadores direto na foto da paciente.")
         ),
-        h(Btn,{onClick:()=>setMarkerPlanning("new"),style:{fontSize:12}},"📍 Novo Mapa com Foto")
+        h(Btn,{onClick:()=>{setMarkerPlanningForSession(null);setMarkerPlanning("new");},style:{fontSize:12}},"📍 Mapa Avulso (sem sessão)")
       ),
-      mapPlans.length===0&&h(Card,{style:{textAlign:"center",padding:40}},
-        h("div",{style:{fontSize:32,marginBottom:12}},"🗺"),
-        h("div",{style:{color:P.text3,fontSize:14,marginBottom:16}},"Nenhum mapa registrado ainda."),
-        h(Btn,{onClick:()=>setMarkerPlanning("new")},"📍 Criar Mapa com Foto")
+      (patient.sessions||[]).length===0&&h(Card,{style:{textAlign:"center",padding:40}},
+        h("div",{style:{fontSize:32,marginBottom:12}},"📋"),
+        h("div",{style:{color:P.text3,fontSize:14}},"Nenhuma sessão registrada ainda. Cadastre uma sessão no Prontuário para poder anexar o mapa facial.")
       ),
       h("div",{style:{display:"flex",flexDirection:"column",gap:14}},
-        mapPlans.map(pl=>{
-          const mp=pl.markerPlan;
+        (patient.sessions||[]).map(s=>{
+          const pl=mapPlanBySession[s.id];
+          const mp=pl?.markerPlan;
+          if(!mp||!mp.baseImage){
+            // Sessão sem mapa com foto ainda — card compacto convidando a criar.
+            return h(Card,{key:s.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}},
+              h("div",null,
+                h("div",{style:{fontSize:12.5,color:P.text3}},"📅 "+s.date),
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},s.procedure)
+              ),
+              h(Btn,{onClick:()=>openMapForSession(s),style:{fontSize:12}},"📍 Criar Mapa com Foto")
+            );
+          }
           const cu=name=>markerUnitCost(allProducts,name);
           const mpTotal=(mp.markers||[]).length;
           const mpDone=(mp.markers||[]).filter(m=>m.done).length;
@@ -3728,9 +3763,9 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           const mpActual=doneList.reduce((a,m)=>a+(Number(m.actualQty)||0)*cu(m.actualProduct||m.plannedProduct),0);
           const doneListPlannedCost=doneList.reduce((a,m)=>a+(Number(m.plannedQty)||0)*cu(m.plannedProduct),0);
           const mpDiff=mpActual-doneListPlannedCost;
-          return h(Card,{key:pl.id,style:{padding:0,overflow:"hidden"}},
+          return h(Card,{key:s.id,style:{padding:0,overflow:"hidden"}},
             h("div",{style:{display:"flex",gap:0,flexWrap:"wrap"}},
-              mp.baseImage&&h("div",{style:{width:200,flexShrink:0,position:"relative",cursor:"pointer",lineHeight:0},onClick:()=>setMarkerPlanning(pl)},
+              h("div",{style:{width:200,flexShrink:0,position:"relative",cursor:"pointer",lineHeight:0},onClick:()=>setMarkerPlanning(pl)},
                 h("img",{src:mp.baseImage,alt:"mapa facial",style:{width:"100%",height:"100%",objectFit:"cover",display:"block",minHeight:160}}),
                 (mp.markers||[]).map((m,mi)=>h("div",{key:mi,style:{position:"absolute",left:m.xPct+"%",top:m.yPct+"%",transform:"translate(-50%,-50%)",width:18,height:18,borderRadius:"50%",background:m.done?"rgba(122,173,138,.92)":"rgba(157,119,97,.92)",border:"1.5px solid rgba(255,255,255,.9)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:9,fontWeight:700}},mi+1)),
                 h("div",{style:{position:"absolute",inset:0,background:"rgba(0,0,0,.0)",display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .2s"},
@@ -3741,9 +3776,9 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
               h("div",{style:{flex:1,minWidth:240,padding:"14px 16px",display:"flex",flexDirection:"column",gap:8}},
                 h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:6}},
                   h("div",null,
-                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:2}},pl.title||"Mapa Facial"),
+                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:2}},`📅 ${s.date} · ${s.procedure}`),
                     h("div",{style:{fontSize:11,color:P.text3}},
-                      "Criado em "+pl.created,
+                      "Mapa criado em "+pl.created,
                       pl.updatedAt&&h("span",{style:{marginLeft:8,color:P.accent}},"· Editado em "+pl.updatedAt),
                       h("span",{style:{marginLeft:8,fontSize:10,color:P.accent,background:"rgba(157,119,97,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(157,119,97,.3)"}},"📍 "+mpDone+"/"+mpTotal+" marcadores realizados")
                     )
@@ -3768,11 +3803,30 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           );
         })
       ),
-      h(Card,{style:{marginTop:14}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Mapas de Sessões Anteriores (registro rápido)"),
-        (patient.sessions||[]).filter(s=>s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)).length===0
-          ?h("div",{style:{color:P.text3,fontSize:13}},"Nenhum mapa de sessão registrado.")
-          :(patient.sessions||[]).filter(s=>s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)).map((s,i)=>h("div",{key:i,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`,display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:6}},
+      // Mapas avulsos: criados sem vínculo a uma sessão específica (ex: planejamento inicial, antes de agendar).
+      mapPlans.filter(pl=>!pl.sessionId).length>0&&h(Card,{style:{marginTop:14}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Mapas Avulsos (sem sessão vinculada)"),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+          mapPlans.filter(pl=>!pl.sessionId).map(pl=>{
+            const mp=pl.markerPlan;
+            return h("div",{key:pl.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`,gap:8,flexWrap:"wrap"}},
+              h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                mp.baseImage&&h("img",{src:mp.baseImage,style:{width:36,height:36,borderRadius:6,objectFit:"cover",border:`1px solid ${P.border}`}}),
+                h("span",{style:{fontSize:13,color:P.text}},pl.title||"Mapa Facial")
+              ),
+              h("div",{style:{display:"flex",gap:5}},
+                h("button",{onClick:()=>setMarkerPlanning(pl),style:{padding:"4px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},"✎ Editar"),
+                h("button",{onClick:()=>deletePlan(pl.id),style:{padding:"4px 8px",borderRadius:7,background:"transparent",border:"1px solid rgba(192,112,112,.2)",color:P.red,cursor:"pointer",fontSize:11}},"🗑")
+              )
+            );
+          })
+        )
+      ),
+      // Histórico legado: mapas simples (boneco genérico) preenchidos antes desta atualização.
+      (patient.sessions||[]).filter(s=>s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)).length>0&&h(Card,{style:{marginTop:14}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:6}},"Mapas Antigos (registro simplificado)"),
+        h("div",{style:{fontSize:11.5,color:P.text3,marginBottom:14}},"Registrados antes da atualização para mapas com foto. Somente leitura."),
+        (patient.sessions||[]).filter(s=>s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)).map((s,i)=>h("div",{key:i,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`,display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:6}},
               h("span",{style:{fontSize:13,color:P.text}},`${s.date} · ${s.procedure}`),
               h("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},Object.entries(s.faceMap.points||{}).filter(([,v])=>v>0).map(([k,v])=>h("span",{key:k,style:{fontSize:10,padding:"2px 8px",borderRadius:12,background:`rgba(92,31,50,.1)`,color:P.accent}},`${k.replace(/_/g," ")}: ${v}${s.faceMap.type==="botox"?"U":"ml"}`)))
             ))
@@ -3869,7 +3923,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         allProducts,
         setProducts,
         patientPhotos:patientPhotoGallery,
-        onClose:()=>setMarkerPlanning(null),
+        onClose:()=>{setMarkerPlanning(null);setMarkerPlanningForSession(null);},
         onSave:data=>{
           if(markerPlanning==="new") saveMarkerPlanNew(data);
           else saveMarkerPlan(markerPlanning.id,data);
@@ -3883,7 +3937,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
           h(Btn,{variant:"ghost",onClick:()=>setShowPlan(true),style:{fontSize:12}},"＋ Plano de Texto"),
           h(Btn,{variant:"ghost",onClick:()=>{setPlanAnnotating("new");},style:{fontSize:12}},"🖼 Plano com Foto"),
-          h(Btn,{onClick:()=>setMarkerPlanning("new"),style:{fontSize:12}},"📍 Plano com Marcadores")
+          h(Btn,{onClick:()=>{setMarkerPlanningForSession(null);setMarkerPlanning("new");},style:{fontSize:12}},"📍 Plano com Marcadores")
         )
       ),
       h("div",{style:{marginBottom:16}}),
@@ -3893,7 +3947,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h("div",{style:{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}},
           h(Btn,{variant:"ghost",onClick:()=>setShowPlan(true)},"＋ Plano de Texto"),
           h(Btn,{variant:"ghost",onClick:()=>setPlanAnnotating("new")},"🖼 Plano com Foto"),
-          h(Btn,{onClick:()=>setMarkerPlanning("new")},"📍 Plano com Marcadores")
+          h(Btn,{onClick:()=>{setMarkerPlanningForSession(null);setMarkerPlanning("new");}},"📍 Plano com Marcadores")
         )
       ),
       h("div",{style:{display:"flex",flexDirection:"column",gap:14}},
@@ -4206,17 +4260,10 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Field,{label:"Notas"},h(TA,{value:sForm.notes,onChange:sfv("notes"),placeholder:"Detalhes técnicos...",rows:3})),
         h(Field,{label:"Evolução"},h(TA,{value:sForm.evolution,onChange:sfv("evolution"),placeholder:"Próximos passos...",rows:2})),
         editSess&&h(Field,{label:"Mapa de Aplicação"},
-          h("div",{style:{fontSize:12,color:P.text3,padding:"10px 12px",background:P.bg3,borderRadius:8}},"O mapa facial desta sessão é registrado separadamente. Feche este formulário e clique em \"🗺 Mapa\" no card da sessão para preencher ou editar.")
+          h("div",{style:{fontSize:12,color:P.text3,padding:"10px 12px",background:P.bg3,borderRadius:8}},"O mapa facial (com foto da paciente) é registrado separadamente. Feche este formulário e clique em \"🗺 Mapa\" no card da sessão para preencher ou editar.")
         )
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},h(Btn,{variant:"ghost",onClick:()=>{setShowNewS(false);setEditSess(null);}},"Cancelar"),!editSess&&h("button",{onClick:()=>{saveSession();setTimeout(()=>{setPkgForm(p=>({...p,procedure:sForm.procedure}));setShowNewPkg(true);setTab("pacotes");},100);},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:"1px solid "+P.gold,color:P.gold}},"📦 Salvar e Criar Pacote"),h(Btn,{onClick:saveSession},editSess?"Salvar":"Salvar Sessão"))
-    ),
-    // ─── MODAL DEDICADO AO MAPA FACIAL DE UMA SESSÃO ──────────────────────────
-    // Independente do form de sessão: pode ser aberto a qualquer momento (mesmo dias depois),
-    // edita só faceMap, nunca mexe em produto/valor/estoque/etc da sessão.
-    editingMapSess&&h(Modal,{open:true,onClose:()=>setEditingMapSessId(null),title:`🗺 Mapa Facial · ${editingMapSess.procedure} (${editingMapSess.date})`,width:640},
-      h(FaceMapEditor,{sessionMap:editingMapSess.faceMap,onChange:fm=>saveSessionFaceMap(editingMapSess.id,fm)}),
-      h("div",{style:{display:"flex",justifyContent:"flex-end",marginTop:12}},h(Btn,{variant:"ghost",onClick:()=>setEditingMapSessId(null)},"Fechar"))
     ),
     showIntercorr&&h(Modal,{open:true,onClose:()=>setShowIntercorr(null),title:"⚠ Registrar Intercorrência",width:480},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
