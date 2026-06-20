@@ -1711,7 +1711,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
     const ms=p.name.toLowerCase().includes(search.toLowerCase())||p.phone.includes(search)||p.cpf?.includes(search);
     const mf=filter==="all"||(p._autoStatus||p.status)===filter;
     return ms&&mf;
-  });
+  }).sort((a,b)=>a.name.localeCompare(b.name,"pt-BR",{sensitivity:"base"}));
   function addPatient(){
     const np={id:Date.now(),...form,age:Number(form.age),profilePhoto:profPhoto,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
       complaints:form.complaints.split(",").map(s=>s.trim()).filter(Boolean),tags:[],
@@ -2624,10 +2624,10 @@ function Estoque({products,setProducts}){
     } catch { return null; }
   }
 
-  const visible=filter==="all"?products:products.filter(i=>{
+  const visible=(filter==="all"?products:products.filter(i=>{
     const st = i.lotes ? calcStatus(i.lotes, i.min) : i.status;
     return st === filter;
-  });
+  })).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"","pt-BR",{sensitivity:"base"}));
 
   function save(){
     const qty=Number(form.qty), min=Number(form.min);
@@ -2869,12 +2869,24 @@ function Estoque({products,setProducts}){
 }
 
 // ─── FINANCEIRO ───────────────────────────────────────────────────────────────
+// Parser flexível: aceita DD/MM/YYYY ou YYYY-MM-DD
+function parseAnyDate(s){
+  if(!s)return null;
+  if(s.includes("/")){const[d,m,y]=s.split("/");return new Date(`${y}-${m}-${d}T12:00:00`);}
+  if(s.includes("-")){return new Date(s+"T12:00:00");}
+  return null;
+}
+
 function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncomes}){
   const[showNewExp,setShowNewExp]=useState(false);
   const[editExp,setEditExp]=useState(null);
   const[showNewInc,setShowNewInc]=useState(false);
   const[editInc,setEditInc]=useState(null);
   const[finTab,setFinTab]=useState("entradas");
+  const[viewTab,setViewTab]=useState("resumo"); // resumo | fluxo
+  const now=new Date();
+  const[selMonth,setSelMonth]=useState(now.getMonth());
+  const[selYear,setSelYear]=useState(now.getFullYear());
   const blankExp={desc:"",date:"",cat:"Outros",value:"",status:"Pago",notes:"",parcelas:"",taxaMaq:""};
   const blankInc={desc:"",date:"",cat:"Sessão",value:"",payMethod:"Pix",status:"Pago",notes:"",parcelas:"1",taxaMaq:"",patientName:""};
   const[form,setForm]=useState(blankExp);
@@ -2882,13 +2894,65 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const ifv=k=>v=>setIncForm(p=>({...p,[k]:v}));
   const h=createElement;
+
+  function prevMonth(){ if(selMonth===0){setSelMonth(11);setSelYear(y=>y-1);} else setSelMonth(m=>m-1); }
+  function nextMonth(){ if(selMonth===11){setSelMonth(0);setSelYear(y=>y+1);} else setSelMonth(m=>m+1); }
+  function goToday(){ setSelMonth(now.getMonth()); setSelYear(now.getFullYear()); }
+  const isCurrentMonth=selMonth===now.getMonth()&&selYear===now.getFullYear();
+
   const allS=patients.flatMap((p,i)=>(p.sessions||[]).map(s=>({...s,pname:p.name,pi:i,pid:p.id})));
-  const sessionsRec=allS.filter(s=>s.paid).reduce((a,s)=>a+s.value,0);
-  const incomesRec=incomes.filter(i=>!i.sessRef&&i.status==="Pago").reduce((a,i)=>a+Number(i.value||0),0);
+
+  // Filtra pelo mês selecionado
+  const inMonth=d=>{ const dt=parseAnyDate(d); return dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear; };
+  const monthSessions=allS.filter(s=>inMonth(s.date));
+  const monthIncomesExtra=incomes.filter(i=>!i.sessRef&&inMonth(i.date));
+  const monthExpenses=expenses.filter(e=>inMonth(e.date));
+
+  const sessionsRec=monthSessions.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0);
+  const incomesRec=monthIncomesExtra.filter(i=>i.status==="Pago").reduce((a,i)=>a+Number(i.value||0),0);
   const received=sessionsRec+incomesRec;
-  const pending=allS.filter(s=>!s.paid).reduce((a,s)=>a+s.value,0);
-  const totalExp=expenses.reduce((a,e)=>a+Number(e.value||0),0);
-  const months=[{m:"Jan",rec:38000,exp:14000},{m:"Fev",rec:41000,exp:13200},{m:"Mar",rec:44500,exp:15100},{m:"Abr",rec:42000,exp:14800},{m:"Mai",rec:received||48200,exp:totalExp}];
+  const pending=monthSessions.filter(s=>!s.paid).reduce((a,s)=>a+Number(s.value||0),0)
+    + monthIncomesExtra.filter(i=>i.status!=="Pago").reduce((a,i)=>a+Number(i.value||0),0);
+  const totalExp=monthExpenses.reduce((a,e)=>a+Number(e.value||0),0);
+
+  // Histórico de 5 meses terminando no mês selecionado, para o gráfico de barras
+  const months=[];
+  for(let k=4;k>=0;k--){
+    let mm=selMonth-k, yy=selYear;
+    while(mm<0){mm+=12;yy--;}
+    const recM=allS.filter(s=>s.paid&&{m:1}&&(()=>{const dt=parseAnyDate(s.date);return dt&&dt.getMonth()===mm&&dt.getFullYear()===yy;})()).reduce((a,s)=>a+Number(s.value||0),0)
+      + incomes.filter(i=>!i.sessRef&&i.status==="Pago"&&(()=>{const dt=parseAnyDate(i.date);return dt&&dt.getMonth()===mm&&dt.getFullYear()===yy;})()).reduce((a,i)=>a+Number(i.value||0),0);
+    const expM=expenses.filter(e=>(()=>{const dt=parseAnyDate(e.date);return dt&&dt.getMonth()===mm&&dt.getFullYear()===yy;})()).reduce((a,e)=>a+Number(e.value||0),0);
+    months.push({m:MONTH_NAMES[mm].slice(0,3),mm,yy,rec:recM,exp:expM,isSel:mm===selMonth&&yy===selYear});
+  }
+
+  // ── Fluxo de caixa: saldo acumulado dia a dia dentro do mês selecionado ──
+  const daysInMonth=new Date(selYear,selMonth+1,0).getDate();
+  const cashEvents=[
+    ...monthSessions.filter(s=>s.paid).map(s=>({date:parseAnyDate(s.date),value:Number(s.value||0),type:"entrada",desc:`${s.pname} — ${s.procedure}`})),
+    ...monthIncomesExtra.filter(i=>i.status==="Pago").map(i=>({date:parseAnyDate(i.date),value:Number(i.value||0),type:"entrada",desc:i.desc||i.patientName||"Entrada"})),
+    ...monthExpenses.filter(e=>e.status!=="Cancelado").map(e=>({date:parseAnyDate(e.date),value:-Number(e.value||0),type:"saida",desc:e.desc})),
+  ].filter(ev=>ev.date).sort((a,b)=>a.date-b.date);
+
+  // Saldo inicial: soma de tudo ANTES do mês selecionado (todas as receitas pagas - despesas não canceladas)
+  const startOfMonth=new Date(selYear,selMonth,1);
+  const priorSessions=allS.filter(s=>s.paid&&parseAnyDate(s.date)&&parseAnyDate(s.date)<startOfMonth).reduce((a,s)=>a+Number(s.value||0),0);
+  const priorIncomes=incomes.filter(i=>!i.sessRef&&i.status==="Pago"&&parseAnyDate(i.date)&&parseAnyDate(i.date)<startOfMonth).reduce((a,i)=>a+Number(i.value||0),0);
+  const priorExpenses=expenses.filter(e=>e.status!=="Cancelado"&&parseAnyDate(e.date)&&parseAnyDate(e.date)<startOfMonth).reduce((a,e)=>a+Number(e.value||0),0);
+  const saldoInicial=priorSessions+priorIncomes-priorExpenses;
+
+  // Constrói linha do tempo diária com saldo acumulado
+  let running=saldoInicial;
+  const dailyFlow=[];
+  for(let d=1;d<=daysInMonth;d++){
+    const dayEvents=cashEvents.filter(ev=>ev.date.getDate()===d);
+    const dayTotal=dayEvents.reduce((a,e)=>a+e.value,0);
+    running+=dayTotal;
+    if(dayEvents.length>0||d===daysInMonth)
+      dailyFlow.push({day:d,events:dayEvents,dayTotal,saldo:running});
+  }
+  const saldoFinal=running;
+
   function toggleFinStatus(pid,sid,newSt){setPatients(prev=>prev.map(p=>p.id!==pid?p:{...p,sessions:(p.sessions||[]).map(s=>s.id!==sid?s:{...s,finStatus:newSt,paid:newSt==="Pago"})}));}
   function saveExp(){
     if(editExp)setExpenses(prev=>prev.map(e=>e.id===editExp.id?{...e,...form,value:Number(form.value)||0}:e));
@@ -2908,31 +2972,80 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
   function delInc(id){if(window.confirm("Excluir entrada?"))setIncomes(prev=>prev.filter(i=>i.id!==id));}
   function openEditExp(e){setEditExp(e);setForm({...e,value:String(e.value)});setShowNewExp(true);}
   function openEditInc(i){setEditInc(i);setIncForm({...i,value:String(i.value)});setShowNewInc(true);}
+
   return h("div",null,
     h(SectionHeader,{title:"Fluxo de Caixa",sub:"Resumo financeiro completo"}),
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
-      [{l:"Receita",v:fmtCurr(received||48200),c:P.accent},{l:"Despesas",v:fmtCurr(totalExp),c:P.red},{l:"Lucro Líquido",v:fmtCurr((received||48200)-totalExp),c:P.green},{l:"A Receber",v:fmtCurr(pending||6800),c:P.yellow}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)))
+
+    // ── Navegador de mês ──────────────────────────────────────────────────
+    h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:20,padding:"10px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12}},
+      h("button",{onClick:prevMonth,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"←"),
+      h("div",{style:{minWidth:180,textAlign:"center"}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},`${MONTH_NAMES[selMonth]} ${selYear}`),
+        !isCurrentMonth&&h("button",{onClick:goToday,style:{fontSize:10,color:P.accent,background:"transparent",border:"none",cursor:"pointer",textDecoration:"underline",marginTop:2}},"voltar para o mês atual")
+      ),
+      h("button",{onClick:nextMonth,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"→")
     ),
+
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
+      [{l:"Receita do Mês",v:fmtCurr(received),c:P.accent},{l:"Despesas do Mês",v:fmtCurr(totalExp),c:P.red},{l:"Lucro Líquido",v:fmtCurr(received-totalExp),c:P.green},{l:"A Receber",v:fmtCurr(pending),c:P.yellow}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)))
+    ),
+
     h(Card,{style:{marginBottom:18}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Receita vs Despesas"),
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Receita vs Despesas (últimos 5 meses)"),
       h("div",{style:{display:"flex",alignItems:"flex-end",gap:12,height:90}},
-        months.map(m=>{const mx=55000;return h("div",{key:m.m,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}},
+        months.map(m=>{const mx=Math.max(...months.map(x=>Math.max(x.rec,x.exp)),1);return h("div",{key:m.m+m.yy,onClick:()=>{setSelMonth(m.mm);setSelYear(m.yy);},style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5,cursor:"pointer"}},
           h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",gap:3,width:"100%"}},
-            h("div",{style:{flex:1,height:`${(m.rec/mx)*100}%`,background:`linear-gradient(to top,${P.rose},${P.gold})`,borderRadius:"3px 3px 0 0"}}),
-            h("div",{style:{flex:1,height:`${(m.exp/mx)*100}%`,background:`linear-gradient(to top,${P.red},rgba(192,112,112,.3))`,borderRadius:"3px 3px 0 0"}})
+            h("div",{style:{flex:1,height:`${(m.rec/mx)*100}%`,background:`linear-gradient(to top,${P.rose},${P.gold})`,borderRadius:"3px 3px 0 0",opacity:m.isSel?1:.55}}),
+            h("div",{style:{flex:1,height:`${(m.exp/mx)*100}%`,background:`linear-gradient(to top,${P.red},rgba(192,112,112,.3))`,borderRadius:"3px 3px 0 0",opacity:m.isSel?1:.55}})
           ),
-          h("div",{style:{fontSize:9,color:m.m==="Mai"?P.accent:P.text3,textTransform:"uppercase"}},m.m)
+          h("div",{style:{fontSize:9,color:m.isSel?P.accent:P.text3,textTransform:"uppercase",fontWeight:m.isSel?700:400}},m.m)
         );})
       )
     ),
-    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
+
+    // ── Abas: Resumo / Fluxo de Caixa ──────────────────────────────────────
+    h("div",{style:{display:"flex",gap:8,marginBottom:16}},
+      h("button",{onClick:()=>setViewTab("resumo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="resumo"?P.rose:"transparent",border:`1px solid ${viewTab==="resumo"?P.rose:P.border}`,color:viewTab==="resumo"?P.accent3:P.text2}},"Entradas & Despesas"),
+      h("button",{onClick:()=>setViewTab("fluxo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="fluxo"?P.rose:"transparent",border:`1px solid ${viewTab==="fluxo"?P.rose:P.border}`,color:viewTab==="fluxo"?P.accent3:P.text2}},"💵 Fluxo de Caixa")
+    ),
+
+    viewTab==="fluxo"?h(Card,null,
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}},
+        h("div",null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Fluxo de Caixa Diário"),
+          h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`Saldo inicial em ${MONTH_NAMES[selMonth]}: `,h("span",{style:{color:saldoInicial>=0?P.green:P.red,fontWeight:600}},fmtCurr(saldoInicial)))
+        ),
+        h("div",{style:{textAlign:"right"}},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase"}},"Saldo Final do Mês"),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:saldoFinal>=0?P.green:P.red}},fmtCurr(saldoFinal))
+        )
+      ),
+      dailyFlow.length===0?h("div",{style:{textAlign:"center",color:P.text3,fontSize:13,padding:30}},"Sem movimentações neste mês"):
+      h("div",{style:{maxHeight:480,overflowY:"auto"}},
+        dailyFlow.map(df=>h("div",{key:df.day,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:df.events.length?6:0}},
+            h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},`Dia ${String(df.day).padStart(2,"0")}`),
+            h("div",{style:{display:"flex",gap:14,alignItems:"baseline"}},
+              df.dayTotal!==0&&h("span",{style:{fontSize:12,color:df.dayTotal>=0?P.green:P.red}},(df.dayTotal>=0?"+ ":"− ")+fmtCurr(Math.abs(df.dayTotal))),
+              h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:df.saldo>=0?P.text:P.red}},"Saldo: "+fmtCurr(df.saldo))
+            )
+          ),
+          df.events.map((ev,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",fontSize:11.5,color:P.text3,padding:"2px 0 2px 10px"}},
+            h("span",null,(ev.type==="entrada"?"↑ ":"↓ ")+ev.desc),
+            h("span",{style:{color:ev.type==="entrada"?P.green:P.red}},(ev.value>=0?"+":"")+fmtCurr(ev.value))
+          ))
+        ))
+      )
+    ):
+    h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
       h(Card,null,
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Entradas"),
           h(Btn,{onClick:()=>{setEditInc(null);setIncForm(blankInc);setShowNewInc(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Entrada Extra")
         ),
-        h("div",{style:{marginBottom:10}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},h("div",null,h("div",{style:{fontSize:11,color:P.text3}},"🔄 Sessões auto-sincronizadas do prontuário"),h("div",{style:{fontSize:10,color:P.text3,marginTop:1}},allS.length+" total · "+allS.filter(s=>s.paid).length+" pagas")),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green}},fmtCurr(sessionsRec)))),
-        allS.sort((a,b)=>{try{const[da,ma,ya]=String(a.date||"").split("/");const[db,mb,yb]=String(b.date||"").split("/");return new Date(yb+"-"+mb+"-"+db)-new Date(ya+"-"+ma+"-"+da);}catch{return 0;}}).map((s,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
+        h("div",{style:{marginBottom:10}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},h("div",null,h("div",{style:{fontSize:11,color:P.text3}},"🔄 Sessões auto-sincronizadas do prontuário"),h("div",{style:{fontSize:10,color:P.text3,marginTop:1}},monthSessions.length+" total · "+monthSessions.filter(s=>s.paid).length+" pagas")),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green}},fmtCurr(sessionsRec)))),
+        monthSessions.length===0&&h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"10px 0"}},"Nenhuma sessão neste mês"),
+        monthSessions.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((s,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
           h("div",null,h("div",{style:{fontSize:13,color:P.text}},`${s.pname} — ${s.procedure}`),h("div",{style:{fontSize:11,color:P.text3}},`${s.date} · ${s.payMethod}${s.payMethod==="Cartão Crédito"&&s.parcelas>1?" · "+s.parcelas+"x de "+fmtCurr(s.value/s.parcelas):""}`)  ),
           h("div",{style:{display:"flex",alignItems:"center",gap:8}},
             h("div",{style:{textAlign:"right"}},
@@ -2942,9 +3055,9 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
             h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.pid,s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
           )
         )),
-        incomes.filter(i=>!i.sessRef).length>0&&h("div",null,
+        monthIncomesExtra.length>0&&h("div",null,
           h("div",{style:{fontSize:11,color:P.text3,margin:"10px 0 6px"}},"＋ Entradas extras (não vinculadas a sessões):"),
-          incomes.filter(i=>!i.sessRef).map((inc,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
+          monthIncomesExtra.map((inc,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
             h("div",null,h("div",{style:{fontSize:13,color:P.text}},inc.desc||inc.patientName||"Entrada"),h("div",{style:{fontSize:11,color:P.text3}},`${inc.date} · ${inc.payMethod}${inc.payMethod==="Cartão Crédito"&&inc.parcelas>1?" · "+inc.parcelas+"x":""}`)),
             h("div",{style:{display:"flex",alignItems:"center",gap:8}},
               h("div",null,
@@ -2963,7 +3076,8 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Despesas"),
           h(Btn,{onClick:()=>{setEditExp(null);setForm(blankExp);setShowNewExp(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Despesa")
         ),
-        expenses.map((e,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${P.border}`}},
+        monthExpenses.length===0&&h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"10px 0"}},"Nenhuma despesa neste mês"),
+        monthExpenses.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((e,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${P.border}`}},
           h("div",null,h("div",{style:{fontSize:13,color:P.text}},e.desc),h("div",{style:{fontSize:11,color:P.text3}},`${e.date} · ${e.cat}`)),
           h("div",{style:{display:"flex",alignItems:"center",gap:8}},
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.red}},`− ${fmtCurr(e.value)}`),
@@ -2971,9 +3085,10 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
             h("button",{onClick:()=>delExp(e.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
           )
         )),
-        h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:P.text3}},"Total Despesas"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.red}},`− ${fmtCurr(totalExp)}`))
+        h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:P.text3}},"Total Despesas do Mês"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.red}},`− ${fmtCurr(totalExp)}`))
       )
     ),
+
     h(Modal,{open:showNewInc,onClose:()=>{setShowNewInc(false);setEditInc(null);},title:editInc?"✎ Editar Entrada":"＋ Nova Entrada Manual",width:520},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Descrição"},h(Inp,{value:incForm.desc,onChange:ifv("desc"),placeholder:"Ex: Consultoria avulsa, Venda produto..."})),
