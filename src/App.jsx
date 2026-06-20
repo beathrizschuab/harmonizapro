@@ -4033,7 +4033,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       )
     ),
     // ─── GALERIA TAB
-    tab==="galeria"&&h(EvolucaoFotos,{patient,upd,addMedia,removeMedia}),
+    tab==="galeria"&&h(EvolucaoFotos,{patient,upd,addMedia,removeMedia,clinicName:clinicSettings?.clinicName}),
     // ─── DOCS TAB
     tab==="docs"&&h("div",null,(patient.sessions||[]).map(s=>h(Card,{key:s.id,style:{marginBottom:14}},
       h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:12}},`${s.date} · ${s.procedure} `,h("span",{style:{fontSize:12,color:P.text3,fontFamily:"'DM Sans',sans-serif"}},`${(s.docs||[]).length} doc(s)`)),
@@ -5480,11 +5480,178 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
 }
 
 
-function EvolucaoFotos({patient,upd,addMedia,removeMedia}){
+// ─── ANTES & DEPOIS: helpers de geração de imagem ──────────────────────────────
+function fmtSubLegenda(item){
+  return (item.sessDate||"")+(item.sessProcedure?" · "+item.sessProcedure:"");
+}
+function loadImageEl(src){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.crossOrigin="anonymous";
+    img.onload=()=>resolve(img);
+    img.onerror=()=>reject(new Error("Falha ao carregar imagem"));
+    img.src=src;
+  });
+}
+function drawCoverImg(ctx,img,x,y,w,h){
+  const ir=img.naturalWidth/img.naturalHeight, tr=w/h;
+  let sx,sy,sw,sh;
+  if(ir>tr){sh=img.naturalHeight;sw=sh*tr;sx=(img.naturalWidth-sw)/2;sy=0;}
+  else{sw=img.naturalWidth;sh=sw/tr;sx=0;sy=(img.naturalHeight-sh)/2;}
+  ctx.drawImage(img,sx,sy,sw,sh,x,y,w,h);
+}
+function drawCaptionBar(ctx,x,w,h,label,sub){
+  const barH=92;
+  ctx.fillStyle="rgba(10,5,6,.66)";
+  ctx.fillRect(x,h-barH,w,barH);
+  ctx.fillStyle="#E1D2C6";
+  ctx.font="bold 28px 'DM Sans',sans-serif";
+  ctx.textAlign="center";
+  ctx.fillText(label,x+w/2,h-barH+38);
+  ctx.font="15px 'DM Sans',sans-serif";
+  ctx.fillStyle="rgba(225,210,198,.88)";
+  ctx.fillText(sub,x+w/2,h-barH+64);
+}
+async function buildComparisonCanvas(antes,depois,clinicName){
+  const[imgA,imgB]=await Promise.all([loadImageEl(antes.url),loadImageEl(depois.url)]);
+  const halfW=640,H=820;
+  const canvas=document.createElement("canvas");
+  canvas.width=halfW*2;canvas.height=H;
+  const ctx=canvas.getContext("2d");
+  ctx.fillStyle="#160b0e";ctx.fillRect(0,0,canvas.width,canvas.height);
+  drawCoverImg(ctx,imgA,0,0,halfW,H);
+  drawCoverImg(ctx,imgB,halfW,0,halfW,H);
+  ctx.fillStyle="#E1D2C6";ctx.fillRect(halfW-2,0,4,H);
+  drawCaptionBar(ctx,0,halfW,H,"ANTES",fmtSubLegenda(antes));
+  drawCaptionBar(ctx,halfW,halfW,H,"DEPOIS",fmtSubLegenda(depois));
+  if(clinicName){
+    ctx.font="13px 'DM Sans',sans-serif";
+    ctx.fillStyle="rgba(225,210,198,.55)";
+    ctx.textAlign="right";
+    ctx.fillText(clinicName,canvas.width-14,22);
+  }
+  return canvas;
+}
+
+// ─── ANTES & DEPOIS: slider de comparação por arraste ─────────────────────────
+function BeforeAfterSlider({beforeUrl,afterUrl,beforeLabel,afterLabel,beforeSub,afterSub,height}){
+  const h=createElement;
+  const containerRef=useRef(null);
+  const draggingRef=useRef(false);
+  const[pos,setPos]=useState(50);
+
+  const updatePos=useCallback(clientX=>{
+    const el=containerRef.current;
+    if(!el)return;
+    const rect=el.getBoundingClientRect();
+    let pct=((clientX-rect.left)/rect.width)*100;
+    pct=Math.max(0,Math.min(100,pct));
+    setPos(pct);
+  },[]);
+
+  useEffect(()=>{
+    const move=e=>{
+      if(!draggingRef.current)return;
+      const x=e.touches?e.touches[0].clientX:e.clientX;
+      updatePos(x);
+      if(e.cancelable)e.preventDefault();
+    };
+    const up=()=>{draggingRef.current=false;};
+    window.addEventListener("mousemove",move);
+    window.addEventListener("mouseup",up);
+    window.addEventListener("touchmove",move,{passive:false});
+    window.addEventListener("touchend",up);
+    return()=>{
+      window.removeEventListener("mousemove",move);
+      window.removeEventListener("mouseup",up);
+      window.removeEventListener("touchmove",move);
+      window.removeEventListener("touchend",up);
+    };
+  },[updatePos]);
+
+  function onDown(e){
+    draggingRef.current=true;
+    const x=e.touches?e.touches[0].clientX:e.clientX;
+    updatePos(x);
+  }
+
+  const badgeStyle={position:"absolute",padding:"4px 10px",borderRadius:6,fontSize:10.5,fontWeight:600,letterSpacing:".06em",color:"#E1D2C6",background:"rgba(10,5,6,.6)",pointerEvents:"none"};
+  const subStyle={position:"absolute",bottom:10,fontSize:10.5,color:"rgba(225,210,198,.85)",background:"rgba(10,5,6,.55)",padding:"3px 9px",borderRadius:6,pointerEvents:"none",maxWidth:"46%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"};
+
+  return h("div",{
+    ref:containerRef,
+    onMouseDown:onDown,
+    onTouchStart:onDown,
+    style:{position:"relative",width:"100%",height:height||340,borderRadius:12,overflow:"hidden",border:`1px solid ${P.border}`,cursor:"ew-resize",userSelect:"none",background:"#000",touchAction:"none"}
+  },
+    h("img",{src:afterUrl,draggable:false,alt:"depois",style:{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",display:"block",pointerEvents:"none"}}),
+    h("img",{src:beforeUrl,draggable:false,alt:"antes",style:{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",display:"block",pointerEvents:"none",clipPath:`inset(0 ${100-pos}% 0 0)`}}),
+    h("div",{style:{position:"absolute",top:0,bottom:0,left:pos+"%",width:2,background:"#fff",transform:"translateX(-1px)",boxShadow:"0 0 8px rgba(0,0,0,.6)",pointerEvents:"none"}}),
+    h("div",{style:{position:"absolute",top:"50%",left:pos+"%",width:38,height:38,borderRadius:"50%",background:"#fff",transform:"translate(-50%,-50%)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 12px rgba(0,0,0,.45)",pointerEvents:"none",color:"#3a2a2a",fontSize:15,fontWeight:700}},"↔"),
+    h("div",{style:{...badgeStyle,top:10,left:10}},beforeLabel||"ANTES"),
+    h("div",{style:{...badgeStyle,top:10,right:10}},afterLabel||"DEPOIS"),
+    beforeSub&&h("div",{style:{...subStyle,left:10}},beforeSub),
+    afterSub&&h("div",{style:{...subStyle,right:10,textAlign:"right"}},afterSub)
+  );
+}
+
+// ─── ANTES & DEPOIS: modal de resultado pronto (com download) ─────────────────
+function ComparacaoModal({pair,clinicName,onClose}){
+  const h=createElement;
+  const[downloading,setDownloading]=useState(false);
+  const[a,b]=pair;
+  async function handleDownload(){
+    setDownloading(true);
+    try{
+      const canvas=await buildComparisonCanvas(a,b,clinicName);
+      canvas.toBlob(blob=>{
+        const url=URL.createObjectURL(blob);
+        const link=document.createElement("a");
+        link.href=url;
+        link.download="antes-depois-"+(a.sessProcedure||"comparacao").replace(/\s+/g,"_")+".png";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),4000);
+        setDownloading(false);
+      },"image/png");
+    }catch(err){
+      setDownloading(false);
+      alert("Não foi possível gerar o arquivo para download (restrição de origem da imagem). A comparação ainda pode ser visualizada e arrastada normalmente na tela.");
+    }
+  }
+  return h("div",{onClick:onClose,style:{position:"fixed",inset:0,background:"rgba(0,0,0,.88)",zIndex:2100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}},
+    h("div",{onClick:e=>e.stopPropagation(),style:{background:P.bg2,borderRadius:14,padding:20,maxWidth:640,width:"100%",border:`1px solid ${P.border}`,maxHeight:"92vh",overflowY:"auto"}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text,marginBottom:4}},"✦ Comparação Antes / Depois"),
+      h("div",{style:{fontSize:11.5,color:P.text3,marginBottom:14}},"Arraste a linha sobre a foto para revelar o antes e o depois."),
+      h(BeforeAfterSlider,{
+        beforeUrl:a.url,afterUrl:b.url,
+        beforeLabel:"ANTES",afterLabel:"DEPOIS",
+        beforeSub:fmtSubLegenda(a),afterSub:fmtSubLegenda(b),
+        height:380
+      }),
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:16,gap:10,flexWrap:"wrap"}},
+        h("div",{style:{fontSize:11.5,color:P.text3,lineHeight:1.5}},
+          h("div",null,"Antes: "+(a.sessDate||"—")+(a.sessProcedure?" · "+a.sessProcedure:"")),
+          h("div",null,"Depois: "+(b.sessDate||"—")+(b.sessProcedure?" · "+b.sessProcedure:""))
+        ),
+        h("div",{style:{display:"flex",gap:8}},
+          h("button",{onClick:handleDownload,disabled:downloading,style:{background:P.rose,border:"none",color:P.accent3,padding:"9px 16px",borderRadius:8,cursor:downloading?"default":"pointer",fontSize:12.5,opacity:downloading?.6:1,whiteSpace:"nowrap"}},downloading?"Gerando...":"⬇ Baixar Imagem"),
+          h("button",{onClick:onClose,style:{background:"transparent",border:`1px solid ${P.border}`,color:P.text2,padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:12.5}},"Fechar")
+        )
+      )
+    )
+  );
+}
+
+function EvolucaoFotos({patient,upd,addMedia,removeMedia,clinicName}){
   const h=createElement;
   const [filterProc,setFilterProc]=useState("Todos");
   const [lightbox,setLightbox]=useState(null);
   const [annotating,setAnnotating]=useState(null); // {photo, sessId}
+  const [selMode,setSelMode]=useState(false);
+  const [selected,setSelected]=useState([]); // até 2 fotos {id,...}
+  const [comparePair,setComparePair]=useState(null); // [antes,depois] prontos para o modal
   // Todas as sessões, ordenadas por data mais antiga primeiro
   const allSessions=(patient.sessions||[]);
   const parseDt=s=>{try{const[d,m,y]=String(s||"").split("/");return new Date(y+"-"+m+"-"+d);}catch{return new Date(0);}};
@@ -5495,6 +5662,26 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia}){
   // Todas as fotos do filtro atual, em ordem cronológica
   const allPhotos=filtered.flatMap(s=>(s.photos||[]).map(p=>({...p,sessDate:s.date,sessProcedure:s.procedure,sessId:s.id})));
   const totalFotos=allSessions.reduce((a,s)=>a+(s.photos||[]).length,0);
+
+  function togglePhotoSelection(ph){
+    setSelected(cur=>{
+      const exists=cur.find(p=>p.id===ph.id);
+      if(exists)return cur.filter(p=>p.id!==ph.id);
+      if(cur.length<2)return[...cur,ph];
+      return[cur[1],ph]; // troca a mais antiga selecionada pela nova
+    });
+  }
+  function handlePhotoClick(ph){
+    if(selMode){togglePhotoSelection(ph);return;}
+    setLightbox({photos:allPhotos,idx:allPhotos.findIndex(p=>p.id===ph.id)});
+  }
+  function gerarComparacaoManual(){
+    if(selected.length!==2)return;
+    const ordered=[...selected].sort((a,b)=>parseDt(a.sessDate)-parseDt(b.sessDate));
+    setComparePair(ordered);
+    setSelected([]);
+    setSelMode(false);
+  }
   return h("div",null,
     // Cabeçalho + filtros
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}},
@@ -5502,23 +5689,41 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia}){
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Evolução Fotográfica"),
         h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},totalFotos+" foto(s) · "+allSessions.length+" sessão(ões)")
       ),
-      h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-        allProcs.map(proc=>h("button",{key:proc,onClick:()=>setFilterProc(proc),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filterProc===proc?P.rose:"transparent",border:`1px solid ${filterProc===proc?P.rose:P.border}`,color:filterProc===proc?P.accent3:P.text2}},proc))
+      h("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
+        h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+          allProcs.map(proc=>h("button",{key:proc,onClick:()=>setFilterProc(proc),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filterProc===proc?P.rose:"transparent",border:`1px solid ${filterProc===proc?P.rose:P.border}`,color:filterProc===proc?P.accent3:P.text2}},proc))
+        ),
+        allPhotos.length>=2&&h("button",{
+          onClick:()=>{setSelMode(m=>!m);setSelected([]);},
+          style:{display:"flex",alignItems:"center",gap:6,padding:"6px 13px",borderRadius:20,fontSize:11.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:selMode?P.rose:"rgba(157,119,97,.08)",border:`1px solid ${selMode?P.rose:"rgba(157,119,97,.4)"}`,color:selMode?P.accent3:P.accent,whiteSpace:"nowrap"}
+        },selMode?"✕ Cancelar seleção":"🖐 Selecionar 2 fotos")
       )
     ),
-    // Comparação antes/depois (só aparece se tiver 2+ fotos)
-    allPhotos.length>=2&&h(Card,{style:{marginBottom:18,border:"1px solid rgba(92,31,50,.3)"}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"✦ Comparação Antes / Depois"),
-      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
-        h("div",null,
-          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,textAlign:"center"}},"Antes — "+allPhotos[0].sessDate+" · "+allPhotos[0].sessProcedure),
-          h("img",{src:allPhotos[0].url,alt:"antes",onClick:()=>setLightbox({photos:allPhotos,idx:0}),style:{width:"100%",borderRadius:10,border:`1px solid ${P.border}`,objectFit:"cover",maxHeight:240,cursor:"zoom-in"}})
-        ),
-        h("div",null,
-          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,textAlign:"center"}},"Depois — "+allPhotos[allPhotos.length-1].sessDate+" · "+allPhotos[allPhotos.length-1].sessProcedure),
-          h("img",{src:allPhotos[allPhotos.length-1].url,alt:"depois",onClick:()=>setLightbox({photos:allPhotos,idx:allPhotos.length-1}),style:{width:"100%",borderRadius:10,border:`1px solid ${P.border}`,objectFit:"cover",maxHeight:240,cursor:"zoom-in"}})
-        )
+    // Barra flutuante de seleção
+    selMode&&h(Card,{style:{marginBottom:16,border:`1px solid ${selected.length===2?P.rose:P.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}},
+      h("div",{style:{fontSize:12.5,color:P.text2}},
+        selected.length===0?"Toque em 2 fotos abaixo para montar a comparação.":
+        selected.length===1?"1 de 2 fotos selecionadas — escolha mais uma.":
+        "2 fotos selecionadas — pronto para gerar."
+      ),
+      h("div",{style:{display:"flex",gap:8}},
+        selected.length>0&&h("button",{onClick:()=>setSelected([]),style:{background:"transparent",border:`1px solid ${P.border}`,color:P.text2,padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:12}},"Limpar"),
+        h("button",{onClick:gerarComparacaoManual,disabled:selected.length!==2,style:{background:selected.length===2?P.rose:"rgba(157,119,97,.15)",border:"none",color:selected.length===2?P.accent3:P.text3,padding:"7px 16px",borderRadius:8,cursor:selected.length===2?"pointer":"default",fontSize:12,fontWeight:500}},"✦ Gerar Comparação")
       )
+    ),
+    // Comparação automática (mais antiga × mais recente) — só some quando o modo de seleção está ativo
+    !selMode&&allPhotos.length>=2&&h(Card,{style:{marginBottom:18,border:"1px solid rgba(92,31,50,.3)"}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"✦ Comparação Antes / Depois"),
+        h("button",{onClick:()=>setComparePair([allPhotos[0],allPhotos[allPhotos.length-1]]),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid rgba(157,119,97,.4)`,borderRadius:7,padding:"5px 11px",cursor:"pointer"}},"⛶ Ampliar / Baixar")
+      ),
+      h(BeforeAfterSlider,{
+        beforeUrl:allPhotos[0].url,afterUrl:allPhotos[allPhotos.length-1].url,
+        beforeLabel:"ANTES",afterLabel:"DEPOIS",
+        beforeSub:fmtSubLegenda(allPhotos[0]),afterSub:fmtSubLegenda(allPhotos[allPhotos.length-1]),
+        height:300
+      }),
+      h("div",{style:{fontSize:11,color:P.text3,marginTop:10,textAlign:"center"}},"Mostrando a foto mais antiga × a mais recente. Use \"Selecionar 2 fotos\" acima para comparar sessões específicas.")
     ),
     // Cards por sessão — TODAS as sessões aparecem para poder adicionar fotos
     filtered.length===0
@@ -5544,13 +5749,21 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia}){
             fotos.length===0
               ?h("div",{style:{padding:"20px",textAlign:"center",color:P.text3,fontSize:13}},"Nenhuma foto nesta sessão. Clique em 📷 Adicionar.")
               :h("div",{style:{padding:12,display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}},
-                fotos.map((ph,i)=>h("div",{key:ph.id,style:{position:"relative",aspectRatio:"1",cursor:"zoom-in"},
-                  onClick:()=>setLightbox({photos:allPhotos,idx:allPhotos.findIndex(p=>p.id===ph.id)})},
-                  h("img",{src:ph.url,alt:ph.name,style:{width:"100%",height:"100%",objectFit:"cover",borderRadius:8,border:`1px solid ${P.border}`,display:"block"}}),
-                  h("div",{style:{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,.55)",borderRadius:"0 0 8px 8px",padding:"3px 6px",fontSize:9,color:"rgba(255,255,255,.8)",textAlign:"center"}},ph.date||s.date),
-                  h("button",{onClick:e=>{e.stopPropagation();removeMedia(s.id,ph.id,"photos");},style:{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.7)",border:"none",color:"#fff",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}},"×"),
-                  h("button",{onClick:e=>{e.stopPropagation();setAnnotating({photo:ph,sessId:s.id});},title:"Anotar foto",style:{position:"absolute",top:4,right:28,width:20,height:20,borderRadius:"50%",background:"rgba(92,31,50,.85)",border:"none",color:"#fff",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}},"\u270f")
-                ))
+                fotos.map((ph,i)=>{
+                  const isSel=selected.some(p=>p.id===ph.id);
+                  const phFull={...ph,sessDate:s.date,sessProcedure:s.procedure,sessId:s.id};
+                  return h("div",{key:ph.id,style:{position:"relative",aspectRatio:"1",cursor:selMode?"pointer":"zoom-in"},
+                    onClick:()=>handlePhotoClick(phFull)},
+                    h("img",{src:ph.url,alt:ph.name,style:{width:"100%",height:"100%",objectFit:"cover",borderRadius:8,border:isSel?`2px solid ${P.rose2}`:`1px solid ${P.border}`,display:"block",opacity:selMode&&!isSel?.6:1}}),
+                    h("div",{style:{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,.55)",borderRadius:"0 0 8px 8px",padding:"3px 6px",fontSize:9,color:"rgba(255,255,255,.8)",textAlign:"center"}},ph.date||s.date),
+                    selMode
+                      ?h("div",{style:{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:isSel?P.rose2:"rgba(0,0,0,.45)",border:isSel?"none":"1.5px solid rgba(255,255,255,.7)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#fff"}},isSel?"✓":"")
+                      :h(Fragment,null,
+                        h("button",{onClick:e=>{e.stopPropagation();removeMedia(s.id,ph.id,"photos");},style:{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.7)",border:"none",color:"#fff",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}},"×"),
+                        h("button",{onClick:e=>{e.stopPropagation();setAnnotating({photo:ph,sessId:s.id});},title:"Anotar foto",style:{position:"absolute",top:4,right:28,width:20,height:20,borderRadius:"50%",background:"rgba(92,31,50,.85)",border:"none",color:"#fff",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}},"\u270f")
+                      )
+                  );
+                })
               )
           );
         })
@@ -5564,6 +5777,8 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia}){
         setAnnotating(null);
       }
     }),
+    // Modal de comparação Antes/Depois pronta (gerada manualmente ou automática)
+    comparePair&&h(ComparacaoModal,{pair:comparePair,clinicName,onClose:()=>setComparePair(null)}),
     // Lightbox
     lightbox&&h("div",{onClick:()=>setLightbox(null),style:{position:"fixed",inset:0,background:"rgba(0,0,0,.95)",zIndex:2000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}},
       h("div",{style:{fontSize:12,color:"rgba(255,255,255,.5)"}},
