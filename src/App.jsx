@@ -3032,30 +3032,34 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
   const blockBtnStyle={padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid rgba(192,112,112,.35)`,color:P.red};
 
   // ─── CARD DE AGENDAMENTO (drag) ───
-  function ApptCard({a,compact=false,big=false}){
+  function ApptCard({a,compact=false,big=false,fitHeight=false}){
     const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
     const isDragging=dragId===a.id;
     if(a.blocked){
-      return h("div",{style:{padding:compact?"3px 6px":"6px 10px",background:"rgba(192,112,112,.08)",border:`1px dashed rgba(192,112,112,.4)`,borderRadius:6,opacity:isDragging?.4:1}},
+      return h("div",{style:{padding:compact?"3px 6px":"6px 10px",background:"rgba(192,112,112,.08)",border:`1px dashed rgba(192,112,112,.4)`,borderRadius:6,opacity:isDragging?.4:1,height:fitHeight?"100%":"auto",overflow:"hidden",boxSizing:"border-box"}},
         h("div",{style:{fontSize:compact?9:11,color:P.red,fontWeight:600}},"🔒 "+(a.blockReason||"Bloqueado")),
         !compact&&h("div",{style:{fontSize:10,color:P.text3}},a.time+(a.endTime?" – "+a.endTime:""))
       );
     }
     const hasHistory=(a.rescheduleHistory||[]).length>0;
+    // Duração curta (<45min): card fica baixo, escondemos linhas menos essenciais
+    const durMin=durationToMin(a.duration);
+    const isShort=fitHeight&&durMin<45;
+    const isTiny=fitHeight&&durMin<25;
     return h("div",{
       draggable:true,
       onDragStart:e=>onDragStart(e,a.id),
       onDragEnd,
       onClick:()=>openEdit(a),
       title:"Arraste para reagendar · Clique para editar",
-      style:{padding:compact?(big?"8px 11px":"3px 5px"):"6px 10px",background:sc.bg,border:`1px solid ${sc.color}66`,borderLeft:`3px solid ${sc.color}`,borderRadius:6,cursor:"grab",opacity:isDragging?.3:1,userSelect:"none",position:"relative",minHeight:compact&&big?56:"auto"}
+      style:{padding:compact?(big?"8px 11px":"3px 5px"):"6px 10px",background:sc.bg,border:`1px solid ${sc.color}66`,borderLeft:`3px solid ${sc.color}`,borderRadius:6,cursor:"grab",opacity:isDragging?.3:1,userSelect:"none",position:"relative",minHeight:fitHeight?"auto":(compact&&big?56:"auto"),height:fitHeight?"100%":"auto",overflow:"hidden",boxSizing:"border-box"}
     },
       compact
         ?(big
             ?h(Fragment,null,
-                h("div",{style:{fontSize:14,color:sc.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" — "+a.patientName),
-                h("div",{style:{fontSize:12,color:P.text2,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.procedure),
-                h("div",{style:{fontSize:10.5,color:P.text3,marginTop:1}},(a.duration?`🕐 ${a.time}–${apptEndTime(a)} · `:"")+"📍 "+a.location)
+                h("div",{style:{fontSize:isTiny?11:14,color:sc.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" — "+a.patientName),
+                !isTiny&&h("div",{style:{fontSize:12,color:P.text2,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.procedure),
+                !isShort&&h("div",{style:{fontSize:10.5,color:P.text3,marginTop:1}},(a.duration?`🕐 ${a.time}–${apptEndTime(a)} · `:"")+"📍 "+a.location)
               )
             :h("div",{style:{fontSize:9,color:sc.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" "+a.patientName)
           )
@@ -3104,9 +3108,14 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
           const leftPct=idx*widthPct;
           const [hh,mm]=t.split(":").map(Number);
           const top=(hh-7)*64+(mm/60)*64+2;
-          return h("div",{key:a.id,style:{position:"absolute",left:`calc(${leftPct}% + 2px)`,width:`calc(${widthPct}% - 4px)`,top,zIndex:2,pointerEvents:"none"}},
-            h("div",{style:{pointerEvents:"auto"}},
-              h(ApptCard,{a,compact:true,big:n===1})
+          // Altura proporcional à duração real (início → fim), 64px = 1 hora
+          const durMin=a.blocked
+            ?(()=>{ if(!a.endTime)return 60; const[eh,em]=a.endTime.split(":").map(Number); return Math.max(15,(eh*60+em)-(hh*60+mm)); })()
+            :durationToMin(a.duration);
+          const height=Math.max(22,(durMin/60)*64-4);
+          return h("div",{key:a.id,style:{position:"absolute",left:`calc(${leftPct}% + 2px)`,width:`calc(${widthPct}% - 4px)`,top,height,zIndex:2,pointerEvents:"none"}},
+            h("div",{style:{pointerEvents:"auto",height:"100%"}},
+              h(ApptCard,{a,compact:true,big:n===1,fitHeight:true})
             )
           );
         });
