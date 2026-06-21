@@ -788,18 +788,26 @@ function getAvailableLotes(products, productName) {
   return prod.lotes.filter(l => l.qtd > 0);
 }
 function debitarLote(setProducts, productName, loteId, qtdUsada, obs) {
-  if (!productName || !loteId || !(Number(qtdUsada) > 0)) return;
+  if (!productName || !(Number(qtdUsada) > 0)) return;
   setProducts(prev => prev.map(p => {
     const pname = typeof p === "string" ? p : (p.name||p);
     if (pname !== productName) return p;
-    const lotes = (p.lotes || []).map(l => {
+    const min = p.min || 0;
+    const mov = { id: Date.now()+Math.random(), tipo: "saida", qtd: Number(qtdUsada), loteId: loteId?String(loteId):undefined, data: new Date().toLocaleDateString("pt-BR"), obs: obs||"Uso em sessão" };
+    // Insumo simples (sem lotes): debita direto do campo qty
+    if (!Array.isArray(p.lotes) || p.lotes.length===0) {
+      const totalQty = Math.max(0, (Number(p.qty)||0) - Number(qtdUsada));
+      const status = totalQty === 0 ? "critical" : totalQty < min ? "low" : "ok";
+      return { ...p, qty: totalQty, status, movimentacoes: [...(p.movimentacoes || []), mov] };
+    }
+    // Produto com lotes: debita do lote específico (comportamento original)
+    if (!loteId) return p;
+    const lotes = p.lotes.map(l => {
       if (String(l.id) !== String(loteId)) return l;
       return { ...l, qtd: Math.max(0, l.qtd - Number(qtdUsada)) };
     });
     const totalQty = lotes.reduce((a, l) => a + l.qtd, 0);
-    const min = p.min || 0;
     const status = totalQty === 0 ? "critical" : totalQty < min ? "low" : "ok";
-    const mov = { id: Date.now()+Math.random(), tipo: "saida", qtd: Number(qtdUsada), loteId: String(loteId), data: new Date().toLocaleDateString("pt-BR"), obs: obs||"Uso em sessão" };
     return { ...p, lotes, qty: totalQty, status, movimentacoes: [...(p.movimentacoes || []), mov] };
   }));
 }
@@ -807,18 +815,25 @@ function debitarLote(setProducts, productName, loteId, qtdUsada, obs) {
 // já debitado é editado (troca de lote/quantidade) ou excluído, para nunca deixar o estoque desatualizado
 // nem permitir débito duplicado: o caller sempre estorna o valor antigo antes de debitar o novo.
 function estornarLote(setProducts, productName, loteId, qtdDevolver, obs) {
-  if (!productName || !loteId || !(Number(qtdDevolver) > 0)) return;
+  if (!productName || !(Number(qtdDevolver) > 0)) return;
   setProducts(prev => prev.map(p => {
     const pname = typeof p === "string" ? p : (p.name||p);
     if (pname !== productName) return p;
-    const lotes = (p.lotes || []).map(l => {
+    const min = p.min || 0;
+    const mov = { id: Date.now()+Math.random(), tipo: "entrada", qtd: Number(qtdDevolver), loteId: loteId?String(loteId):undefined, data: new Date().toLocaleDateString("pt-BR"), obs: obs||"Estorno de ajuste" };
+    // Insumo simples (sem lotes): devolve direto no campo qty
+    if (!Array.isArray(p.lotes) || p.lotes.length===0) {
+      const totalQty = (Number(p.qty)||0) + Number(qtdDevolver);
+      const status = totalQty === 0 ? "critical" : totalQty < min ? "low" : "ok";
+      return { ...p, qty: totalQty, status, movimentacoes: [...(p.movimentacoes || []), mov] };
+    }
+    if (!loteId) return p;
+    const lotes = p.lotes.map(l => {
       if (String(l.id) !== String(loteId)) return l;
       return { ...l, qtd: l.qtd + Number(qtdDevolver) };
     });
     const totalQty = lotes.reduce((a, l) => a + l.qtd, 0);
-    const min = p.min || 0;
     const status = totalQty === 0 ? "critical" : totalQty < min ? "low" : "ok";
-    const mov = { id: Date.now()+Math.random(), tipo: "entrada", qtd: Number(qtdDevolver), loteId: String(loteId), data: new Date().toLocaleDateString("pt-BR"), obs: obs||"Estorno de ajuste" };
     return { ...p, lotes, qty: totalQty, status, movimentacoes: [...(p.movimentacoes || []), mov] };
   }));
 }
@@ -844,12 +859,20 @@ function ajustarDebitoLote(setProducts, prevDebit, nextDebit, obs) {
 
 // Escolhe automaticamente o(s) lote(s) de um produto pelo critério FEFO (primeiro a vencer, primeiro a sair).
 // Retorna uma lista de {loteId, qtd} cobrindo o quanto for possível da quantidade pedida (pode ficar parcial se não houver saldo suficiente).
+// Para produtos SEM controle de lote (ex: insumos/descartáveis), debita direto do saldo (qty) usando loteId=null.
 function pickFefoLotes(products, productName, qtyNeeded) {
   const prod = (products||[]).find(p => (typeof p === "string" ? p : (p.name||p)) === productName);
-  if (!prod || !Array.isArray(prod.lotes) || !prod.lotes.length) return [];
+  if (!prod) return [];
+  const restanteTotal = Number(qtyNeeded)||0;
+  if (!Array.isArray(prod.lotes) || !prod.lotes.length) {
+    // Insumo simples: um único "lote virtual" representando o saldo direto do produto
+    const disponivel = Number(prod.qty)||0;
+    if (disponivel<=0||restanteTotal<=0) return [];
+    return [{ loteId: null, qtd: Math.min(disponivel, restanteTotal) }];
+  }
   const parseVal = v => { if(!v) return Infinity; const [m,y]=String(v).split("/"); const n=Number(y)*100+Number(m); return isNaN(n)?Infinity:n; };
   const ordered = prod.lotes.filter(l=>l.qtd>0).slice().sort((a,b)=>parseVal(a.validade)-parseVal(b.validade));
-  let restante = Number(qtyNeeded)||0;
+  let restante = restanteTotal;
   const picks = [];
   for (const l of ordered) {
     if (restante <= 0) break;
@@ -862,8 +885,8 @@ function pickFefoLotes(products, productName, qtyNeeded) {
 // Debita automaticamente uma lista de insumos [{product, qty}] usando FEFO em cada produto.
 // Recebe `currentProducts` (snapshot atual do estoque, fora do React state) para calcular o FEFO
 // corretamente entre múltiplos insumos sem disparar escritas extras no Supabase.
-// Retorna a lista de débitos efetivamente realizados: [{product, loteId, qty}, ...] (1 entrada por lote usado)
-// e também a lista de itens que não puderam ser totalmente debitados por falta de saldo (para aviso ao usuário).
+// Retorna a lista de débitos efetivamente realizados: [{product, loteId, qty}, ...] (loteId é null para insumos
+// simples sem controle de lote) e também a lista de itens que não puderam ser totalmente debitados (aviso ao usuário).
 function debitarInsumosAuto(setProducts, currentProducts, insumosList, obs) {
   const realizados = [];
   const faltantes = [];
@@ -881,7 +904,12 @@ function debitarInsumosAuto(setProducts, currentProducts, insumosList, obs) {
     working = working.map(p => {
       const pname = typeof p === "string" ? p : (p.name||p);
       if (pname !== ins.product) return p;
-      const lotes = (p.lotes||[]).map(l => {
+      if (!Array.isArray(p.lotes) || !p.lotes.length) {
+        // Insumo simples: debita direto do saldo (qty) no snapshot local
+        const debitado = picks.reduce((a,pk)=>a+pk.qtd,0);
+        return { ...p, qty: Math.max(0, (Number(p.qty)||0) - debitado) };
+      }
+      const lotes = p.lotes.map(l => {
         const pk = picks.find(x=>String(x.loteId)===String(l.id));
         return pk ? { ...l, qtd: Math.max(0, l.qtd - pk.qtd) } : l;
       });
@@ -890,10 +918,11 @@ function debitarInsumosAuto(setProducts, currentProducts, insumosList, obs) {
   });
   return { debits: realizados, faltantes };
 }
-// Estorna (devolve) uma lista de débitos previamente realizados via debitarInsumosAuto
+// Estorna (devolve) uma lista de débitos previamente realizados via debitarInsumosAuto.
+// loteId pode ser null (insumo simples sem controle de lote) — nesse caso devolve direto no saldo (qty).
 function estornarInsumosAuto(setProducts, debitsList, obs) {
   (debitsList||[]).forEach(d => {
-    if (d && d.product && d.loteId && Number(d.qty) > 0) {
+    if (d && d.product && Number(d.qty) > 0) {
       estornarLote(setProducts, d.product, d.loteId, d.qty, obs||"Estorno automático");
     }
   });
@@ -907,13 +936,16 @@ function ajustarDebitoInsumosAuto(setProducts, currentProducts, prevDebits, next
     estornarInsumosAuto(setProducts, prevDebits, obs||"Estorno por edição");
   }
   if (nextInsumos && nextInsumos.length) {
-    // Simula localmente o efeito do estorno acima sobre o snapshot, para o FEFO já considerar os lotes devolvidos
+    // Simula localmente o efeito do estorno acima sobre o snapshot, para o FEFO já considerar os lotes/saldo devolvidos
     let working = currentProducts;
     (prevDebits||[]).forEach(d=>{
       working = working.map(p=>{
         const pname = typeof p === "string" ? p : (p.name||p);
         if (pname !== d.product) return p;
-        const lotes = (p.lotes||[]).map(l => String(l.id)===String(d.loteId) ? { ...l, qtd: l.qtd + Number(d.qty) } : l);
+        if (!Array.isArray(p.lotes) || !p.lotes.length) {
+          return { ...p, qty: (Number(p.qty)||0) + Number(d.qty) };
+        }
+        const lotes = p.lotes.map(l => String(l.id)===String(d.loteId) ? { ...l, qtd: l.qtd + Number(d.qty) } : l);
         return { ...p, lotes };
       });
     });
@@ -5193,22 +5225,33 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   );
 }
 // ─── ESTOQUE (com lotes) ──────────────────────────────────────────────────────
+const INSUMO_CAT="Insumos/Descartáveis";
 function Estoque({products,setProducts}){
+  const[subTab,setSubTab]=useState("injetaveis"); // injetaveis | insumos
   const[filter,setFilter]=useState("all");
   const[showNew,setShowNew]=useState(false);
   const[editItem,setEditItem]=useState(null);
   const[showLoteModal,setShowLoteModal]=useState(null); // id do produto
+  const[showEntradaInsumo,setShowEntradaInsumo]=useState(null); // id do insumo
+  const[entradaQtd,setEntradaQtd]=useState("");
   const[expandedProduct,setExpandedProduct]=useState(null);
   const blank={name:"",cat:"Toxina Botulínica",qty:"",min:"",unit:"U",expiry:"",cost:"",emoji:"💉"};
+  const blankInsumo={name:"",qty:"",min:"",unit:"un",cost:"",emoji:"🧰"};
   const blankLote={codigo:"",validade:"",qtd:"",obs:""};
   const[form,setForm]=useState(blank);
+  const[insumoForm,setInsumoForm]=useState(blankInsumo);
   const[loteForm,setLoteForm]=useState(blankLote);
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
+  const ifv=k=>v=>setInsumoForm(p=>({...p,[k]:v}));
   const lfv=k=>v=>setLoteForm(p=>({...p,[k]:v}));
   const h=createElement;
-  const cats=["Toxina Botulínica","Ácido Hialurônico","Bioestimulador","Fios de PDO","Anestésico","Skinbooster","Insumos/Descartáveis","Outros"];
+  const cats=["Toxina Botulínica","Ácido Hialurônico","Bioestimulador","Fios de PDO","Anestésico","Skinbooster","Outros"];
   const stCfg={critical:{color:P.red,bg:"rgba(192,112,112,.12)",l:"⚠ Crítico"},low:{color:P.yellow,bg:"rgba(196,169,106,.12)",l:"⚡ Baixo"},ok:{color:P.green,bg:"rgba(122,173,138,.12)",l:"✓ OK"}};
-  
+
+  // ── Separação dos dois universos: Injetáveis (com lotes/validade) vs Insumos/Descartáveis (cadastro simples) ──
+  const injetaveis=products.filter(p=>p.cat!==INSUMO_CAT);
+  const insumos=products.filter(p=>p.cat===INSUMO_CAT);
+
   // Calcula status baseado nos lotes
   function calcStatus(lotes, min) {
     const total = (lotes||[]).reduce((a,l)=>a+l.qtd,0);
@@ -5217,6 +5260,10 @@ function Estoque({products,setProducts}){
   function getTotalQty(item) {
     if (item.lotes && item.lotes.length > 0) return item.lotes.reduce((a,l)=>a+l.qtd, 0);
     return item.qty || 0;
+  }
+  function simpleStatus(item){
+    const q=Number(item.qty)||0, min=Number(item.min)||0;
+    return q===0?"critical":q<min?"low":"ok";
   }
 
   // Alerta de validade: retorna cor se lote vence em ≤ 60 dias
@@ -5234,10 +5281,13 @@ function Estoque({products,setProducts}){
     } catch { return null; }
   }
 
-  const visible=(filter==="all"?products:products.filter(i=>{
+  const visible=(filter==="all"?injetaveis:injetaveis.filter(i=>{
     const st = i.lotes ? calcStatus(i.lotes, i.min) : i.status;
     return st === filter;
   })).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"","pt-BR",{sensitivity:"base"}));
+
+  const visibleInsumos=(filter==="all"?insumos:insumos.filter(i=>simpleStatus(i)===filter))
+    .slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"","pt-BR",{sensitivity:"base"}));
 
   function save(){
     const qty=Number(form.qty), min=Number(form.min);
@@ -5263,6 +5313,33 @@ function Estoque({products,setProducts}){
       }]);
     }
     setShowNew(false);setEditItem(null);setForm(blank);
+  }
+
+  // ── CRUD simplificado para Insumos/Descartáveis (sem lotes, sem validade obrigatória) ──
+  function saveInsumo(){
+    const qty=Number(insumoForm.qty)||0, min=Number(insumoForm.min)||0;
+    const status=simpleStatus({qty,min});
+    if(editItem){
+      setProducts(prev=>prev.map(i=>i.id===editItem.id?{...i,...insumoForm,cat:INSUMO_CAT,qty,min,cost:Number(insumoForm.cost)||0,status}:i));
+    }else{
+      setProducts(prev=>[...prev,{
+        id:Date.now(),...insumoForm,cat:INSUMO_CAT,qty,min,cost:Number(insumoForm.cost)||0,status,
+        movimentacoes:[{id:Date.now()+1,tipo:"entrada",qtd:qty,data:new Date().toLocaleDateString("pt-BR"),obs:"Entrada inicial"}]
+      }]);
+    }
+    setShowNew(false);setEditItem(null);setInsumoForm(blankInsumo);
+  }
+  function openEditInsumo(item){setEditItem(item);setInsumoForm({...item,qty:String(item.qty||0),min:String(item.min||0),cost:String(item.cost||0)});setShowNew(true);}
+  function saveEntradaInsumo(){
+    const qtd=Number(entradaQtd)||0;
+    if(qtd<=0)return;
+    setProducts(prev=>prev.map(p=>{
+      if(p.id!==showEntradaInsumo)return p;
+      const newQty=(Number(p.qty)||0)+qtd;
+      const mov={id:Date.now(),tipo:"entrada",qtd,data:new Date().toLocaleDateString("pt-BR"),obs:"Reposição de estoque"};
+      return {...p,qty:newQty,status:simpleStatus({qty:newQty,min:p.min}),movimentacoes:[...(p.movimentacoes||[]),mov]};
+    }));
+    setShowEntradaInsumo(null);setEntradaQtd("");
   }
 
   function saveLote() {
@@ -5292,142 +5369,210 @@ function Estoque({products,setProducts}){
   function del(id){if(window.confirm("Excluir produto?"))setProducts(prev=>prev.filter(i=>i.id!==id));}
   function openEdit(item){setEditItem(item);setForm({...item,qty:String(getTotalQty(item)),min:String(item.min),cost:String(item.cost)});setShowNew(true);}
 
-  const critical=products.filter(i=>{
+  const critical=injetaveis.filter(i=>{
     const st = i.lotes ? calcStatus(i.lotes, i.min) : i.status;
     return st==="critical";
   }).length;
-  const totalVal=products.reduce((a,i)=>a+getTotalQty(i)*(i.cost||0),0);
+  const totalVal=injetaveis.reduce((a,i)=>a+getTotalQty(i)*(i.cost||0),0);
+  const criticalInsumos=insumos.filter(i=>simpleStatus(i)==="critical").length;
+  const totalValInsumos=insumos.reduce((a,i)=>a+(Number(i.qty)||0)*(Number(i.cost)||0),0);
+
+  const SUB_TABS=[
+    {k:"injetaveis",l:"💉 Injetáveis",count:injetaveis.length},
+    {k:"insumos",l:"🧰 Insumos / Descartáveis",count:insumos.length},
+  ];
 
   return h("div",null,
-    h(SectionHeader,{title:"Estoque",sub:`${products.length} produtos · ${critical} críticos`,
+    h(SectionHeader,{title:"Estoque",sub:subTab==="injetaveis"?`${injetaveis.length} produtos injetáveis · ${critical} críticos`:`${insumos.length} insumos · ${criticalInsumos} críticos`,
       action:h("div",{style:{display:"flex",gap:8}},
-        h(Btn,{onClick:()=>{setEditItem(null);setForm(blank);setShowNew(true);}},"＋ Novo Produto")
+        subTab==="injetaveis"
+          ?h(Btn,{onClick:()=>{setEditItem(null);setForm(blank);setShowNew(true);}},"＋ Novo Injetável")
+          :h(Btn,{onClick:()=>{setEditItem(null);setInsumoForm(blankInsumo);setShowNew(true);}},"＋ Novo Insumo")
       )
     }),
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
-      [{l:"Nível Crítico",v:critical,c:KPI.red},{l:"Produtos",v:products.length,c:KPI.blue},{l:"Valor em Estoque",v:fmtCurr(totalVal),c:KPI.green}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
+
+    // ── Sub-abas: Injetáveis | Insumos/Descartáveis (cadastros e telas totalmente separados) ──
+    h("div",{style:{display:"flex",gap:6,marginBottom:20,borderBottom:`1px solid ${P.border}`,paddingBottom:0}},
+      SUB_TABS.map(t=>h("button",{key:t.k,onClick:()=>{setSubTab(t.k);setFilter("all");},style:{padding:"9px 18px",background:"transparent",border:"none",borderBottom:`2px solid ${subTab===t.k?P.rose:"transparent"}`,color:subTab===t.k?P.rose:P.text2,cursor:"pointer",fontSize:13,fontFamily:"'DM Sans',sans-serif",fontWeight:subTab===t.k?600:400,marginBottom:-1,transition:"all .15s",display:"flex",alignItems:"center",gap:6}},
+        t.l,h("span",{style:{fontSize:10,color:P.text3,background:P.bg3,padding:"1px 7px",borderRadius:20,border:`1px solid ${P.border}`}},t.count)
+      ))
     ),
-    h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
 
-    // ── Lista de produtos com expansão por lotes ──
-    h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-      visible.map(item => {
-        const totalQty = getTotalQty(item);
-        const st = item.lotes ? calcStatus(item.lotes, item.min) : item.status;
-        const sc = stCfg[st] || stCfg.ok;
-        const pct = Math.min(100, (totalQty / Math.max((item.min||1)*1.5, 1))*100);
-        const isExpanded = expandedProduct === item.id;
-        const hasLotes = item.lotes && item.lotes.length > 0;
-        // Alertas de validade
-        const valAlerts = (item.lotes||[]).map(l => ({ ...l, alerta: validadeAlerta(l.validade) })).filter(l => l.alerta);
+    subTab==="injetaveis"?h(Fragment,null,
+      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
+        [{l:"Nível Crítico",v:critical,c:KPI.red},{l:"Produtos",v:injetaveis.length,c:KPI.blue},{l:"Valor em Estoque",v:fmtCurr(totalVal),c:KPI.green}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
+      ),
+      h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
 
-        return h("div",{key:item.id},
-          // Linha principal
-          h(Card,{style:{marginBottom:0,borderRadius:isExpanded?"12px 12px 0 0":12,border:`1px solid ${sc.color}33`}},
-            h("div",{style:{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}},
-              // Emoji + nome
-              h("div",{style:{display:"flex",alignItems:"center",gap:10,flex:"1 1 200px",minWidth:0}},
-                h("span",{style:{fontSize:22}},item.emoji||"📦"),
-                h("div",null,
-                  h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},item.name),
-                  h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},item.cat),
-                  valAlerts.length > 0 && h("div",{style:{display:"flex",gap:4,flexWrap:"wrap",marginTop:3}},
-                    valAlerts.map((l,i) => h("span",{key:i,style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:l.alerta.color+"18",color:l.alerta.color,border:`1px solid ${l.alerta.color}44`}},
-                      `Lote ${l.codigo}: ${l.alerta.label}`
-                    ))
+      // ── Lista de produtos com expansão por lotes ──
+      h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+        visible.length===0&&h(Card,{style:{textAlign:"center",padding:30,color:P.text3,fontSize:13}},"Nenhum produto injetável cadastrado ainda."),
+        visible.map(item => {
+          const totalQty = getTotalQty(item);
+          const st = item.lotes ? calcStatus(item.lotes, item.min) : item.status;
+          const sc = stCfg[st] || stCfg.ok;
+          const pct = Math.min(100, (totalQty / Math.max((item.min||1)*1.5, 1))*100);
+          const isExpanded = expandedProduct === item.id;
+          const hasLotes = item.lotes && item.lotes.length > 0;
+          // Alertas de validade
+          const valAlerts = (item.lotes||[]).map(l => ({ ...l, alerta: validadeAlerta(l.validade) })).filter(l => l.alerta);
+
+          return h("div",{key:item.id},
+            // Linha principal
+            h(Card,{style:{marginBottom:0,borderRadius:isExpanded?"12px 12px 0 0":12,border:`1px solid ${sc.color}33`}},
+              h("div",{style:{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}},
+                // Emoji + nome
+                h("div",{style:{display:"flex",alignItems:"center",gap:10,flex:"1 1 200px",minWidth:0}},
+                  h("span",{style:{fontSize:22}},item.emoji||"📦"),
+                  h("div",null,
+                    h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},item.name),
+                    h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},item.cat),
+                    valAlerts.length > 0 && h("div",{style:{display:"flex",gap:4,flexWrap:"wrap",marginTop:3}},
+                      valAlerts.map((l,i) => h("span",{key:i,style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:l.alerta.color+"18",color:l.alerta.color,border:`1px solid ${l.alerta.color}44`}},
+                        `Lote ${l.codigo}: ${l.alerta.label}`
+                      ))
+                    )
                   )
+                ),
+                // Saldo total
+                h("div",{style:{textAlign:"center",minWidth:80}},
+                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:sc.color,lineHeight:1}},totalQty),
+                  h("div",{style:{fontSize:10,color:P.text3}},item.unit||"un"),
+                  h("div",{style:{height:3,borderRadius:2,background:P.bg3,width:60,marginTop:4,overflow:"hidden",margin:"4px auto 0"}},
+                    h("div",{style:{height:"100%",width:pct+"%",background:sc.color,borderRadius:2}})
+                  )
+                ),
+                // Status badge
+                h("span",{style:{fontSize:11,padding:"3px 10px",borderRadius:12,color:sc.color,background:sc.bg,flexShrink:0}},sc.l),
+                // Ações
+                h("div",{style:{display:"flex",gap:6,flexShrink:0}},
+                  h("button",{onClick:()=>setShowLoteModal(item.id),style:{padding:"6px 12px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,color:P.accent3,border:"none",cursor:"pointer",fontSize:12,fontWeight:600}},"＋ Entrada"),
+                  hasLotes && h("button",{onClick:()=>setExpandedProduct(isExpanded?null:item.id),style:{padding:"6px 10px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,cursor:"pointer",fontSize:12}},isExpanded?"▲ Lotes":"▼ Lotes"),
+                  h("button",{onClick:()=>openEdit(item),style:{width:28,height:28,borderRadius:6,border:`1px solid ${P.border}`,background:"transparent",color:P.accent,cursor:"pointer",fontSize:12}},"✎"),
+                  h("button",{onClick:()=>del(item.id),style:{width:28,height:28,borderRadius:6,border:"1px solid rgba(192,112,112,.2)",background:"transparent",color:P.red,cursor:"pointer",fontSize:12}},"🗑")
                 )
-              ),
-              // Saldo total
-              h("div",{style:{textAlign:"center",minWidth:80}},
-                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:sc.color,lineHeight:1}},totalQty),
-                h("div",{style:{fontSize:10,color:P.text3}},item.unit||"un"),
-                h("div",{style:{height:3,borderRadius:2,background:P.bg3,width:60,marginTop:4,overflow:"hidden",margin:"4px auto 0"}},
-                  h("div",{style:{height:"100%",width:pct+"%",background:sc.color,borderRadius:2}})
-                )
-              ),
-              // Status badge
-              h("span",{style:{fontSize:11,padding:"3px 10px",borderRadius:12,color:sc.color,background:sc.bg,flexShrink:0}},sc.l),
-              // Ações
-              h("div",{style:{display:"flex",gap:6,flexShrink:0}},
-                h("button",{onClick:()=>setShowLoteModal(item.id),style:{padding:"6px 12px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,color:P.accent3,border:"none",cursor:"pointer",fontSize:12,fontWeight:600}},"＋ Entrada"),
-                hasLotes && h("button",{onClick:()=>setExpandedProduct(isExpanded?null:item.id),style:{padding:"6px 10px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,cursor:"pointer",fontSize:12}},isExpanded?"▲ Lotes":"▼ Lotes"),
-                h("button",{onClick:()=>openEdit(item),style:{width:28,height:28,borderRadius:6,border:`1px solid ${P.border}`,background:"transparent",color:P.accent,cursor:"pointer",fontSize:12}},"✎"),
-                h("button",{onClick:()=>del(item.id),style:{width:28,height:28,borderRadius:6,border:"1px solid rgba(192,112,112,.2)",background:"transparent",color:P.red,cursor:"pointer",fontSize:12}},"🗑")
               )
-            )
-          ),
-          // Expansão: lotes + movimentações
-          isExpanded && h("div",{style:{background:P.card2,border:`1px solid ${sc.color}33`,borderTop:"none",borderRadius:"0 0 12px 12px",padding:"0 16px 16px"}},
-            // Lotes ativos
-            h("div",{style:{marginTop:14}},
-              h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:10,fontWeight:600}},"Lotes em Estoque"),
-              (item.lotes||[]).length === 0
-                ? h("div",{style:{color:P.text3,fontSize:13,padding:"8px 0"}},"Nenhum lote cadastrado. Clique em ＋ Entrada.")
-                : h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
-                    [...(item.lotes||[])].sort((a,b) => {
-                      // Ordena por validade (FEFO - First Expired First Out)
-                      const parseVal = v => { try{ const[m,y]=v.split("/"); return new Date(y,m-1,1); }catch{ return new Date(9999,0); }};
-                      return parseVal(a.validade) - parseVal(b.validade);
-                    }).map(lote => {
-                      const al = validadeAlerta(lote.validade);
-                      const usoPct = lote.qtdOriginal > 0 ? Math.round(((lote.qtdOriginal - lote.qtd) / lote.qtdOriginal)*100) : 0;
-                      return h("div",{key:lote.id,style:{padding:"10px 14px",background:lote.qtd===0?"rgba(192,112,112,.05)":P.bg3,borderRadius:10,border:`1px solid ${al?al.color+"44":P.border}`,opacity:lote.qtd===0?0.6:1}},
-                        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}},
-                          h("div",null,
-                            h("div",{style:{display:"flex",alignItems:"center",gap:8}},
-                              h("span",{style:{fontSize:12,color:P.text3,fontWeight:500}},"Lote"),
-                              h("span",{style:{fontSize:13,color:P.rose,fontWeight:700,letterSpacing:".04em"}},lote.codigo),
-                              lote.qtd === 0 && h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:"rgba(192,112,112,.15)",color:P.red}},"Esgotado")
-                            ),
-                            h("div",{style:{display:"flex",gap:12,marginTop:4,flexWrap:"wrap"}},
-                              lote.validade && h("span",{style:{fontSize:11,color:al?al.color:P.text3}},`Val: ${lote.validade}${al?" · "+al.label:""}`),
-                              h("span",{style:{fontSize:11,color:P.text3}},`Entrada: ${lote.dtEntrada}`)
-                            )
-                          ),
-                          h("div",{style:{textAlign:"right"}},
-                            h("div",{style:{display:"flex",alignItems:"baseline",gap:4}},
-                              h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:lote.qtd===0?P.text3:P.green}},lote.qtd),
-                              h("span",{style:{fontSize:11,color:P.text3}}," / "+lote.qtdOriginal+" "+item.unit)
-                            ),
-                            lote.qtdOriginal > 0 && h("div",{style:{marginTop:4}},
-                              h("div",{style:{height:3,width:80,borderRadius:2,background:P.border,overflow:"hidden"}},
-                                h("div",{style:{height:"100%",width:usoPct+"%",background:lote.qtd===0?P.red:P.rose,borderRadius:2}})
+            ),
+            // Expansão: lotes + movimentações
+            isExpanded && h("div",{style:{background:P.card2,border:`1px solid ${sc.color}33`,borderTop:"none",borderRadius:"0 0 12px 12px",padding:"0 16px 16px"}},
+              // Lotes ativos
+              h("div",{style:{marginTop:14}},
+                h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:10,fontWeight:600}},"Lotes em Estoque"),
+                (item.lotes||[]).length === 0
+                  ? h("div",{style:{color:P.text3,fontSize:13,padding:"8px 0"}},"Nenhum lote cadastrado. Clique em ＋ Entrada.")
+                  : h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+                      [...(item.lotes||[])].sort((a,b) => {
+                        // Ordena por validade (FEFO - First Expired First Out)
+                        const parseVal = v => { try{ const[m,y]=v.split("/"); return new Date(y,m-1,1); }catch{ return new Date(9999,0); }};
+                        return parseVal(a.validade) - parseVal(b.validade);
+                      }).map(lote => {
+                        const al = validadeAlerta(lote.validade);
+                        const usoPct = lote.qtdOriginal > 0 ? Math.round(((lote.qtdOriginal - lote.qtd) / lote.qtdOriginal)*100) : 0;
+                        return h("div",{key:lote.id,style:{padding:"10px 14px",background:lote.qtd===0?"rgba(192,112,112,.05)":P.bg3,borderRadius:10,border:`1px solid ${al?al.color+"44":P.border}`,opacity:lote.qtd===0?0.6:1}},
+                          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}},
+                            h("div",null,
+                              h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+                                h("span",{style:{fontSize:12,color:P.text3,fontWeight:500}},"Lote"),
+                                h("span",{style:{fontSize:13,color:P.rose,fontWeight:700,letterSpacing:".04em"}},lote.codigo),
+                                lote.qtd === 0 && h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:"rgba(192,112,112,.15)",color:P.red}},"Esgotado")
                               ),
-                              h("div",{style:{fontSize:9,color:P.text3,marginTop:2}},usoPct+"% usado")
+                              h("div",{style:{display:"flex",gap:12,marginTop:4,flexWrap:"wrap"}},
+                                lote.validade && h("span",{style:{fontSize:11,color:al?al.color:P.text3}},`Val: ${lote.validade}${al?" · "+al.label:""}`),
+                                h("span",{style:{fontSize:11,color:P.text3}},`Entrada: ${lote.dtEntrada}`)
+                              )
+                            ),
+                            h("div",{style:{textAlign:"right"}},
+                              h("div",{style:{display:"flex",alignItems:"baseline",gap:4}},
+                                h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:lote.qtd===0?P.text3:P.green}},lote.qtd),
+                                h("span",{style:{fontSize:11,color:P.text3}}," / "+lote.qtdOriginal+" "+item.unit)
+                              ),
+                              lote.qtdOriginal > 0 && h("div",{style:{marginTop:4}},
+                                h("div",{style:{height:3,width:80,borderRadius:2,background:P.border,overflow:"hidden"}},
+                                  h("div",{style:{height:"100%",width:usoPct+"%",background:lote.qtd===0?P.red:P.rose,borderRadius:2}})
+                                ),
+                                h("div",{style:{fontSize:9,color:P.text3,marginTop:2}},usoPct+"% usado")
+                              )
                             )
                           )
+                        );
+                      })
+                    )
+              ),
+              // Últimas movimentações
+              (item.movimentacoes||[]).length > 0 && h("div",{style:{marginTop:16}},
+                h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:10,fontWeight:600}},"Últimas Movimentações"),
+                h("div",{style:{display:"flex",flexDirection:"column",gap:4}},
+                  [...(item.movimentacoes||[])].reverse().slice(0,6).map((mov,i) =>
+                    h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:P.bg,borderRadius:8,border:`1px solid ${P.border}`}},
+                      h("div",null,
+                        h("span",{style:{fontSize:11,fontWeight:600,color:mov.tipo==="entrada"?P.green:P.yellow}},mov.tipo==="entrada"?"↑ Entrada":"↓ Saída"),
+                        h("span",{style:{fontSize:11,color:P.text3,marginLeft:8}},mov.obs||"")
+                      ),
+                      h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                        h("span",{style:{fontSize:11,color:P.text3}},mov.data),
+                        h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:mov.tipo==="entrada"?P.green:P.yellow}},
+                          (mov.tipo==="entrada"?"+":"-")+mov.qtd+" "+item.unit
                         )
-                      );
-                    })
-                  )
-            ),
-            // Últimas movimentações
-            (item.movimentacoes||[]).length > 0 && h("div",{style:{marginTop:16}},
-              h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:10,fontWeight:600}},"Últimas Movimentações"),
-              h("div",{style:{display:"flex",flexDirection:"column",gap:4}},
-                [...(item.movimentacoes||[])].reverse().slice(0,6).map((mov,i) =>
-                  h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:P.bg,borderRadius:8,border:`1px solid ${P.border}`}},
-                    h("div",null,
-                      h("span",{style:{fontSize:11,fontWeight:600,color:mov.tipo==="entrada"?P.green:P.yellow}},mov.tipo==="entrada"?"↑ Entrada":"↓ Saída"),
-                      h("span",{style:{fontSize:11,color:P.text3,marginLeft:8}},mov.obs||"")
-                    ),
-                    h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-                      h("span",{style:{fontSize:11,color:P.text3}},mov.data),
-                      h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:mov.tipo==="entrada"?P.green:P.yellow}},
-                        (mov.tipo==="entrada"?"+":"-")+mov.qtd+" "+item.unit
                       )
                     )
                   )
                 )
               )
             )
-          )
-        );
-      })
+          );
+        })
+      )
+    ):h(Fragment,null,
+      // ── SUB-ABA INSUMOS/DESCARTÁVEIS: cadastro simplificado, sem lotes/validade ──
+      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
+        [{l:"Nível Crítico",v:criticalInsumos,c:KPI.red},{l:"Insumos",v:insumos.length,c:KPI.teal},{l:"Valor em Estoque",v:fmtCurr(totalValInsumos),c:KPI.green}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
+      ),
+      h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
+      h("div",{style:{fontSize:11,color:P.text3,marginBottom:14}},"Itens de consumo (agulhas, luvas, gaze, anestésico tópico, etc). Cadastro simples — sem controle de lote ou validade."),
+
+      h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+        visibleInsumos.length===0&&h(Card,{style:{textAlign:"center",padding:30,color:P.text3,fontSize:13}},"Nenhum insumo cadastrado ainda. Clique em ＋ Novo Insumo."),
+        visibleInsumos.map(item=>{
+          const st=simpleStatus(item);
+          const sc=stCfg[st]||stCfg.ok;
+          const pct=Math.min(100,((Number(item.qty)||0)/Math.max((Number(item.min)||1)*1.5,1))*100);
+          return h(Card,{key:item.id,style:{border:`1px solid ${sc.color}33`}},
+            h("div",{style:{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}},
+              h("div",{style:{display:"flex",alignItems:"center",gap:10,flex:"1 1 200px",minWidth:0}},
+                h("span",{style:{fontSize:22}},item.emoji||"🧰"),
+                h("div",null,
+                  h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},item.name),
+                  h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},`Custo unit.: ${fmtCurr(item.cost||0)}`)
+                )
+              ),
+              h("div",{style:{textAlign:"center",minWidth:80}},
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:sc.color,lineHeight:1}},item.qty||0),
+                h("div",{style:{fontSize:10,color:P.text3}},item.unit||"un"),
+                h("div",{style:{height:3,borderRadius:2,background:P.bg3,width:60,marginTop:4,overflow:"hidden",margin:"4px auto 0"}},
+                  h("div",{style:{height:"100%",width:pct+"%",background:sc.color,borderRadius:2}})
+                )
+              ),
+              h("span",{style:{fontSize:11,padding:"3px 10px",borderRadius:12,color:sc.color,background:sc.bg,flexShrink:0}},sc.l),
+              h("div",{style:{display:"flex",gap:6,flexShrink:0}},
+                h("button",{onClick:()=>{setShowEntradaInsumo(item.id);setEntradaQtd("");},style:{padding:"6px 12px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,color:P.accent3,border:"none",cursor:"pointer",fontSize:12,fontWeight:600}},"＋ Entrada"),
+                h("button",{onClick:()=>openEditInsumo(item),style:{width:28,height:28,borderRadius:6,border:`1px solid ${P.border}`,background:"transparent",color:P.accent,cursor:"pointer",fontSize:12}},"✎"),
+                h("button",{onClick:()=>del(item.id),style:{width:28,height:28,borderRadius:6,border:"1px solid rgba(192,112,112,.2)",background:"transparent",color:P.red,cursor:"pointer",fontSize:12}},"🗑")
+              )
+            ),
+            (item.movimentacoes||[]).length>0&&h("div",{style:{marginTop:10,paddingTop:10,borderTop:`1px solid ${P.border}`,display:"flex",flexDirection:"column",gap:4}},
+              [...(item.movimentacoes||[])].reverse().slice(0,3).map((mov,i)=>
+                h("div",{key:i,style:{display:"flex",justifyContent:"space-between",fontSize:11,color:P.text3}},
+                  h("span",null,(mov.tipo==="entrada"?"↑ ":"↓ ")+(mov.obs||"")),
+                  h("span",null,`${mov.tipo==="entrada"?"+":"-"}${mov.qtd} · ${mov.data}`)
+                )
+              )
+            )
+          );
+        })
+      )
     ),
 
-    // ── Modal: Entrada por Lote ──
+    // ── Modal: Entrada por Lote (Injetáveis) ──
     h(Modal,{open:!!showLoteModal,onClose:()=>{setShowLoteModal(null);setLoteForm(blankLote);},title:"📦 Entrada de Estoque por Lote",width:480},
       (()=>{
         const prod = products.find(p=>p.id===showLoteModal);
@@ -5457,8 +5602,33 @@ function Estoque({products,setProducts}){
       })()
     ),
 
-    // ── Modal: Novo/Editar Produto ──
-    h(Modal,{open:showNew,onClose:()=>{setShowNew(false);setEditItem(null);},title:editItem?"✎ Editar Produto":"✦ Novo Produto",width:500},
+    // ── Modal: Entrada simples (Insumos/Descartáveis) ──
+    h(Modal,{open:!!showEntradaInsumo,onClose:()=>{setShowEntradaInsumo(null);setEntradaQtd("");},title:"📦 Entrada de Estoque",width:420},
+      (()=>{
+        const item=products.find(p=>p.id===showEntradaInsumo);
+        if(!item)return null;
+        return h("div",null,
+          h("div",{style:{padding:"10px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`,marginBottom:16,display:"flex",alignItems:"center",gap:10}},
+            h("span",{style:{fontSize:20}},item.emoji||"🧰"),
+            h("div",null,
+              h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},item.name),
+              h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},`Saldo atual: ${item.qty||0} ${item.unit}`)
+            )
+          ),
+          h(Field,{label:`Quantidade a adicionar (${item.unit})`},h(Inp,{type:"number",value:entradaQtd,onChange:setEntradaQtd,placeholder:"0"})),
+          entradaQtd&&Number(entradaQtd)>0&&h("div",{style:{marginTop:8,padding:"10px 14px",background:"rgba(122,173,138,.08)",border:"1px solid rgba(122,173,138,.25)",borderRadius:8,fontSize:12,color:P.green}},
+            `✓ Novo saldo após entrada: ${(Number(item.qty)||0)+Number(entradaQtd)} ${item.unit}`
+          ),
+          h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16}},
+            h(Btn,{variant:"ghost",onClick:()=>{setShowEntradaInsumo(null);setEntradaQtd("");}},"Cancelar"),
+            h(Btn,{onClick:saveEntradaInsumo,disabled:!entradaQtd||Number(entradaQtd)<=0},"Confirmar Entrada")
+          )
+        );
+      })()
+    ),
+
+    // ── Modal: Novo/Editar Produto Injetável ──
+    h(Modal,{open:showNew&&subTab==="injetaveis",onClose:()=>{setShowNew(false);setEditItem(null);},title:editItem?"✎ Editar Produto":"✦ Novo Produto Injetável",width:500},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Nome"},h(Inp,{value:form.name,onChange:fv("name"),placeholder:"Ex: Botox Allergan 100U"})),
         h(Field,{label:"Emoji",half:true},h(Inp,{value:form.emoji,onChange:fv("emoji"),placeholder:"💉"})),
@@ -5473,6 +5643,22 @@ function Estoque({products,setProducts}){
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}},
         h(Btn,{variant:"ghost",onClick:()=>{setShowNew(false);setEditItem(null);}},"Cancelar"),
         h(Btn,{onClick:save},editItem?"Salvar":"Adicionar")
+      )
+    ),
+
+    // ── Modal: Novo/Editar Insumo (cadastro simplificado) ──
+    h(Modal,{open:showNew&&subTab==="insumos",onClose:()=>{setShowNew(false);setEditItem(null);},title:editItem?"✎ Editar Insumo":"✦ Novo Insumo / Descartável",width:460},
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
+        h(Field,{label:"Nome"},h(Inp,{value:insumoForm.name,onChange:ifv("name"),placeholder:"Ex: Agulha 30G"})),
+        h(Field,{label:"Emoji",half:true},h(Inp,{value:insumoForm.emoji,onChange:ifv("emoji"),placeholder:"🧰"})),
+        h(Field,{label:"Unidade",half:true},h(Sel,{value:insumoForm.unit||"un",onChange:ifv("unit"),options:["un","par","cx","rolo","pct","ml","fr"]})),
+        h(Field,{label:editItem?"Quantidade em Estoque":"Quantidade Inicial",half:true},h(Inp,{type:"number",value:insumoForm.qty,onChange:ifv("qty"),placeholder:"0"})),
+        h(Field,{label:"Qtd. Mínima",half:true},h(Inp,{type:"number",value:insumoForm.min,onChange:ifv("min"),placeholder:"10"})),
+        h(Field,{label:"Custo Unit. (R$)",half:true},h(Inp,{type:"number",value:insumoForm.cost,onChange:ifv("cost"),placeholder:"0,00"}))
+      ),
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}},
+        h(Btn,{variant:"ghost",onClick:()=>{setShowNew(false);setEditItem(null);}},"Cancelar"),
+        h(Btn,{onClick:saveInsumo},editItem?"Salvar":"Adicionar")
       )
     )
   );
