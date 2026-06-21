@@ -982,7 +982,7 @@ function LoginScreen({ onLogin }) {
     },
       h("div", { style: { width: 380, padding: "48px 40px", background: P.bg2, border: `1px solid ${P.border}`, borderRadius: 20, boxShadow: "0 32px 80px rgba(0,0,0,.6)" } },
         h("div", { style: { textAlign: "center", marginBottom: 36 } },
-          h("div", { style: { fontFamily: "'Cormorant Garamond',serif", fontSize: 34, color: P.accent3, letterSpacing: ".04em", lineHeight: 1.1 } }, "HarmonizaPro"),
+          h("div", { style: { fontFamily: "'Cormorant Garamond',serif", fontSize: 34, color: P.rose, letterSpacing: ".04em", lineHeight: 1.1 } }, "HarmonizaPro"),
           h("div", { style: { fontSize: 11, color: P.text3, letterSpacing: ".16em", textTransform: "uppercase", marginTop: 6 } }, "Gestão de Clínica")
         ),
         h("div", { style: { marginBottom: 16 } },
@@ -1026,7 +1026,7 @@ function Modal({open,onClose,title,children,width=520}){
   return createElement("div",{onClick:e=>{if(e.target===e.currentTarget)onClose();},style:{position:"fixed",inset:0,background:"rgba(10,5,7,.9)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}},
     createElement("div",{style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:16,padding:28,width,maxWidth:"96vw",maxHeight:"92vh",overflowY:"auto"}},
       createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22}},
-        createElement("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.accent3}},title),
+        createElement("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.rose}},title),
         createElement("button",{onClick:onClose,style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:22}},"\u00d7")
       ),children
     )
@@ -2983,7 +2983,7 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
   const blockBtnStyle={padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid rgba(192,112,112,.35)`,color:P.red};
 
   // ─── CARD DE AGENDAMENTO (drag) ───
-  function ApptCard({a,compact=false}){
+  function ApptCard({a,compact=false,big=false}){
     const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
     const isDragging=dragId===a.id;
     if(a.blocked){
@@ -2999,10 +2999,17 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
       onDragEnd,
       onClick:()=>openEdit(a),
       title:"Arraste para reagendar · Clique para editar",
-      style:{padding:compact?"3px 5px":"6px 10px",background:`linear-gradient(135deg,${P.rose}22,${P.gold}11)`,border:`1px solid ${P.rose}55`,borderLeft:`3px solid ${sc.color}`,borderRadius:6,cursor:"grab",opacity:isDragging?.3:1,userSelect:"none",position:"relative"}
+      style:{padding:compact?(big?"8px 11px":"3px 5px"):"6px 10px",background:`linear-gradient(135deg,${P.rose}22,${P.gold}11)`,border:`1px solid ${P.rose}55`,borderLeft:`3px solid ${sc.color}`,borderRadius:6,cursor:"grab",opacity:isDragging?.3:1,userSelect:"none",position:"relative",minHeight:compact&&big?56:"auto"}
     },
       compact
-        ?h("div",{style:{fontSize:9,color:P.accent,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" "+a.patientName)
+        ?(big
+            ?h(Fragment,null,
+                h("div",{style:{fontSize:14,color:P.accent,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" — "+a.patientName),
+                h("div",{style:{fontSize:12,color:P.text2,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.procedure),
+                h("div",{style:{fontSize:10.5,color:P.text3,marginTop:1}},"📍 "+a.location)
+              )
+            :h("div",{style:{fontSize:9,color:P.accent,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" "+a.patientName)
+          )
         :h(Fragment,null,
             h("div",{style:{fontSize:12,color:P.accent,fontWeight:700}},a.time+" — "+a.patientName),
             h("div",{style:{fontSize:11,color:P.text2}},a.procedure),
@@ -3036,16 +3043,25 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
           onDrop:e=>onDropSlot(e,date,hr),
         });
       }),
-      appts.map(a=>{
-        const [hh,mm]=(a.time||"09:00").split(":").map(Number);
-        const top=(hh-7)*64+(mm/60)*64+2;
-        // pointerEvents none na wrapper para o drop cair no slot por baixo
-        return h("div",{key:a.id,style:{position:"absolute",left:2,right:2,top,zIndex:2,pointerEvents:"none"}},
-          h("div",{style:{pointerEvents:"auto"}},
-            h(ApptCard,{a,compact:true})
-          )
-        );
-      })
+      (()=>{
+        const byTime={};
+        appts.forEach(a=>{ const t=a.time||"09:00"; (byTime[t]=byTime[t]||[]).push(a); });
+        return appts.map(a=>{
+          const t=a.time||"09:00";
+          const group=byTime[t];
+          const idx=group.indexOf(a);
+          const n=group.length;
+          const widthPct=100/n;
+          const leftPct=idx*widthPct;
+          const [hh,mm]=t.split(":").map(Number);
+          const top=(hh-7)*64+(mm/60)*64+2;
+          return h("div",{key:a.id,style:{position:"absolute",left:`calc(${leftPct}% + 2px)`,width:`calc(${widthPct}% - 4px)`,top,zIndex:2,pointerEvents:"none"}},
+            h("div",{style:{pointerEvents:"auto"}},
+              h(ApptCard,{a,compact:true,big:n===1})
+            )
+          );
+        });
+      })()
     );
   }
 
@@ -7881,10 +7897,10 @@ function AppInner({ session, onLogout }) {
     h("div",{style:{padding:sidebarCollapsed&&!isMobile?"16px 0":"24px 20px 16px",borderBottom:`1px solid ${P.border}`,display:"flex",alignItems:"center",justifyContent:sidebarCollapsed&&!isMobile?"center":"space-between",flexShrink:0}},
       !sidebarCollapsed||isMobile
         ? h("div",null,
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent3,letterSpacing:".04em",lineHeight:1.1,whiteSpace:"nowrap",overflow:"hidden"}},settings.clinicName||"HarmonizaPro"),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.rose,letterSpacing:".04em",lineHeight:1.1,whiteSpace:"nowrap",overflow:"hidden"}},settings.clinicName||"HarmonizaPro"),
             h("div",{style:{fontSize:9,color:P.text3,letterSpacing:".14em",textTransform:"uppercase",marginTop:3}},"Gestão de Clínica")
           )
-        : h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.accent3}},"✦"),
+        : h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.rose}},"✦"),
       // Botão colapsar (desktop/tablet)
       !isMobile&&h("button",{onClick:()=>setSidebarCollapsed(c=>!c),title:sidebarCollapsed?"Expandir menu":"Recolher menu",style:{background:"none",border:`1px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"4px 6px",fontSize:13,display:"flex",flexDirection:"column",gap:3,alignItems:"center",justifyContent:"center",flexShrink:0}},
         h("span",{style:{display:"block",width:14,height:1.5,background:P.text3,borderRadius:2}}),
