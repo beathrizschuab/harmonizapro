@@ -25,6 +25,21 @@ const icStatusOf=ic=>ic.status||"Em Acompanhamento";
 const icConductsOf=ic=>(ic.conducts&&ic.conducts.length)?ic.conducts:(ic.conduct?[{id:"legacy_c",date:ic.date,text:ic.conduct}]:[]);
 const icEvolutionsOf=ic=>ic.evolutions||[];
 const EXPENSE_CATS=["Aluguel","Marketing","Fornecedores","Produtos","Impostos","Equipamentos","Funcionários","Outros"];
+const RECURRENCE_FREQ=["Mensal","Bimestral","Trimestral","Semestral","Anual"];
+const RECURRENCE_MONTHS={Mensal:1,Bimestral:2,Trimestral:3,Semestral:6,Anual:12};
+function getRecurrenceOccurrence(rec,month,year){
+  if(!rec.startDate)return null;
+  const start=new Date(rec.startDate+"T12:00:00");
+  const target=new Date(year,month,1);
+  if(target<new Date(start.getFullYear(),start.getMonth(),1))return null;
+  if(rec.endDate){const end=new Date(rec.endDate+"T12:00:00");if(target>new Date(end.getFullYear(),end.getMonth(),1))return null;}
+  const freqM=RECURRENCE_MONTHS[rec.frequency]||1;
+  const diffM=(year-start.getFullYear())*12+(month-start.getMonth());
+  if(diffM%freqM!==0)return null;
+  const day=start.getDate();
+  const dueDate=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+  return{id:`rec_${rec.id}_${year}_${month}`,desc:rec.desc,cat:rec.cat,value:Number(rec.value)||0,date:dueDate,status:rec.autoStatus||"Pendente",notes:`Recorrente · ${rec.frequency}`,recurringId:rec.id,isRecurring:true};
+}
 // Paleta vibrante para cards de KPI com fundo colorido (vouchers, pacotes, estoque, aniversariantes, retornos, dashboard)
 const KPI={
   purple:"#8B5CF6", blue:"#3B82F6", green:"#22C55E", red:"#EF4444", yellow:"#EAB308",
@@ -5362,7 +5377,7 @@ function parseAnyDate(s){
   return null;
 }
 
-function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings,goals={},setGoals,procedures=[]}){
+function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings,goals={},setGoals,procedures=[],recurringExpenses=[],setRecurringExpenses}){
   const[showNewExp,setShowNewExp]=useState(false);
   const[editExp,setEditExp]=useState(null);
   const[showNewInc,setShowNewInc]=useState(false);
@@ -5380,6 +5395,34 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const ifv=k=>v=>setIncForm(p=>({...p,[k]:v}));
   const h=createElement;
+
+  // ── Despesas Recorrentes ─────────────────────────────────────────────────
+  const[showRecurring,setShowRecurring]=useState(false);
+  const[editRec,setEditRec]=useState(null);
+  const blankRec={desc:"",cat:"Outros",value:"",frequency:"Mensal",startDate:"",endDate:"",autoStatus:"Pendente",notes:""};
+  const[recForm,setRecForm]=useState(blankRec);
+  const rfv=k=>v=>setRecForm(p=>({...p,[k]:v}));
+
+  const recurringThisMonth=useMemo(()=>(recurringExpenses||[]).filter(r=>r.active!==false).map(r=>getRecurrenceOccurrence(r,selMonth,selYear)).filter(Boolean),[recurringExpenses,selMonth,selYear]);
+  const confirmedIds=useMemo(()=>new Set((expenses||[]).filter(e=>e.recurringId&&inMonth(e.date)).map(e=>e.recurringId)),[expenses,selMonth,selYear]);
+  const pendingRecurring=recurringThisMonth.filter(r=>!confirmedIds.has(r.recurringId));
+  const confirmedRecurring=recurringThisMonth.filter(r=>confirmedIds.has(r.recurringId));
+
+  function saveRec(){
+    const entry={...recForm,id:editRec?editRec.id:Date.now(),active:true,value:Number(recForm.value)||0};
+    if(editRec)setRecurringExpenses(prev=>prev.map(r=>r.id===editRec.id?entry:r));
+    else setRecurringExpenses(prev=>[...prev,entry]);
+    setShowRecurring(false);setEditRec(null);setRecForm(blankRec);
+  }
+  function delRec(id){if(window.confirm("Excluir despesa recorrente? Lançamentos já confirmados não serão afetados."))setRecurringExpenses(prev=>prev.filter(r=>r.id!==id));}
+  function toggleRecActive(id){setRecurringExpenses(prev=>prev.map(r=>r.id===id?{...r,active:!r.active}:r));}
+  function openEditRec(r){setEditRec(r);setRecForm({...r,value:String(r.value)});setShowRecurring(true);}
+  function confirmRecurring(occ){setExpenses(prev=>[...prev,{id:Date.now(),desc:occ.desc,date:occ.date,cat:occ.cat,value:occ.value,status:occ.status,notes:occ.notes,recurringId:occ.recurringId}]);}
+  function confirmAllRecurring(){
+    if(!pendingRecurring.length)return;
+    if(!window.confirm(`Lançar ${pendingRecurring.length} despesa(s) recorrente(s) para ${MONTH_NAMES[selMonth]}?`))return;
+    setExpenses(prev=>[...prev,...pendingRecurring.map(occ=>({id:Date.now()+Math.random(),desc:occ.desc,date:occ.date,cat:occ.cat,value:occ.value,status:occ.status,notes:occ.notes,recurringId:occ.recurringId}))]);
+  }
 
   // ── Filtros de Entradas & Despesas ──────────────────────────────────────
   const[filterPeriod,setFilterPeriod]=useState("month"); // month | day | week | quarter | year | custom
@@ -5587,7 +5630,11 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
       h("button",{onClick:()=>setViewTab("fluxo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="fluxo"?P.rose:"transparent",border:`1px solid ${viewTab==="fluxo"?P.rose:P.border}`,color:viewTab==="fluxo"?P.accent3:P.text2}},"💵 Fluxo de Caixa"),
 
       h("button",{onClick:()=>setViewTab("dre"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="dre"?P.rose:"transparent",border:`1px solid ${viewTab==="dre"?P.rose:P.border}`,color:viewTab==="dre"?P.accent3:P.text2}},"📊 DRE & Pagamentos"),
-      h("button",{onClick:()=>setViewTab("inadimplencia"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="inadimplencia"?P.rose:"transparent",border:`1px solid ${viewTab==="inadimplencia"?P.rose:P.border}`,color:viewTab==="inadimplencia"?P.accent3:P.text2}},"⚠ Inadimplência")
+      h("button",{onClick:()=>setViewTab("inadimplencia"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="inadimplencia"?P.rose:"transparent",border:`1px solid ${viewTab==="inadimplencia"?P.rose:P.border}`,color:viewTab==="inadimplencia"?P.accent3:P.text2}},"⚠ Inadimplência"),
+      h("button",{onClick:()=>setViewTab("recorrentes"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="recorrentes"?P.rose:"transparent",border:`1px solid ${viewTab==="recorrentes"?P.rose:P.border}`,color:viewTab==="recorrentes"?P.accent3:P.text2,display:"flex",alignItems:"center",gap:6}},
+        "🔁 Recorrentes",
+        pendingRecurring.length>0&&h("span",{style:{fontSize:10,background:"rgba(192,112,112,.85)",color:"#fff",padding:"1px 7px",borderRadius:20,fontWeight:700}},pendingRecurring.length)
+      )
     ),
 
     viewTab==="fluxo"?h(Card,null,
@@ -5940,6 +5987,110 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
       );
     })(),
 
+    // ── ABA: Recorrentes ───────────────────────────────────────────────────
+    viewTab==="recorrentes"&&h("div",null,
+      h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
+        [
+          {l:"Templates Ativos",v:(recurringExpenses||[]).filter(r=>r.active!==false).length,c:KPI.blue},
+          {l:"Previsto este mês",v:fmtCurr(recurringThisMonth.reduce((a,r)=>a+r.value,0)),c:KPI.orange},
+          {l:"Pendente de Lançamento",v:fmtCurr(pendingRecurring.reduce((a,r)=>a+r.value,0)),c:pendingRecurring.length>0?KPI.red:KPI.green},
+        ].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)
+        ))
+      ),
+      pendingRecurring.length>0&&h(Card,{style:{marginBottom:18,border:`1px solid rgba(192,112,112,.3)`}},
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}},
+          h("div",null,
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"⏳ Pendentes de Lançamento"),
+            h("div",{style:{fontSize:12,color:P.text3}},`${pendingRecurring.length} despesa(s) prevista(s) para ${MONTH_NAMES[selMonth]} ainda não lançada(s)`)
+          ),
+          h(Btn,{onClick:confirmAllRecurring,style:{fontSize:12}},"✓ Lançar Todas")
+        ),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+          pendingRecurring.map(occ=>h("div",{key:occ.id,
+            style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",borderRadius:10,background:"rgba(192,112,112,.06)",border:"1px solid rgba(192,112,112,.2)"}},
+            h("div",{style:{display:"flex",flexDirection:"column",gap:3}},
+              h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},occ.desc),
+              h("div",{style:{fontSize:11,color:P.text3}},occ.cat+" · Venc. "+new Date(occ.date+"T12:00").toLocaleDateString("pt-BR")+" · "+occ.notes)
+            ),
+            h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.red}},fmtCurr(occ.value)),
+              h(Btn,{onClick:()=>confirmRecurring(occ),style:{fontSize:11,padding:"5px 12px"}},"Lançar")
+            )
+          ))
+        )
+      ),
+      confirmedRecurring.length>0&&h(Card,{style:{marginBottom:18,border:`1px solid rgba(122,173,138,.3)`}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"✓ Já Lançadas este mês"),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+          confirmedRecurring.map(occ=>h("div",{key:occ.id,
+            style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:10,background:"rgba(122,173,138,.07)",border:"1px solid rgba(122,173,138,.25)"}},
+            h("div",null,
+              h("div",{style:{fontSize:13,color:P.text}},occ.desc),
+              h("div",{style:{fontSize:11,color:P.text3}},occ.cat+" · "+occ.notes)
+            ),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green}},fmtCurr(occ.value))
+          ))
+        )
+      ),
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Templates de Despesas Fixas"),
+        h(Btn,{onClick:()=>{setEditRec(null);setRecForm(blankRec);setShowRecurring(true);}},"＋ Nova Recorrente")
+      ),
+      (recurringExpenses||[]).length===0
+        ?h(Card,{style:{textAlign:"center",padding:40}},
+            h("div",{style:{fontSize:30,marginBottom:10}},"🔁"),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:6}},"Nenhuma despesa recorrente cadastrada"),
+            h("div",{style:{fontSize:13,color:P.text3,marginBottom:18}},"Cadastre despesas fixas (aluguel, contador, marketing) para lançá-las automaticamente todo mês."),
+            h(Btn,{onClick:()=>{setEditRec(null);setRecForm(blankRec);setShowRecurring(true);}},"＋ Cadastrar primeira")
+          )
+        :h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+            (recurringExpenses||[]).map(rec=>{
+              const active=rec.active!==false;
+              const freqM=RECURRENCE_MONTHS[rec.frequency]||1;
+              const nextM_idx=selMonth===11?0:selMonth+1;
+              const nextM_yr=selMonth===11?selYear+1:selYear;
+              const nextOcc=getRecurrenceOccurrence(rec,nextM_idx,nextM_yr);
+              return h(Card,{key:rec.id,style:{opacity:active?1:.6,border:`1px solid ${active?P.border:"rgba(140,130,132,.3)"}`}},
+                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}},
+                  h("div",{style:{display:"flex",gap:12,alignItems:"flex-start"}},
+                    h("div",{style:{width:40,height:40,borderRadius:10,background:active?"rgba(157,119,97,.15)":"rgba(140,130,132,.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}},"🔁"),
+                    h("div",null,
+                      h("div",{style:{fontSize:14,color:P.text,fontWeight:500,marginBottom:3}},rec.desc),
+                      h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+                        h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(157,119,97,.12)",color:P.accent}},rec.frequency),
+                        h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:P.bg3,color:P.text3}},rec.cat),
+                        rec.startDate&&h("span",{style:{fontSize:11,color:P.text3}},"Início: "+new Date(rec.startDate+"T12:00").toLocaleDateString("pt-BR")),
+                        rec.endDate&&h("span",{style:{fontSize:11,color:P.text3}},"Fim: "+new Date(rec.endDate+"T12:00").toLocaleDateString("pt-BR"))
+                      ),
+                      nextOcc&&active&&h("div",{style:{fontSize:11,color:P.accent,marginTop:4}},"Próximo vencimento: "+new Date(nextOcc.date+"T12:00").toLocaleDateString("pt-BR"))
+                    )
+                  ),
+                  h("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}},
+                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:active?P.rose:P.text3}},fmtCurr(rec.value)),
+                    h("div",{style:{display:"flex",gap:6}},
+                      h("button",{onClick:()=>toggleRecActive(rec.id),title:active?"Pausar":"Reativar",
+                        style:{fontSize:11,padding:"4px 10px",borderRadius:7,cursor:"pointer",background:"transparent",
+                          border:`1px solid ${active?P.border:"rgba(122,173,138,.4)"}`,color:active?P.text3:P.green}},
+                        active?"⏸ Pausar":"▶ Reativar"
+                      ),
+                      h("button",{onClick:()=>openEditRec(rec),
+                        style:{fontSize:11,padding:"4px 10px",borderRadius:7,cursor:"pointer",background:"transparent",border:`1px solid ${P.border}`,color:P.accent}},
+                        "✎ Editar"
+                      ),
+                      h("button",{onClick:()=>delRec(rec.id),
+                        style:{fontSize:11,padding:"4px 10px",borderRadius:7,cursor:"pointer",background:"transparent",border:"1px solid rgba(192,112,112,.2)",color:P.red}},
+                        "🗑"
+                      )
+                    )
+                  )
+                )
+              );
+            })
+          )
+    ),
+
     h(Modal,{open:showNewInc,onClose:()=>{setShowNewInc(false);setEditInc(null);},title:editInc?"✎ Editar Entrada":"＋ Nova Entrada Manual",width:520},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Descrição"},h(Inp,{value:incForm.desc,onChange:ifv("desc"),placeholder:"Ex: Consultoria avulsa, Venda produto..."})),
@@ -5973,6 +6124,41 @@ function Financeiro({patients,setPatients,expenses,setExpenses,incomes,setIncome
         h(Field,{label:"Observações"},h(TA,{value:form.notes,onChange:fv("notes"),placeholder:"Notas...",rows:2}))
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}},h(Btn,{variant:"ghost",onClick:()=>{setShowNewExp(false);setEditExp(null);}},"Cancelar"),h(Btn,{onClick:saveExp},editExp?"Salvar":"Adicionar"))
+    ),
+    h(Modal,{open:showRecurring,onClose:()=>{setShowRecurring(false);setEditRec(null);setRecForm(blankRec);},title:editRec?"✎ Editar Despesa Recorrente":"🔁 Nova Despesa Recorrente",width:500},
+      h("div",{style:{fontSize:12,color:P.text3,marginBottom:14,padding:"8px 12px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
+        "Despesas recorrentes geram lançamentos automáticos no mês selecionado. Você confirma com um clique — nada é lançado sem sua aprovação."
+      ),
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
+        h(Field,{label:"Descrição"},h(Inp,{value:recForm.desc,onChange:rfv("desc"),placeholder:"Ex: Aluguel Barra Olímpica"})),
+        h(Field,{label:"Categoria",half:true},h(Sel,{value:recForm.cat,onChange:rfv("cat"),options:EXPENSE_CATS})),
+        h(Field,{label:"Frequência",half:true},h(Sel,{value:recForm.frequency,onChange:rfv("frequency"),options:RECURRENCE_FREQ})),
+        h(Field,{label:"Valor (R$)",half:true},h(Inp,{type:"number",value:recForm.value,onChange:rfv("value"),placeholder:"0,00"})),
+        h(Field,{label:"Status ao lançar",half:true},h(Sel,{value:recForm.autoStatus,onChange:rfv("autoStatus"),options:["Pago","Pendente"]})),
+        h(Field,{label:"Data de início",half:true},h(Inp,{type:"date",value:recForm.startDate,onChange:rfv("startDate")})),
+        h(Field,{label:"Data de término (opcional)",half:true},h(Inp,{type:"date",value:recForm.endDate,onChange:rfv("endDate"),placeholder:"Deixe em branco para indeterminado"})),
+        h(Field,{label:"Observações (opcional)"},h(TA,{value:recForm.notes,onChange:rfv("notes"),placeholder:"Ex: IPTU pago em 3x de Jan a Mar",rows:2}))
+      ),
+      recForm.startDate&&recForm.value&&h("div",{style:{marginTop:12,padding:"12px 14px",background:"rgba(157,119,97,.06)",border:"1px solid rgba(157,119,97,.2)",borderRadius:10}},
+        h("div",{style:{fontSize:11,color:P.accent,fontWeight:600,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}},"Prévia dos próximos lançamentos"),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:4}},
+          Array.from({length:4},(_,i)=>{
+            const d=new Date(recForm.startDate+"T12:00");
+            const freqM=RECURRENCE_MONTHS[recForm.frequency]||1;
+            const tgtMonth=d.getMonth()+i*freqM;
+            const tgtYear=d.getFullYear()+Math.floor(tgtMonth/12);
+            const mm=((tgtMonth%12)+12)%12;
+            return h("div",{key:i,style:{display:"flex",justifyContent:"space-between",fontSize:11.5,color:P.text2,padding:"3px 0",borderBottom:i<3?`1px solid ${P.border}`:"none"}},
+              h("span",null,MONTH_NAMES[mm]+" "+tgtYear),
+              h("span",{style:{color:P.rose,fontWeight:600}},fmtCurr(Number(recForm.value)||0))
+            );
+          })
+        )
+      ),
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16}},
+        h(Btn,{variant:"ghost",onClick:()=>{setShowRecurring(false);setEditRec(null);setRecForm(blankRec);}},"Cancelar"),
+        h(Btn,{onClick:saveRec,disabled:!recForm.desc||!recForm.value||!recForm.startDate},editRec?"Salvar alterações":"Criar Recorrente")
+      )
     )
   );
 }
@@ -7878,6 +8064,7 @@ function AppInner({ session, onLogout }) {
   const[agendaRaw,setAgenda,loadingAgenda]=useSupaTable("agenda",INIT_AGENDA);
   const[expensesRaw,setExpenses,loadingExpenses]=useSupaTable("expenses",INIT_EXPENSES);
   const[incomesRaw,setIncomes,loadingIncomes]=useSupaTable("incomes",[]);
+  const[recurringExpensesRaw,setRecurringExpenses]=useSupaTable("recurring_expenses",[]);
   const[productsRaw,setProducts,loadingProducts]=useSupaTable("products",[
     {id:"p1",name:"Botox Allergan 100U",cat:"Toxina Botulínica",qty:2,min:5,unit:"un",expiry:"12/2026",cost:800,emoji:"💉",status:"critical"},
     {id:"p2",name:"Juvederm Ultra 1ml",cat:"Ácido Hialurônico",qty:5,min:8,unit:"sir",expiry:"08/2026",cost:450,emoji:"✨",status:"low"},
@@ -8162,7 +8349,7 @@ function AppInner({ session, onLogout }) {
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
-            page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames}),
+            page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames,recurringExpenses:recurringExpensesRaw,setRecurringExpenses}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
             page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda}),
