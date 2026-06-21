@@ -25,6 +25,13 @@ const icStatusOf=ic=>ic.status||"Em Acompanhamento";
 const icConductsOf=ic=>(ic.conducts&&ic.conducts.length)?ic.conducts:(ic.conduct?[{id:"legacy_c",date:ic.date,text:ic.conduct}]:[]);
 const icEvolutionsOf=ic=>ic.evolutions||[];
 const EXPENSE_CATS=["Aluguel","Marketing","Fornecedores","Produtos","Impostos","Equipamentos","Funcionários","Outros"];
+// Paleta vibrante para cards de KPI com fundo colorido (vouchers, pacotes, estoque, aniversariantes, retornos, dashboard)
+const KPI={
+  purple:"#8B5CF6", blue:"#3B82F6", green:"#22C55E", red:"#EF4444", yellow:"#EAB308",
+  orange:"#F97316", teal:"#14B8A6", pink:"#EC4899",
+};
+// Gera estilo de card com fundo colorido translúcido + borda na mesma cor
+const kpiCardStyle=color=>({textAlign:"center",background:`${color}1A`,border:`1px solid ${color}40`});
 const PAY_METHODS=["Pix","Cartão Crédito","Cartão Débito","Dinheiro","Transferência","Pendente"];
 const FIN_STATUS=["Pago","Pendente","Parcial","Cancelado"];
 const avColors=["linear-gradient(135deg,#5C1F32,#855954)","linear-gradient(135deg,#855954,#9D7761)","linear-gradient(135deg,#9D7761,#7a2840)","linear-gradient(135deg,#7a2840,#855954)","linear-gradient(135deg,#6b3a4a,#9F8475)"];
@@ -144,6 +151,31 @@ const INIT_EXPENSES=[
 // ─── HELPERS & BASE UI ────────────────────────────────────────────────────────
 const initials=n=>n.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
 const fmtCurr=v=>"R$"+Number(v).toLocaleString("pt-BR",{minimumFractionDigits:0});
+// Converte texto de duração ("1h30", "45 min", "2 horas"...) em minutos
+const durationToMin=d=>{
+  if(!d)return 60;
+  const s=String(d).toLowerCase().trim();
+  const hm=s.match(/^(\d+)h(\d+)?$/);
+  if(hm)return Number(hm[1])*60+Number(hm[2]||0);
+  const justH=s.match(/(\d+)\s*hora/);
+  const justM=s.match(/(\d+)\s*min/);
+  if(justH&&justM)return Number(justH[1])*60+Number(justM[1]);
+  if(justH)return Number(justH[1])*60;
+  if(justM)return Number(justM[1]);
+  const num=s.match(/(\d+)/);
+  return num?Number(num[1]):60;
+};
+// Soma minutos a um horário "HH:MM" e retorna "HH:MM" (limitado a 23:59)
+const addMinToTime=(time,mins)=>{
+  if(!time)return"";
+  const[h,m]=time.split(":").map(Number);
+  let total=(h*60+m)+(Number(mins)||0);
+  total=Math.max(0,Math.min(23*60+59,total));
+  const eh=Math.floor(total/60),em=total%60;
+  return String(eh).padStart(2,"0")+":"+String(em).padStart(2,"0");
+};
+// Retorna a hora final de um agendamento dado time + duration
+const apptEndTime=a=>a&&a.time?addMinToTime(a.time,durationToMin(a.duration)):"";
 const parseDMY=s=>{if(!s)return null;const[d,m,y]=s.split("/");return new Date(`${y}-${m}-${d}`);};
 const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
 const todayISO=()=>new Date().toISOString().slice(0,10);
@@ -2240,11 +2272,11 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
     h(SectionHeader,{title:"Retornos Pendentes",sub:"Pacientes que precisam voltar para manutenção ou revisão"}),
     // Resumo em cards
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
-      [{l:"Atrasadas",v:retornos.filter(r=>r.urgencia===0).length,c:P.red,icon:"🔴",f:"urgente"},
-       {l:"Esta semana",v:retornos.filter(r=>r.urgencia===1).length,c:"#c4a96a",icon:"🟡",f:"proximo"},
-       {l:"Este mês",v:retornos.filter(r=>r.urgencia===2).length,c:"#7aaed4",icon:"🔵",f:"proximo"},
-       {l:"Em dia",v:retornos.filter(r=>r.urgencia===3).length,c:P.green,icon:"🟢",f:"ok"}
-      ].map(k=>h(Card,{key:k.l,onClick:()=>setFilter(f=>f===k.f?"todos":k.f),style:{cursor:"pointer",border:`1px solid ${filter===k.f?k.c:P.border}`,transition:"all .15s"}},
+      [{l:"Atrasadas",v:retornos.filter(r=>r.urgencia===0).length,c:KPI.red,icon:"🔴",f:"urgente"},
+       {l:"Esta semana",v:retornos.filter(r=>r.urgencia===1).length,c:KPI.yellow,icon:"🟡",f:"proximo"},
+       {l:"Este mês",v:retornos.filter(r=>r.urgencia===2).length,c:KPI.blue,icon:"🔵",f:"proximo"},
+       {l:"Em dia",v:retornos.filter(r=>r.urgencia===3).length,c:KPI.green,icon:"🟢",f:"ok"}
+      ].map(k=>h(Card,{key:k.l,onClick:()=>setFilter(f=>f===k.f?"todos":k.f),style:{cursor:"pointer",textAlign:"center",background:`${k.c}1A`,border:`1px solid ${filter===k.f?k.c:k.c+"40"}`,transition:"all .15s"}},
         h("div",{style:{fontSize:22,marginBottom:6}},k.icon),
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:34,color:k.c,lineHeight:1}},k.v),
         h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.l)
@@ -2352,8 +2384,8 @@ function Aniversariantes({patients,onSelectPatient,onNav}){
   return h("div",null,
     h(SectionHeader,{title:"Aniversariantes",sub:"Idades calculadas automaticamente pela data de nascimento"}),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
-      [{icon:"🎂",label:"Hoje",value:todayList.length,color:P.yellow},{icon:"🗓️",label:"Esta semana",value:weekList.length,color:"#7aaed4"},{icon:"📅",label:"Este mês",value:withBday.filter(p=>p._month===today.getMonth()).length,color:P.green},{icon:"📊",label:"Com data cadastrada",value:withBday.length,color:P.accent}]
-      .map(k=>h(Card,{key:k.label,style:{textAlign:"center"}},h("div",{style:{fontSize:24,marginBottom:6}},k.icon),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:36,color:k.color,lineHeight:1}},k.value),h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.label)))
+      [{icon:"🎂",label:"Hoje",value:todayList.length,color:KPI.yellow},{icon:"🗓️",label:"Esta semana",value:weekList.length,color:KPI.blue},{icon:"📅",label:"Este mês",value:withBday.filter(p=>p._month===today.getMonth()).length,color:KPI.green},{icon:"📊",label:"Com data cadastrada",value:withBday.length,color:KPI.purple}]
+      .map(k=>h(Card,{key:k.label,style:kpiCardStyle(k.color)},h("div",{style:{fontSize:24,marginBottom:6}},k.icon),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:36,color:k.color,lineHeight:1}},k.value),h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.label)))
     ),
     todayList.length>0&&h("div",{style:{marginBottom:24}},
       h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.yellow,marginBottom:12}},"🎂 Aniversariantes de Hoje"),
@@ -2743,11 +2775,11 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
     h(RetornosPendentes,{patients,returnRules,onSelectPatient,onNav,onScheduleReturn,mini:true}),
     // KPIs
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:isMobile?10:14,marginBottom:22}},
-      [{l:"Receita do Mês",v:`R$${(totalRec/1000||48.2).toFixed(1)}k`,sub:"Sessões pagas",c:P.accent},{l:"Consultas Hoje",v:todayAppts.length,sub:`${todayAppts.filter(a=>a.status==="Realizado").length} realizadas`,c:P.rose2},{l:"Pacientes Ativos",v:patients.length,sub:"cadastrados",c:P.gold},{l:"A Receber",v:fmtCurr(totalPend||6800),sub:"pendências",c:"#7aaed4"}].map(k=>h(Card,{key:k.l,style:{position:"relative",overflow:"hidden"}},
+      [{l:"Receita do Mês",v:`R$${(totalRec/1000||48.2).toFixed(1)}k`,sub:"Sessões pagas",c:KPI.green},{l:"Consultas Hoje",v:todayAppts.length,sub:`${todayAppts.filter(a=>a.status==="Realizado").length} realizadas`,c:KPI.purple},{l:"Pacientes Ativos",v:patients.length,sub:"cadastrados",c:KPI.orange},{l:"A Receber",v:fmtCurr(totalPend||6800),sub:"pendências",c:KPI.blue}].map(k=>h(Card,{key:k.l,style:{position:"relative",overflow:"hidden",background:`${k.c}1A`,border:`1px solid ${k.c}40`}},
         h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:32,color:k.c,lineHeight:1}},k.v),
         h("div",{style:{fontSize:11,color:P.text3,marginTop:6}},k.sub),
-        h("div",{style:{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:k.c,opacity:.05}})
+        h("div",{style:{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:k.c,opacity:.12}})
       ))
     ),
     h("div",{className:"resp-grid-21",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,marginBottom:18,alignItems:"start"}},
@@ -2773,7 +2805,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
         todayAppts.length===0?h("div",{style:{color:P.text3,fontSize:13,textAlign:"center",padding:20}},"Nenhuma consulta hoje.")
         :todayAppts.map((a,i)=>{const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;return h("div",{key:i,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 11px",marginBottom:6,background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
           h("div",{style:{width:6,height:6,borderRadius:"50%",background:sc.color,flexShrink:0}}),
-          h("div",{style:{fontSize:11,color:P.accent,fontWeight:700,minWidth:36}},a.time),
+          h("div",{style:{fontSize:11,color:P.accent,fontWeight:700,minWidth:74}},a.time+(a.duration?"–"+apptEndTime(a):"")),
           h("div",{style:{flex:1}},h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},a.patientName),h("div",{style:{fontSize:11,color:P.text3}},`${a.procedure} · 📍 ${a.location}`)),
           h("span",{style:{fontSize:10,padding:"2px 7px",borderRadius:12,color:sc.color,background:sc.bg}},a.status)
         );})
@@ -2889,7 +2921,8 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
   const fvProcedure=v=>{
     const procObj=Array.isArray(proceduresFull)?proceduresFull.find(p=>(typeof p==="string"?p:(p.name||p))===v):null;
     const defVal=procObj&&typeof procObj==="object"&&procObj.defaultValue?procObj.defaultValue:"";
-    setForm(p=>({...p,procedure:v,...(defVal&&!p.value?{value:String(defVal)}:{})}));
+    const defDur=procObj&&typeof procObj==="object"&&procObj.duration?procObj.duration:"";
+    setForm(p=>({...p,procedure:v,...(defVal&&!p.value?{value:String(defVal)}:{}),...(defDur?{duration:defDur}:{})}));
   };
   // ── Pré-preenchimento vindo de "Agendar agora" (Retornos Pendentes) ──
   useEffect(()=>{
@@ -3022,12 +3055,12 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
             ?h(Fragment,null,
                 h("div",{style:{fontSize:14,color:sc.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" — "+a.patientName),
                 h("div",{style:{fontSize:12,color:P.text2,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.procedure),
-                h("div",{style:{fontSize:10.5,color:P.text3,marginTop:1}},"📍 "+a.location)
+                h("div",{style:{fontSize:10.5,color:P.text3,marginTop:1}},(a.duration?`🕐 ${a.time}–${apptEndTime(a)} · `:"")+"📍 "+a.location)
               )
             :h("div",{style:{fontSize:9,color:sc.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" "+a.patientName)
           )
         :h(Fragment,null,
-            h("div",{style:{fontSize:12,color:sc.color,fontWeight:700}},a.time+" — "+a.patientName),
+            h("div",{style:{fontSize:12,color:sc.color,fontWeight:700}},(a.duration?`${a.time}–${apptEndTime(a)}`:a.time)+" — "+a.patientName),
             h("div",{style:{fontSize:11,color:P.text2}},a.procedure),
             h("div",{style:{fontSize:10,color:P.text3}},"📍 "+a.location),
             hasHistory&&h("div",{style:{fontSize:9,color:"#9b7aad",marginTop:2}},"📅 Reagendado "+((a.rescheduleHistory||[]).length)+"x")
@@ -3203,7 +3236,7 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
             }
             return h("div",{key:a.id,style:{padding:"10px 12px",marginBottom:8,background:P.bg3,borderRadius:9,border:`1px solid ${P.border}`}},
               h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:6}},
-                h("div",{style:{fontSize:11,color:P.accent,fontWeight:700,minWidth:36}},a.time),
+                h("div",{style:{fontSize:11,color:P.accent,fontWeight:700,minWidth:74}},a.time+(a.duration?" – "+apptEndTime(a):"")),
                 h("div",{style:{flex:1}},
                   h("div",{style:{display:"flex",alignItems:"center",gap:6}},
                     h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},a.patientName),
@@ -3239,7 +3272,10 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
         h(Field,{label:"Data",half:true},h(Inp,{type:"date",value:form.date,onChange:fv("date")})),
         h(Field,{label:"Horário",half:true},h(Inp,{type:"time",value:form.time,onChange:fv("time")})),
         h(Field,{label:"Local",half:true},h(Sel,{value:form.location,onChange:fv("location"),options:locations})),
-        h(Field,{label:"Duração",half:true},h(Sel,{value:form.duration,onChange:fv("duration"),options:["30 min","45 min","1 hora","1h30","2 horas"]})),
+        h(Field,{label:"Duração",half:true},h(Sel,{value:form.duration,onChange:fv("duration"),options:["15 min","30 min","45 min","1 hora","1h30","2 horas","2h30","3 horas"]})),
+        h(Field,{label:"Horário Final"},h("div",{style:{...IS,display:"flex",alignItems:"center",background:P.bg3,color:P.text2,cursor:"default"}},
+          form.time?`${form.time} — ${apptEndTime(form)}`:"—"
+        )),
         h(Field,{label:"Valor (R$)",half:true},h(Inp,{value:form.value,onChange:fv("value"),placeholder:"0,00"})),
         h(Field,{label:"Status",half:true},h(Sel,{value:form.status,onChange:fv("status"),options:APPT_STATUS})),
         h(Field,{label:"Observações"},h(TA,{value:form.obs,onChange:fv("obs"),placeholder:"Anotações, avisos...",rows:2}))
@@ -3540,7 +3576,7 @@ function AgendaApptRow({a,setAgenda,patient,patients,setPatients,procedures,loca
       // Data/hora
       h("div",{style:{minWidth:90,flexShrink:0}},
         h("div",{style:{fontSize:13,color:P.accent,fontWeight:700}},apptDate.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})),
-        h("div",{style:{fontSize:11,color:P.text3}},a.time+(a.duration?" · "+a.duration:""))
+        h("div",{style:{fontSize:11,color:P.text3}},a.duration?`${a.time} — ${apptEndTime(a)}`:a.time)
       ),
       // Procedimento e local
       h("div",{style:{flex:1,minWidth:120}},
@@ -5050,7 +5086,7 @@ function Estoque({products,setProducts}){
       )
     }),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
-      [{l:"Nível Crítico",v:critical,c:P.red},{l:"Produtos",v:products.length,c:P.accent},{l:"Valor em Estoque",v:fmtCurr(totalVal),c:P.green}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
+      [{l:"Nível Crítico",v:critical,c:KPI.red},{l:"Produtos",v:products.length,c:KPI.blue},{l:"Valor em Estoque",v:fmtCurr(totalVal),c:KPI.green}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
     ),
     h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
 
@@ -6655,8 +6691,8 @@ const PROC_CAT_COLORS={"Toxina Botulínica":P.rose,"Preenchimento":"#7aaed4","Bi
 // ─── PROC FORM (standalone to respect React hook rules) ──────────────────────
 function ProcForm({initial,onSave,onCancel,cats}){
   const h=createElement;
-  const[form,setForm]=useState(initial||{name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1",defaultValue:""});
-  useEffect(()=>{if(initial)setForm(initial);},[initial?.id]);
+  const[form,setForm]=useState(initial||{name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1",defaultValue:"",duration:"1 hora"});
+  useEffect(()=>{if(initial)setForm({duration:"1 hora",...initial});},[initial?.id]);
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const isNew=!initial?.id;
   return h("div",{style:{background:P.bg3,border:`1px solid ${P.rose}`,borderRadius:12,padding:20,marginBottom:16}},
@@ -6668,6 +6704,7 @@ function ProcForm({initial,onSave,onCancel,cats}){
           (cats||[]).map(cat=>h("option",{key:cat,value:cat},(PROC_MAP_ICONS[cat]||"🩺")+" "+cat))
         )
       ),
+      h(Field,{label:"Duração Padrão"},h(Sel,{value:form.duration||"1 hora",onChange:fv("duration"),options:["15 min","30 min","45 min","1 hora","1h30","2 horas","2h30","3 horas"]})),
       h(Field,{label:"Revisão após sessão (dias)"},h(Inp,{type:"number",value:form.revisionDays||"",onChange:fv("revisionDays"),placeholder:"Ex: 14"})),
       h(Field,{label:"Manutenção (dias)"},h(Inp,{type:"number",value:form.maintenanceDays||"",onChange:fv("maintenanceDays"),placeholder:"Ex: 120"})),
       h(Field,{label:"Sessões padrão no pacote"},h(Inp,{type:"number",value:form.sessoesPadrao||"1",onChange:fv("sessoesPadrao"),placeholder:"1"})),
@@ -6703,7 +6740,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   const[newProcForm,setNewProcForm]=useState({name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1",defaultValue:""});
 
   const getName=x=>typeof x==="string"?x:(x&&x.name)||"";
-  const getProc=x=>typeof x==="string"?{id:"p_"+x,name:x,categoria:"Outros",descricao:"",revisionDays:0,maintenanceDays:0,sessoesPadrao:1,defaultValue:0}:{id:x.id||"",name:x.name||"",categoria:x.categoria||"Outros",descricao:x.descricao||"",revisionDays:x.revisionDays||0,maintenanceDays:x.maintenanceDays||0,sessoesPadrao:x.sessoesPadrao||1,defaultValue:x.defaultValue||0};
+  const getProc=x=>typeof x==="string"?{id:"p_"+x,name:x,categoria:"Outros",descricao:"",revisionDays:0,maintenanceDays:0,sessoesPadrao:1,defaultValue:0,duration:"1 hora"}:{id:x.id||"",name:x.name||"",categoria:x.categoria||"Outros",descricao:x.descricao||"",revisionDays:x.revisionDays||0,maintenanceDays:x.maintenanceDays||0,sessoesPadrao:x.sessoesPadrao||1,defaultValue:x.defaultValue||0,duration:x.duration||"1 hora"};
   const skProds=(skincareConfig&&skincareConfig.produtos)||[];
   const skFreqs=(skincareConfig&&skincareConfig.frequencias)||[];
 
@@ -6737,7 +6774,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   function addNewProc(formData){
     const name=(formData.name||"").trim();
     if(!name)return;
-    const obj={id:"proc_"+Date.now(),name,categoria:formData.categoria||"Outros",descricao:formData.descricao||"",revisionDays:Number(formData.revisionDays)||0,maintenanceDays:Number(formData.maintenanceDays)||0,sessoesPadrao:Number(formData.sessoesPadrao)||1,defaultValue:Number(formData.defaultValue)||0};
+    const obj={id:"proc_"+Date.now(),name,categoria:formData.categoria||"Outros",descricao:formData.descricao||"",revisionDays:Number(formData.revisionDays)||0,maintenanceDays:Number(formData.maintenanceDays)||0,sessoesPadrao:Number(formData.sessoesPadrao)||1,defaultValue:Number(formData.defaultValue)||0,duration:formData.duration||"1 hora"};
     saveProc(obj);
   }
 
@@ -6787,6 +6824,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
                     proc.descricao&&h("div",{style:{fontSize:12,color:P.text3,marginBottom:6}},proc.descricao),
                     h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
                       h("span",{style:{fontSize:11,color:PROC_CAT_COLORS[proc.categoria||"Outros"]||P.accent,background:(PROC_CAT_COLORS[proc.categoria||"Outros"]||P.accent)+"18",padding:"2px 8px",borderRadius:20}},(PROC_MAP_ICONS[proc.categoria]||"🩺")+" "+(proc.categoria||"Outros")),
+                      h("span",{style:{fontSize:11,color:"#7aaed4",background:"rgba(122,174,212,.12)",padding:"2px 8px",borderRadius:20,border:"1px solid rgba(122,174,212,.25)"}},"🕐 "+(proc.duration||"1 hora")),
                       rev>0&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"⏱ Revisão: "+rev+"d"),
                       man>0&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"🔄 Manutenção: "+man+"d"),
                       (proc.sessoesPadrao>1)&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"📦 "+proc.sessoesPadrao+" sessões"),
@@ -7229,8 +7267,8 @@ function PacotesGlobal({patients,setPatients,onSelectPatient,onNav}){
   return h("div",null,
     h(SectionHeader,{title:"Pacotes",sub:"Todos os pacotes de sessões da clínica"}),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
-      [{l:"Total",v:stats.total,c:P.accent},{l:"Em Andamento",v:stats.andamento,c:P.gold},{l:"Concluídos",v:stats.concluido,c:P.green},{l:"Novos",v:stats.novo,c:"#7aaed4"}].map(s=>
-        h(Card,{key:s.l,style:{textAlign:"center"}},
+      [{l:"Total",v:stats.total,c:KPI.purple},{l:"Em Andamento",v:stats.andamento,c:KPI.orange},{l:"Concluídos",v:stats.concluido,c:KPI.green},{l:"Novos",v:stats.novo,c:KPI.blue}].map(s=>
+        h(Card,{key:s.l,style:kpiCardStyle(s.c)},
           h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},s.l),
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:s.c}},s.v)
         )
@@ -7570,8 +7608,8 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav,voucherTe
     )}),
 
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
-      [{l:"Total Emitidos",v:stats.total,c:P.accent},{l:"Ativos",v:stats.ativos,c:P.green},{l:"Utilizados",v:stats.usados,c:P.text3},{l:"Em Circulação",v:fmtCurr(stats.valorEmCirculacao),c:P.gold}].map(k=>
-        h(Card,{key:k.l,style:{textAlign:"center"}},
+      [{l:"Total Emitidos",v:stats.total,c:KPI.purple},{l:"Ativos",v:stats.ativos,c:KPI.green},{l:"Utilizados",v:stats.usados,c:KPI.blue},{l:"Em Circulação",v:fmtCurr(stats.valorEmCirculacao),c:KPI.yellow}].map(k=>
+        h(Card,{key:k.l,style:kpiCardStyle(k.c)},
           h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)
         )
