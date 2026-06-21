@@ -6,7 +6,7 @@ const SUPA_URL = "https://syxapyqgqrkqkensbbqj.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5eGFweXFncXJrcWtlbnNiYnFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzNDAxMzEsImV4cCI6MjA5NTkxNjEzMX0.3ZBSQS1fvWZn-uXCgDkvn7xRgpEWJiAIb_gH7cmO34s";
 const supabase = createClient(SUPA_URL, SUPA_KEY);
 // ─── CONSTANTS & PALETTE ─────────────────────────────────────────────────────
-const P={bg:"#160b0e",bg2:"#1c1012",bg3:"#221112",card:"#2a1518",card2:"#321a1d",border:"#472325",accent:"#9D7761",accent2:"#9F8475",accent3:"#E1D2C6",rose:"#5C1F32",rose2:"#7a2840",text:"#E1D2C6",text2:"#9F8475",text3:"#6b4d4a",green:"#7aad8a",red:"#c07070",yellow:"#c4a96a",gold:"#855954"};
+const P={bg:"#FAF6F4",bg2:"#FFFFFF",bg3:"#F2EAE6",card:"#FFFFFF",card2:"#FBF0EC",border:"#E8DDD9",accent:"#9D6F56",accent2:"#8C6F61",accent3:"#FBF3EF",rose:"#7A2840",rose2:"#9F415C",text:"#2B1A1C",text2:"#6B5450",text3:"#9C8682",green:"#4F9C68",red:"#C2555F",yellow:"#D9A441",gold:"#B98B6A"};
 const MONTH_NAMES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const APPT_STATUS=["Confirmado","Aguardando","Realizado","Cancelado","Faltou","Reagendado"];
 const APPT_STATUS_CFG={Confirmado:{color:"#7aaed4",bg:"rgba(122,174,212,.14)"},Aguardando:{color:"#c4a96a",bg:"rgba(196,169,106,.14)"},Realizado:{color:"#7aad8a",bg:"rgba(122,173,138,.14)"},Cancelado:{color:"#c07070",bg:"rgba(192,112,112,.14)"},Faltou:{color:"#b07070",bg:"rgba(176,112,112,.12)"},Reagendado:{color:"#9b7aad",bg:"rgba(155,122,173,.13)"}};
@@ -28,6 +28,31 @@ const EXPENSE_CATS=["Aluguel","Marketing","Fornecedores","Produtos","Impostos","
 const PAY_METHODS=["Pix","Cartão Crédito","Cartão Débito","Dinheiro","Transferência","Pendente"];
 const FIN_STATUS=["Pago","Pendente","Parcial","Cancelado"];
 const avColors=["linear-gradient(135deg,#5C1F32,#855954)","linear-gradient(135deg,#855954,#9D7761)","linear-gradient(135deg,#9D7761,#7a2840)","linear-gradient(135deg,#7a2840,#855954)","linear-gradient(135deg,#6b3a4a,#9F8475)"];
+// ─── ÍCONES DO MENU (substituem emojis) ──────────────────────────────────────
+function NavIcon({name,size=17}){
+  const h=createElement;
+  const c={width:size,height:size,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:1.7,strokeLinecap:"round",strokeLinejoin:"round"};
+  const icons={
+    dashboard:h("svg",c,h("path",{d:"M12 2L14.2 9.8L22 12L14.2 14.2L12 22L9.8 14.2L2 12L9.8 9.8Z"})),
+    aniversariantes:h("svg",c,
+      h("rect",{x:4,y:13,width:16,height:7,rx:1}),
+      h("path",{d:"M4 13c1.3-1.6 2.9-1.6 4.2 0c1.3 1.6 2.9 1.6 4.2 0c1.3-1.6 2.9-1.6 4.2 0c1.3 1.6 2.9 1.6 4.2 0"}),
+      h("line",{x1:12,y1:9,x2:12,y2:5}),
+      h("circle",{cx:12,cy:4,r:1.2,fill:"currentColor",stroke:"none"})
+    ),
+    retornos:h("svg",c,h("circle",{cx:12,cy:12,r:9}),h("line",{x1:12,y1:12,x2:12,y2:7}),h("line",{x1:12,y1:12,x2:16,y2:14})),
+    agenda:h("svg",c,h("rect",{x:3,y:5,width:18,height:16,rx:2}),h("line",{x1:3,y1:10,x2:21,y2:10}),h("line",{x1:8,y1:3,x2:8,y2:7}),h("line",{x1:16,y1:3,x2:16,y2:7})),
+    pacientes:h("svg",c,h("circle",{cx:12,cy:8,r:4}),h("path",{d:"M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"})),
+    estoque:h("svg",c,h("path",{d:"M9 3h6v3l2 3v10a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V9l2-3Z"}),h("line",{x1:7,y1:13,x2:17,y2:13})),
+    financeiro:h("svg",c,h("rect",{x:2,y:6,width:20,height:12,rx:2}),h("circle",{cx:12,cy:12,r:3})),
+    pacotes_global:h("svg",c,h("path",{d:"M21 8L12 3L3 8v8l9 5l9-5Z"}),h("path",{d:"M3 8l9 5l9-5"}),h("line",{x1:12,y1:13,x2:12,y2:21})),
+    vouchers:h("svg",c,h("rect",{x:4,y:9,width:16,height:11,rx:1}),h("rect",{x:3,y:6,width:18,height:4,rx:1}),h("line",{x1:12,y1:6,x2:12,y2:20}),h("circle",{cx:9,cy:4.5,r:2}),h("circle",{cx:15,cy:4.5,r:2})),
+    relatorios:h("svg",c,h("rect",{x:4,y:12,width:4,height:8,rx:1}),h("rect",{x:10,y:7,width:4,height:13,rx:1}),h("rect",{x:16,y:3,width:4,height:17,rx:1})),
+    intercorrencias_global:h("svg",c,h("path",{d:"M12 3L22 20H2Z"}),h("line",{x1:12,y1:9,x2:12,y2:14}),h("circle",{cx:12,cy:17,r:0.9,fill:"currentColor",stroke:"none"})),
+    config:h("svg",c,h("line",{x1:4,y1:6,x2:20,y2:6}),h("circle",{cx:14,cy:6,r:2}),h("line",{x1:4,y1:12,x2:20,y2:12}),h("circle",{cx:8,cy:12,r:2}),h("line",{x1:4,y1:18,x2:20,y2:18}),h("circle",{cx:16,cy:18,r:2})),
+  };
+  return icons[name]||null;
+}
 const ZONE_DEFS={
   botox:[
     {k:"frontal_c",label:"Frontal",cx:130,cy:56,r:22},{k:"sorrisoGeng_c",label:"Sorr. Gengival",cx:130,cy:73,r:10},{k:"glabela_c",label:"Glabela",cx:130,cy:95,r:14},
@@ -2581,6 +2606,41 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
   );
 }
 
+// ─── GRÁFICO: EVOLUÇÃO FINANCEIRA (área suave) ───────────────────────────────
+function _smoothPath(pts){
+  if(pts.length<2)return "";
+  let d=`M${pts[0].x},${pts[0].y}`;
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[Math.max(i-1,0)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(i+2,pts.length-1)];
+    const cp1x=p1.x+(p2.x-p0.x)/6,cp1y=p1.y+(p2.y-p0.y)/6;
+    const cp2x=p2.x-(p3.x-p1.x)/6,cp2y=p2.y-(p3.y-p1.y)/6;
+    d+=` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+  }
+  return d;
+}
+function EvolucaoFinanceiraChart({data}){
+  const h=createElement;
+  const W=600,H=220,padX=26,padTop=30,padBot=28;
+  const max=Math.max(...data.map(d=>d.value),1)*1.12;
+  const stepX=data.length>1?(W-padX*2)/(data.length-1):0;
+  const pts=data.map((d,i)=>({x:padX+i*stepX,y:H-padBot-(d.value/max)*(H-padTop-padBot),v:d.value,label:d.label}));
+  const linePath=_smoothPath(pts);
+  const areaPath=`${linePath} L${pts[pts.length-1].x},${H-padBot} L${pts[0].x},${H-padBot} Z`;
+  return h("svg",{viewBox:`0 0 ${W} ${H}`,style:{width:"100%",height:200,display:"block",overflow:"visible"}},
+    h("defs",null,h("linearGradient",{id:"evolFinGrad",x1:"0",y1:"0",x2:"0",y2:"1"},
+      h("stop",{offset:"0%",stopColor:P.rose,stopOpacity:.32}),
+      h("stop",{offset:"100%",stopColor:P.rose,stopOpacity:0})
+    )),
+    h("path",{d:areaPath,fill:"url(#evolFinGrad)",stroke:"none"}),
+    h("path",{d:linePath,fill:"none",stroke:P.rose,strokeWidth:2.6,strokeLinecap:"round"}),
+    pts.map((p,i)=>h(Fragment,{key:i},
+      p.v>0&&h("text",{x:p.x,y:p.y-12,textAnchor:"middle",fontSize:10.5,fontWeight:600,fill:P.rose},fmtCurr(p.v).replace(",00","")),
+      h("circle",{cx:p.x,cy:p.y,r:4.2,fill:P.bg2,stroke:P.rose,strokeWidth:2.4}),
+      h("text",{x:p.x,y:H-8,textAnchor:"middle",fontSize:10,fill:P.text3},p.label)
+    ))
+  );
+}
+
 function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,procedures=[],settings,returnRules,isMobile=false,isTablet=false,goals={},setGoals,incomes=[],expenses=[]}){
   const today=new Date();
   const todayStr=today.toISOString().slice(0,10);
@@ -2589,9 +2649,15 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
   const totalRec=allS.filter(s=>s.paid).reduce((a,s)=>a+s.value,0);
   const totalPend=allS.filter(s=>!s.paid).reduce((a,s)=>a+s.value,0);
   const todayAppts=agenda.filter(a=>a.date===todayStr).sort((a,b)=>a.time.localeCompare(b.time));
-  const months=[{m:"Dez",v:52},{m:"Jan",v:39},{m:"Fev",v:63},{m:"Mar",v:70},{m:"Abr",v:58},{m:"Mai",v:95}];
   // ── Receita real do mês corrente (para a meta) ──
   const curM=today.getMonth(),curY=today.getFullYear();
+  const months=[5,4,3,2,1,0].map(off=>{
+    let mm=curM-off,yy=curY;while(mm<0){mm+=12;yy--;}
+    const inM=d=>{const dt=parseAnyDate(d);return dt&&dt.getMonth()===mm&&dt.getFullYear()===yy;};
+    const rec=allS.filter(s=>s.paid&&inM(s.date)).reduce((a,s)=>a+Number(s.value||0),0)
+      +(Array.isArray(incomes)?incomes:[]).filter(i=>!i.sessRef&&i.status==="Pago"&&inM(i.date)).reduce((a,i)=>a+Number(i.value||0),0);
+    return {label:MONTH_NAMES[mm].slice(0,3),value:rec};
+  });
   const inCurMonth=d=>{const dt=parseAnyDate(d);return dt&&dt.getMonth()===curM&&dt.getFullYear()===curY;};
   const totalRecMonth=allS.filter(s=>s.paid&&inCurMonth(s.date)).reduce((a,s)=>a+Number(s.value||0),0)
     +(Array.isArray(incomes)?incomes:[]).filter(i=>!i.sessRef&&i.status==="Pago"&&inCurMonth(i.date)).reduce((a,i)=>a+Number(i.value||0),0);
@@ -2668,17 +2734,14 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
         h("div",{style:{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:k.c,opacity:.05}})
       ))
     ),
-    setGoals&&h(MetaFaturamento,{received:totalRecMonth,selMonth:curM,selYear:curY,goals:goals||{},setGoals,prevMonthReceived:prevMonthRecDash}),
-    setGoals&&h(MetaPorProcedimento,{procedures,patients,selMonth:curM,selYear:curY,goals:goals||{},setGoals,compact:true,onNav}),
+    h("div",{className:"resp-grid-21",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,marginBottom:18,alignItems:"start"}},
+      setGoals&&h(MetaFaturamento,{received:totalRecMonth,selMonth:curM,selYear:curY,goals:goals||{},setGoals,prevMonthReceived:prevMonthRecDash}),
+      setGoals&&h(MetaPorProcedimento,{procedures,patients,selMonth:curM,selYear:curY,goals:goals||{},setGoals,compact:true,onNav})
+    ),
     h("div",{className:"resp-grid-21",style:{display:"grid",gridTemplateColumns:"2fr 1fr",gap:18,marginBottom:18}},
       h(Card,null,
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:16}},"Receita — Últimos 6 Meses"),
-        h("div",{style:{display:"flex",alignItems:"flex-end",gap:8,height:96}},
-          months.map(m=>h("div",{key:m.m,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}},
-            h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",width:"100%"}},h("div",{style:{width:"100%",height:`${m.v}%`,background:m.m==="Mai"?`linear-gradient(to top,${P.rose},${P.gold})`:`linear-gradient(to top,rgba(92,31,50,.5),rgba(133,89,84,.2))`,borderRadius:"4px 4px 0 0"}})),
-            h("div",{style:{fontSize:9,color:m.m==="Mai"?P.accent:P.text3,textTransform:"uppercase"}},m.m)
-          ))
-        )
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:16}},"Evolução Financeira"),
+        h(EvolucaoFinanceiraChart,{data:months})
       ),
       h(Card,null,
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:12}},"Status Agenda Hoje"),
@@ -3076,7 +3139,7 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
               onClick:()=>setSelDate(ds),
               onDoubleClick:()=>{setSelDate(ds);setBlockForm({date:ds,time:"09:00",endTime:"10:00",reason:""});setShowBlockModal(true);},
               title:"Clique para ver · Duplo clique para bloquear",
-              style:{textAlign:"center",padding:"9px 2px",borderRadius:8,cursor:"pointer",fontSize:13,position:"relative",color:isSel?"#160b0e":hasApp?P.text:P.text3,background:isSel?`linear-gradient(135deg,${P.rose},${P.gold})`:"transparent",border:`1px solid ${isToday&&!isSel?"rgba(157,119,97,.4)":"transparent"}`}},
+              style:{textAlign:"center",padding:"9px 2px",borderRadius:8,cursor:"pointer",fontSize:13,position:"relative",color:isSel?P.accent3:hasApp?P.text:P.text3,background:isSel?`linear-gradient(135deg,${P.rose},${P.gold})`:"transparent",border:`1px solid ${isToday&&!isSel?"rgba(157,119,97,.4)":"transparent"}`}},
               d,
               apptCount>0&&!isSel&&h("div",{style:{width:4,height:4,borderRadius:"50%",background:P.rose,position:"absolute",bottom:3,left:"50%",transform:"translateX(-50%)"}}),
               blockCount>0&&h("div",{style:{width:4,height:4,borderRadius:"50%",background:P.red,position:"absolute",bottom:3,left:blockCount>0&&apptCount>0?"calc(50% + 4px)":"50%",transform:"translateX(-50%)"}})
@@ -7853,7 +7916,7 @@ function AppInner({ session, onLogout }) {
         onMouseEnter:e=>{if(!isActive){e.currentTarget.style.background=P.card;e.currentTarget.style.color=P.text;}},
         onMouseLeave:e=>{if(!isActive){e.currentTarget.style.background="transparent";e.currentTarget.style.color=P.text2;}}
       },
-        h("span",{style:{fontSize:16,width:20,textAlign:"center",flexShrink:0}},item.icon),
+        h("span",{style:{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,flexShrink:0}},h(NavIcon,{name:item.k,size:17})),
         !sidebarCollapsed||isMobile
           ? h(Fragment,null,
               h("span",{style:{fontSize:13.5,whiteSpace:"nowrap"}},item.l),
