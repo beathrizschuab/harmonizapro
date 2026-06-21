@@ -842,8 +842,88 @@ function ajustarDebitoLote(setProducts, prevDebit, nextDebit, obs) {
   return null;
 }
 
+// Escolhe automaticamente o(s) lote(s) de um produto pelo critério FEFO (primeiro a vencer, primeiro a sair).
+// Retorna uma lista de {loteId, qtd} cobrindo o quanto for possível da quantidade pedida (pode ficar parcial se não houver saldo suficiente).
+function pickFefoLotes(products, productName, qtyNeeded) {
+  const prod = (products||[]).find(p => (typeof p === "string" ? p : (p.name||p)) === productName);
+  if (!prod || !Array.isArray(prod.lotes) || !prod.lotes.length) return [];
+  const parseVal = v => { if(!v) return Infinity; const [m,y]=String(v).split("/"); const n=Number(y)*100+Number(m); return isNaN(n)?Infinity:n; };
+  const ordered = prod.lotes.filter(l=>l.qtd>0).slice().sort((a,b)=>parseVal(a.validade)-parseVal(b.validade));
+  let restante = Number(qtyNeeded)||0;
+  const picks = [];
+  for (const l of ordered) {
+    if (restante <= 0) break;
+    const usa = Math.min(l.qtd, restante);
+    picks.push({ loteId: l.id, qtd: usa });
+    restante -= usa;
+  }
+  return picks;
+}
+// Debita automaticamente uma lista de insumos [{product, qty}] usando FEFO em cada produto.
+// Recebe `currentProducts` (snapshot atual do estoque, fora do React state) para calcular o FEFO
+// corretamente entre múltiplos insumos sem disparar escritas extras no Supabase.
+// Retorna a lista de débitos efetivamente realizados: [{product, loteId, qty}, ...] (1 entrada por lote usado)
+// e também a lista de itens que não puderam ser totalmente debitados por falta de saldo (para aviso ao usuário).
+function debitarInsumosAuto(setProducts, currentProducts, insumosList, obs) {
+  const realizados = [];
+  const faltantes = [];
+  let working = currentProducts; // snapshot local que vamos "simular" debitando, para o FEFO considerar débitos já feitos nesta mesma chamada
+  (insumosList||[]).forEach(ins => {
+    if (!ins.product || !(Number(ins.qty) > 0)) return;
+    const picks = pickFefoLotes(working, ins.product, ins.qty);
+    const totalPicked = picks.reduce((a,p)=>a+p.qtd,0);
+    if (totalPicked < Number(ins.qty)) faltantes.push({ product: ins.product, faltam: Number(ins.qty)-totalPicked });
+    picks.forEach(pk => {
+      debitarLote(setProducts, ins.product, pk.loteId, pk.qtd, obs);
+      realizados.push({ product: ins.product, loteId: pk.loteId, qty: pk.qtd });
+    });
+    // Atualiza o snapshot local para refletir o débito que acabou de ser simulado (sem novo round-trip pelo state)
+    working = working.map(p => {
+      const pname = typeof p === "string" ? p : (p.name||p);
+      if (pname !== ins.product) return p;
+      const lotes = (p.lotes||[]).map(l => {
+        const pk = picks.find(x=>String(x.loteId)===String(l.id));
+        return pk ? { ...l, qtd: Math.max(0, l.qtd - pk.qtd) } : l;
+      });
+      return { ...p, lotes };
+    });
+  });
+  return { debits: realizados, faltantes };
+}
+// Estorna (devolve) uma lista de débitos previamente realizados via debitarInsumosAuto
+function estornarInsumosAuto(setProducts, debitsList, obs) {
+  (debitsList||[]).forEach(d => {
+    if (d && d.product && d.loteId && Number(d.qty) > 0) {
+      estornarLote(setProducts, d.product, d.loteId, d.qty, obs||"Estorno automático");
+    }
+  });
+}
+// Versão multi-insumo de ajustarDebitoLote: recebe os débitos anteriores (lista, já com loteId resolvido)
+// e a lista de insumos desejada agora [{product, qty}] (sem loteId — escolhido automaticamente via FEFO).
+// Estorna tudo que havia antes e debita de novo conforme a ficha técnica atual, evitando débito duplicado.
+// `currentProducts` deve ser o snapshot do estoque ANTES do estorno (ex: vindo de allProducts no momento do save).
+function ajustarDebitoInsumosAuto(setProducts, currentProducts, prevDebits, nextInsumos, obs) {
+  if (prevDebits && prevDebits.length) {
+    estornarInsumosAuto(setProducts, prevDebits, obs||"Estorno por edição");
+  }
+  if (nextInsumos && nextInsumos.length) {
+    // Simula localmente o efeito do estorno acima sobre o snapshot, para o FEFO já considerar os lotes devolvidos
+    let working = currentProducts;
+    (prevDebits||[]).forEach(d=>{
+      working = working.map(p=>{
+        const pname = typeof p === "string" ? p : (p.name||p);
+        if (pname !== d.product) return p;
+        const lotes = (p.lotes||[]).map(l => String(l.id)===String(d.loteId) ? { ...l, qtd: l.qtd + Number(d.qty) } : l);
+        return { ...p, lotes };
+      });
+    });
+    const { debits, faltantes } = debitarInsumosAuto(setProducts, working, nextInsumos, obs||"Uso automático em sessão");
+    return { debits, faltantes };
+  }
+  return { debits: [], faltantes: [] };
+}
 
-// ─── UTILS ────────────────────────────────────────────────────────────────────
+
 function stripPhotos(data) {
   if (!Array.isArray(data)) return data;
   return data.map(item => {
@@ -3917,7 +3997,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const qvfv=k=>v=>setQvForm(p=>({...p,[k]:v}));
   const h=createElement;
   const today=new Date();
-  const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",finStatus:"Pendente",paid:false,notes:"",evolution:"",returnReminderDays:14,loteId:"",qtdUsada:""};
+  const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",finStatus:"Pendente",paid:false,notes:"",evolution:"",returnReminderDays:14,loteId:"",qtdUsada:"",skipAutoInsumos:false};
   const[sForm,setSForm]=useState(blankS);
   const sfv=k=>v=>setSForm(p=>({...p,[k]:v}));
   // Auto-preenche prazo de retorno e valor ao trocar procedimento
@@ -3972,7 +4052,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   }
   function saveSession(){
     const _loteSel=(allProducts||[]).flatMap(p=>p.lotes||[]).find(l=>String(l.id)===String(sForm.loteId));
-    const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,loteId:sForm.loteId||"",loteCodigo:_loteSel?.codigo||"",qtdUsada:sForm.qtdUsada||"",dose:sForm.dose,region:sForm.region,location:sForm.location,value:Number(sForm.value)||0,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1,notes:sForm.notes,evolution:sForm.evolution,faceMap:editSess?editSess.faceMap:null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90,stockDebit:editSess?editSess.stockDebit:null};
+    const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,loteId:sForm.loteId||"",loteCodigo:_loteSel?.codigo||"",qtdUsada:sForm.qtdUsada||"",dose:sForm.dose,region:sForm.region,location:sForm.location,value:Number(sForm.value)||0,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1,notes:sForm.notes,evolution:sForm.evolution,faceMap:editSess?editSess.faceMap:null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90,stockDebit:editSess?editSess.stockDebit:null,autoStockDebits:editSess?editSess.autoStockDebits:[]};
     // Ajusta o débito de estoque com base no que JÁ foi debitado para esta sessão (s.stockDebit) vs o que
     // deveria estar debitado agora (lote/produto/qtd do formulário). Cobre 3 casos sem nunca duplicar:
     // 1) sessão nova → debita 1x e grava o registro do débito na própria sessão.
@@ -3980,6 +4060,20 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     // 3) clique duplicado no salvar → nada muda entre as duas chamadas, então ajustarDebitoLote não mexe no estoque de novo.
     const nextDebit=(sForm.loteId&&Number(sForm.qtdUsada)>0)?{product:sForm.product,loteId:sForm.loteId,qty:Number(sForm.qtdUsada)}:null;
     s.stockDebit=ajustarDebitoLote(setProducts,s.stockDebit,nextDebit,`Sessão ${s.procedure} · ${patient.name}`);
+    // ── Débito automático de insumos via Ficha Técnica do procedimento (estoque mais completo) ──
+    // Cada vez que o procedimento da sessão é definido/alterado, estorna os insumos da ficha antiga (se houver)
+    // e debita os da ficha atual, escolhendo lote automaticamente por vencimento (FEFO). Não depende de
+    // escolha manual de produto — roda em paralelo ao débito manual acima (que cobre o "produto principal").
+    if(!sForm.skipAutoInsumos){
+      const procObj=(proceduresFull||[]).find(p=>(typeof p==="string"?p:(p.name||p))===s.procedure);
+      const fichaInsumos=(procObj&&typeof procObj==="object"&&Array.isArray(procObj.insumos))?procObj.insumos:[];
+      const insumosQty=fichaInsumos.map(i=>({product:i.product,qty:Number(i.qty)||0})).filter(i=>i.product&&i.qty>0);
+      const{debits,faltantes}=ajustarDebitoInsumosAuto(setProducts,allProducts||[],s.autoStockDebits||[],insumosQty,`Sessão ${s.procedure} · ${patient.name} (ficha técnica)`);
+      s.autoStockDebits=debits;
+      if(faltantes&&faltantes.length>0){
+        setTimeout(()=>alert("⚠ Estoque insuficiente para: "+faltantes.map(f=>`${f.product} (faltam ${f.faltam})`).join(", ")+".\n\nA sessão foi salva normalmente, mas verifique o estoque."),50);
+      }
+    }
     upd(p=>editSess?{...p,sessions:(p.sessions||[]).map(x=>x.id===s.id?s:x),lastVisit:s.date}:{...p,sessions:[s,...(p.sessions||[])],lastVisit:s.date});
     // Sincronizar com Financeiro automaticamente
     const patName=patient.name;
@@ -3999,6 +4093,9 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     const sess=(patient.sessions||[]).find(s=>s.id===id);
     if(sess?.stockDebit&&Number(sess.stockDebit.qty)>0){
       estornarLote(setProducts,sess.stockDebit.product,sess.stockDebit.loteId,sess.stockDebit.qty,`Estorno · sessão excluída (${patient.name})`);
+    }
+    if(sess?.autoStockDebits&&sess.autoStockDebits.length>0){
+      estornarInsumosAuto(setProducts,sess.autoStockDebits,`Estorno · sessão excluída (${patient.name})`);
     }
     // Se havia um mapa com foto vinculado a esta sessão, ele não é apagado (preserva o registro clínico
     // e qualquer débito de estoque já feito pelos marcadores) — só perde o vínculo e passa a aparecer
@@ -4925,6 +5022,32 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             )
           )
         ):null;})(),
+        // ── Ficha de Insumos do procedimento: debitada automaticamente do estoque ao salvar ──
+        (()=>{
+          const procObj=(proceduresFull||[]).find(p=>(typeof p==="string"?p:(p.name||p))===sForm.procedure);
+          const fichaInsumos=(procObj&&typeof procObj==="object"&&Array.isArray(procObj.insumos))?procObj.insumos:[];
+          if(fichaInsumos.length===0)return null;
+          return h("div",{style:{width:"100%",padding:"10px 14px",background:P.card2,borderRadius:8,border:`1px solid ${P.border}`}},
+            h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
+              h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},"🧪 Insumos debitados automaticamente"),
+              h("label",{style:{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:10.5,color:P.text3}},
+                h("input",{type:"checkbox",checked:!!sForm.skipAutoInsumos,onChange:e=>sfv("skipAutoInsumos")(e.target.checked),style:{accentColor:P.rose,cursor:"pointer"}}),
+                "não debitar"
+              )
+            ),
+            !sForm.skipAutoInsumos&&h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+              fichaInsumos.map((ins,i)=>{
+                const info=(allProducts||[]).find(p=>(typeof p==="string"?p:(p.name||p))===ins.product);
+                const disponivel=info?getAvailableLotes(allProducts||[],ins.product).reduce((a,l)=>a+l.qtd,0):0;
+                const ok=disponivel>=Number(ins.qty);
+                return h("span",{key:i,style:{fontSize:11,padding:"2px 9px",borderRadius:12,background:ok?"rgba(122,173,138,.1)":"rgba(192,112,112,.12)",color:ok?P.green:P.red,border:`1px solid ${ok?"rgba(122,173,138,.25)":"rgba(192,112,112,.3)"}`}},
+                  `${ins.product} · ${ins.qty}${info?.unit||""}`+(ok?"":` (saldo: ${disponivel})`)
+                );
+              })
+            ),
+            sForm.skipAutoInsumos&&h("div",{style:{fontSize:11,color:P.text3}},"Estoque não será movimentado para este procedimento.")
+          );
+        })(),
         h(Field,{label:"Dose",half:true},h(Inp,{value:sForm.dose,onChange:sfv("dose"),placeholder:"Ex: 40U, 1ml"})),
         h(Field,{label:"Região",half:true},h(Inp,{value:sForm.region,onChange:sfv("region"),placeholder:"Ex: Glabela + Testa"})),
         h(Field,{label:"Local",half:true},h(Sel,{value:sForm.location,onChange:sfv("location"),options:locations})),
@@ -5083,7 +5206,7 @@ function Estoque({products,setProducts}){
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const lfv=k=>v=>setLoteForm(p=>({...p,[k]:v}));
   const h=createElement;
-  const cats=["Toxina Botulínica","Ácido Hialurônico","Bioestimulador","Fios de PDO","Anestésico","Skinbooster","Outros"];
+  const cats=["Toxina Botulínica","Ácido Hialurônico","Bioestimulador","Fios de PDO","Anestésico","Skinbooster","Insumos/Descartáveis","Outros"];
   const stCfg={critical:{color:P.red,bg:"rgba(192,112,112,.12)",l:"⚠ Crítico"},low:{color:P.yellow,bg:"rgba(196,169,106,.12)",l:"⚡ Baixo"},ok:{color:P.green,bg:"rgba(122,173,138,.12)",l:"✓ OK"}};
   
   // Calcula status baseado nos lotes
@@ -5340,7 +5463,7 @@ function Estoque({products,setProducts}){
         h(Field,{label:"Nome"},h(Inp,{value:form.name,onChange:fv("name"),placeholder:"Ex: Botox Allergan 100U"})),
         h(Field,{label:"Emoji",half:true},h(Inp,{value:form.emoji,onChange:fv("emoji"),placeholder:"💉"})),
         h(Field,{label:"Categoria",half:true},h(Sel,{value:form.cat||"Toxina Botulínica",onChange:fv("cat"),options:cats})),
-        h(Field,{label:"Unidade",half:true},h(Sel,{value:form.unit||"U",onChange:fv("unit"),options:["U","ml","un","sir","fr","amp","cx","pct"]})),
+        h(Field,{label:"Unidade",half:true},h(Sel,{value:form.unit||"U",onChange:fv("unit"),options:["U","ml","un","sir","fr","amp","cx","pct","par","rolo"]})),
         !editItem && h(Field,{label:"Quantidade Inicial",half:true},h(Inp,{type:"number",value:form.qty,onChange:fv("qty"),placeholder:"0"})),
         h(Field,{label:"Qtd. Mínima",half:true},h(Inp,{type:"number",value:form.min,onChange:fv("min"),placeholder:"5"})),
         !editItem && h(Field,{label:"Código do Lote Inicial",half:true},h(Inp,{value:form.lote_codigo||"",onChange:v=>setForm(p=>({...p,lote_codigo:v})),placeholder:"Ex: AB12345"})),
@@ -5403,7 +5526,7 @@ function generateRecurringExpenses(rules=[],existingExpenses=[],refDate=new Date
   return novas;
 }
 
-function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses=[],setRecurringExpenses,incomes,setIncomes,settings,goals={},setGoals,procedures=[]}){
+function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses=[],setRecurringExpenses,incomes,setIncomes,settings,goals={},setGoals,procedures=[],proceduresFull=[],products=[]}){
   const[showNewExp,setShowNewExp]=useState(false);
   const[editExp,setEditExp]=useState(null);
   const[showNewInc,setShowNewInc]=useState(false);
@@ -5656,7 +5779,8 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
 
       h("button",{onClick:()=>setViewTab("dre"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="dre"?P.rose:"transparent",border:`1px solid ${viewTab==="dre"?P.rose:P.border}`,color:viewTab==="dre"?P.accent3:P.text2}},"📊 DRE & Pagamentos"),
       h("button",{onClick:()=>setViewTab("inadimplencia"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="inadimplencia"?P.rose:"transparent",border:`1px solid ${viewTab==="inadimplencia"?P.rose:P.border}`,color:viewTab==="inadimplencia"?P.accent3:P.text2}},"⚠ Inadimplência"),
-      h("button",{onClick:()=>setViewTab("recorrentes"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="recorrentes"?P.rose:"transparent",border:`1px solid ${viewTab==="recorrentes"?P.rose:P.border}`,color:viewTab==="recorrentes"?P.accent3:P.text2}},`🔁 Recorrentes${recurringExpenses.length?` (${recurringExpenses.length})`:""}`)
+      h("button",{onClick:()=>setViewTab("recorrentes"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="recorrentes"?P.rose:"transparent",border:`1px solid ${viewTab==="recorrentes"?P.rose:P.border}`,color:viewTab==="recorrentes"?P.accent3:P.text2}},`🔁 Recorrentes${recurringExpenses.length?` (${recurringExpenses.length})`:""}`),
+      h("button",{onClick:()=>setViewTab("margem"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="margem"?P.rose:"transparent",border:`1px solid ${viewTab==="margem"?P.rose:P.border}`,color:viewTab==="margem"?P.accent3:P.text2}},"📐 Margem por Procedimento")
     ),
 
     viewTab==="fluxo"?h(Card,null,
@@ -6058,6 +6182,90 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
           :h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
               ativas.map(RecurringRow),
               pausadas.map(RecurringRow)
+            )
+      );
+    })(),
+
+    viewTab==="margem"&&(()=>{
+      // Junta sessões realizadas/pagas do mês selecionado com a Ficha de Insumos de cada procedimento
+      // para calcular: Receita, Custo de Insumos, Margem (R$ e %) por procedimento.
+      const getProdInfo=name=>(products||[]).find(p=>(typeof p==="string"?p:(p.name||p))===name);
+      const getInsumos=procName=>{
+        const procObj=(proceduresFull||[]).find(p=>(typeof p==="string"?p:(p.name||p))===procName);
+        return (procObj&&typeof procObj==="object"&&Array.isArray(procObj.insumos))?procObj.insumos:[];
+      };
+      const custoInsumosPorSessao=procName=>getInsumos(procName).reduce((a,i)=>{
+        const info=getProdInfo(i.product);
+        return a+(Number(info?.cost)||0)*(Number(i.qty)||0);
+      },0);
+      // Considera sessões pagas no mês selecionado (mesmo critério de receita usado no resto do Financeiro)
+      const sessoesValidas=monthSessions.filter(s=>s.paid&&s.finStatus!=="Cancelado");
+      const porProc={};
+      sessoesValidas.forEach(s=>{
+        const key=s.procedure||"Sem procedimento";
+        if(!porProc[key])porProc[key]={procedure:key,qtd:0,receita:0,custoInsumos:0,temFicha:getInsumos(key).length>0};
+        porProc[key].qtd+=1;
+        porProc[key].receita+=Number(s.value||0);
+        porProc[key].custoInsumos+=custoInsumosPorSessao(key);
+      });
+      const ranking=Object.values(porProc).map(r=>({
+        ...r,
+        margem:r.receita-r.custoInsumos,
+        margemPct:r.receita>0?((r.receita-r.custoInsumos)/r.receita*100):0,
+      })).sort((a,b)=>b.receita-a.receita);
+      const totalReceita=ranking.reduce((a,r)=>a+r.receita,0);
+      const totalCusto=ranking.reduce((a,r)=>a+r.custoInsumos,0);
+      const totalMargem=totalReceita-totalCusto;
+      const totalMargemPct=totalReceita>0?(totalMargem/totalReceita*100):0;
+      const semFicha=ranking.filter(r=>!r.temFicha&&r.qtd>0);
+
+      function corMargem(pct){ return pct>=60?P.green:pct>=35?P.yellow:P.red; }
+
+      return h("div",null,
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
+          [
+            {l:"Receita do Período",v:fmtCurr(totalReceita),c:P.text},
+            {l:"Custo de Insumos",v:fmtCurr(totalCusto),c:P.red},
+            {l:"Margem Real",v:fmtCurr(totalMargem)+`  (${totalMargemPct.toFixed(0)}%)`,c:corMargem(totalMargemPct)}
+          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:k.c}},k.v)
+          ))
+        ),
+        semFicha.length>0&&h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:10,marginBottom:16,fontSize:12,color:P.yellow}},
+          "⚠ Sem ficha de insumos cadastrada (margem mostrada considera custo R$0): "+semFicha.map(r=>r.procedure).join(", ")+". Cadastre em Configurações → Procedimentos."
+        ),
+        ranking.length===0
+          ?h(Card,{style:{textAlign:"center",padding:40}},
+              h("div",{style:{fontSize:32,marginBottom:12}},"📐"),
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text,marginBottom:6}},"Nenhuma sessão paga neste período"),
+              h("div",{style:{fontSize:13,color:P.text3}},"A margem é calculada a partir das sessões pagas no mês selecionado.")
+            )
+          :h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+              ranking.map(r=>{
+                const mc=corMargem(r.margemPct);
+                const barPct=Math.max(0,Math.min(100,r.margemPct));
+                return h(Card,{key:r.procedure},
+                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10,marginBottom:10}},
+                    h("div",null,
+                      h("div",{style:{fontSize:14,color:P.text,fontWeight:600}},r.procedure),
+                      h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},`${r.qtd} sessão${r.qtd>1?"ões":""} paga${r.qtd>1?"s":""}`+(r.temFicha?"":" · sem ficha de insumos"))
+                    ),
+                    h("div",{style:{textAlign:"right"}},
+                      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:mc}},fmtCurr(r.margem)),
+                      h("div",{style:{fontSize:11,color:mc,fontWeight:600}},r.margemPct.toFixed(0)+"% de margem")
+                    )
+                  ),
+                  h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginBottom:8,fontSize:12,color:P.text2}},
+                    h("span",null,"Receita: ",h("strong",{style:{color:P.text}},fmtCurr(r.receita))),
+                    h("span",null,"Custo insumos: ",h("strong",{style:{color:P.red}},fmtCurr(r.custoInsumos))),
+                    h("span",null,"Custo/sessão: ",h("strong",{style:{color:P.text}},fmtCurr(r.qtd?r.custoInsumos/r.qtd:0)))
+                  ),
+                  h("div",{style:{height:6,borderRadius:3,background:P.bg3,overflow:"hidden"}},
+                    h("div",{style:{height:"100%",width:barPct+"%",background:mc,borderRadius:3,transition:"width .2s"}})
+                  )
+                );
+              })
             )
       );
     })(),
@@ -6925,12 +7133,22 @@ const PROC_MAP_ICONS={"Toxina Botulínica":"💉","Preenchimento":"✨","Bioesti
 const PROC_CAT_COLORS={"Toxina Botulínica":P.rose,"Preenchimento":"#7aaed4","Bioestimuladores":P.gold,"Fios / Lifting":"#9b7aad","Skincare Clínico":P.accent,"Avaliação / Consultoria":P.green,"Outros":P.text3};
 
 // ─── PROC FORM (standalone to respect React hook rules) ──────────────────────
-function ProcForm({initial,onSave,onCancel,cats}){
+function ProcForm({initial,onSave,onCancel,cats,products=[]}){
   const h=createElement;
-  const[form,setForm]=useState(initial||{name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1",defaultValue:"",duration:"1 hora"});
-  useEffect(()=>{if(initial)setForm({duration:"1 hora",...initial});},[initial?.id]);
+  const[form,setForm]=useState(initial||{name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1",defaultValue:"",duration:"1 hora",insumos:[]});
+  useEffect(()=>{if(initial)setForm({duration:"1 hora",insumos:[],...initial});},[initial?.id]);
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const isNew=!initial?.id;
+  const insumos=form.insumos||[];
+  const prodNames=(products||[]).map(p=>typeof p==="string"?p:(p.name||p)).sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base"}));
+  function getProdInfo(name){return (products||[]).find(p=>(typeof p==="string"?p:(p.name||p))===name);}
+  function addInsumo(){
+    if(prodNames.length===0)return;
+    setForm(p=>({...p,insumos:[...(p.insumos||[]),{id:Date.now()+Math.random(),product:prodNames[0],qty:1}]}));
+  }
+  function updInsumo(id,key,val){setForm(p=>({...p,insumos:(p.insumos||[]).map(i=>i.id===id?{...i,[key]:val}:i)}));}
+  function delInsumo(id){setForm(p=>({...p,insumos:(p.insumos||[]).filter(i=>i.id!==id)}));}
+  const custoTotalInsumos=insumos.reduce((a,i)=>{const info=getProdInfo(i.product);return a+(Number(info?.cost)||0)*(Number(i.qty)||0);},0);
   return h("div",{style:{background:P.bg3,border:`1px solid ${P.rose}`,borderRadius:12,padding:20,marginBottom:16}},
     h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.accent3,marginBottom:16}},isNew?"＋ Novo Procedimento":"✎ Editar: "+form.name),
     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
@@ -6946,6 +7164,37 @@ function ProcForm({initial,onSave,onCancel,cats}){
       h(Field,{label:"Sessões padrão no pacote"},h(Inp,{type:"number",value:form.sessoesPadrao||"1",onChange:fv("sessoesPadrao"),placeholder:"1"})),
       h(Field,{label:"Valor Padrão (R$)"},h(Inp,{type:"number",value:form.defaultValue||"",onChange:fv("defaultValue"),placeholder:"Ex: 850"})),
       h(Field,{label:"Descrição / Observações"},h(Inp,{value:form.descricao||"",onChange:fv("descricao"),placeholder:"Ex: Neuromodulador para relaxamento muscular"}))
+    ),
+    // ── Ficha de Insumos (BOM) — usados para débito automático de estoque e cálculo de margem ──
+    h("div",{style:{background:P.card,border:`1px solid ${P.border}`,borderRadius:10,padding:14,marginBottom:14}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}},
+        h("div",null,
+          h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},"🧪 Ficha de Insumos"),
+          h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"O que esse procedimento consome do estoque. Debitado automaticamente ao lançar a sessão.")
+        ),
+        h(Btn,{variant:"ghost",onClick:addInsumo,disabled:prodNames.length===0,style:{fontSize:11,padding:"5px 12px"}},"＋ Insumo")
+      ),
+      prodNames.length===0&&h("div",{style:{fontSize:11,color:P.text3}},"Cadastre produtos no Estoque para vinculá-los aqui."),
+      insumos.length===0&&prodNames.length>0&&h("div",{style:{fontSize:11,color:P.text3,padding:"6px 0"}},"Nenhum insumo vinculado ainda."),
+      insumos.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:insumos.length?8:0}},
+        insumos.map(ins=>{
+          const info=getProdInfo(ins.product);
+          const lineCost=(Number(info?.cost)||0)*(Number(ins.qty)||0);
+          return h("div",{key:ins.id,style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
+            h("select",{value:ins.product,onChange:e=>updInsumo(ins.id,"product",e.target.value),style:{...IS,flex:"1 1 200px"}},
+              prodNames.map(n=>h("option",{key:n,value:n},n))
+            ),
+            h("input",{type:"number",value:ins.qty,onChange:e=>updInsumo(ins.id,"qty",e.target.value),style:{...IS,width:80,flexShrink:0},placeholder:"Qtd",min:"0",step:"0.1"}),
+            h("span",{style:{fontSize:10,color:P.text3,flexShrink:0,minWidth:60}},info?.unit||""),
+            h("span",{style:{fontSize:11,color:P.text2,flexShrink:0,minWidth:70,textAlign:"right"}},fmtCurr(lineCost)),
+            h("button",{onClick:()=>delInsumo(ins.id),style:{background:"transparent",border:"none",color:P.red,cursor:"pointer",fontSize:14,flexShrink:0}},"×")
+          );
+        })
+      ),
+      insumos.length>0&&h("div",{style:{display:"flex",justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${P.border}`}},
+        h("span",{style:{fontSize:11,color:P.text3}},"Custo total de insumos por sessão"),
+        h("span",{style:{fontSize:14,color:P.rose,fontWeight:600}},fmtCurr(custoTotalInsumos))
+      )
     ),
     h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
       h(Btn,{variant:"ghost",onClick:onCancel,style:{fontSize:12}},"Cancelar"),
@@ -6976,11 +7225,12 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   const[newProcForm,setNewProcForm]=useState({name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1",defaultValue:""});
 
   const getName=x=>typeof x==="string"?x:(x&&x.name)||"";
-  const getProc=x=>typeof x==="string"?{id:"p_"+x,name:x,categoria:"Outros",descricao:"",revisionDays:0,maintenanceDays:0,sessoesPadrao:1,defaultValue:0,duration:"1 hora"}:{id:x.id||"",name:x.name||"",categoria:x.categoria||"Outros",descricao:x.descricao||"",revisionDays:x.revisionDays||0,maintenanceDays:x.maintenanceDays||0,sessoesPadrao:x.sessoesPadrao||1,defaultValue:x.defaultValue||0,duration:x.duration||"1 hora"};
+  const getProc=x=>typeof x==="string"?{id:"p_"+x,name:x,categoria:"Outros",descricao:"",revisionDays:0,maintenanceDays:0,sessoesPadrao:1,defaultValue:0,duration:"1 hora",insumos:[]}:{id:x.id||"",name:x.name||"",categoria:x.categoria||"Outros",descricao:x.descricao||"",revisionDays:x.revisionDays||0,maintenanceDays:x.maintenanceDays||0,sessoesPadrao:x.sessoesPadrao||1,defaultValue:x.defaultValue||0,duration:x.duration||"1 hora",insumos:x.insumos||[]};
   const skProds=(skincareConfig&&skincareConfig.produtos)||[];
   const skFreqs=(skincareConfig&&skincareConfig.frequencias)||[];
 
-  function saveProc(procObj){
+  function saveProc(procObjRaw){
+    const procObj={...procObjRaw,insumos:(procObjRaw.insumos||[]).map(i=>({id:i.id,product:i.product,qty:Number(i.qty)||0})).filter(i=>i.product&&i.qty>0)};
     const exists=procedures.find(x=>getName(x)===procObj.name);
     if(exists){
       setProcedures(prev=>prev.map(p=>getName(p)===procObj.name?procObj:p));
@@ -7010,7 +7260,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   function addNewProc(formData){
     const name=(formData.name||"").trim();
     if(!name)return;
-    const obj={id:"proc_"+Date.now(),name,categoria:formData.categoria||"Outros",descricao:formData.descricao||"",revisionDays:Number(formData.revisionDays)||0,maintenanceDays:Number(formData.maintenanceDays)||0,sessoesPadrao:Number(formData.sessoesPadrao)||1,defaultValue:Number(formData.defaultValue)||0,duration:formData.duration||"1 hora"};
+    const obj={id:"proc_"+Date.now(),name,categoria:formData.categoria||"Outros",descricao:formData.descricao||"",revisionDays:Number(formData.revisionDays)||0,maintenanceDays:Number(formData.maintenanceDays)||0,sessoesPadrao:Number(formData.sessoesPadrao)||1,defaultValue:Number(formData.defaultValue)||0,duration:formData.duration||"1 hora",insumos:(formData.insumos||[]).map(i=>({id:i.id,product:i.product,qty:Number(i.qty)||0})).filter(i=>i.product&&i.qty>0)};
     saveProc(obj);
   }
 
@@ -7036,8 +7286,8 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
       !showNewProc&&!editingProc&&h("div",{style:{display:"flex",justifyContent:"flex-end",marginBottom:14}},
         h(Btn,{onClick:()=>setShowNewProc(true)},"＋ Novo Procedimento")
       ),
-      showNewProc&&h(ProcForm,{onSave:addNewProc,onCancel:()=>setShowNewProc(false),cats}),
-      editingProc&&h(ProcForm,{initial:editingProc,onSave:saveProc,onCancel:()=>setEditingProc(null),cats}),
+      showNewProc&&h(ProcForm,{onSave:addNewProc,onCancel:()=>setShowNewProc(false),cats,products}),
+      editingProc&&h(ProcForm,{initial:editingProc,onSave:saveProc,onCancel:()=>setEditingProc(null),cats,products}),
       // Agrupado por categoria
       cats.map(cat=>{
         const catProcs=procedures.map(getProc).filter(p=>( p.categoria||"Outros")===cat);
@@ -7064,7 +7314,9 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
                       rev>0&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"⏱ Revisão: "+rev+"d"),
                       man>0&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"🔄 Manutenção: "+man+"d"),
                       (proc.sessoesPadrao>1)&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"📦 "+proc.sessoesPadrao+" sessões"),
-                      (proc.defaultValue>0)&&h("span",{style:{fontSize:11,color:P.green,background:"rgba(122,173,138,.1)",padding:"2px 8px",borderRadius:20,border:"1px solid rgba(122,173,138,.25)"}},"💰 "+fmtCurr(proc.defaultValue))
+                      (proc.defaultValue>0)&&h("span",{style:{fontSize:11,color:P.green,background:"rgba(122,173,138,.1)",padding:"2px 8px",borderRadius:20,border:"1px solid rgba(122,173,138,.25)"}},"💰 "+fmtCurr(proc.defaultValue)),
+                      (proc.insumos&&proc.insumos.length>0)?h("span",{style:{fontSize:11,color:P.rose,background:"rgba(122,40,64,.08)",padding:"2px 8px",borderRadius:20,border:"1px solid rgba(122,40,64,.2)"}},"🧪 "+proc.insumos.length+" insumo"+(proc.insumos.length>1?"s":"")+" · custo "+fmtCurr(proc.insumos.reduce((a,i)=>{const info=products.find(p=>(typeof p==="string"?p:(p.name||p))===i.product);return a+(Number(info?.cost)||0)*(Number(i.qty)||0);},0)))
+                        :h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},"🧪 sem ficha de insumos")
                     )
                   ),
                   h("div",{style:{display:"flex",gap:6,flexShrink:0}},
@@ -8027,6 +8279,13 @@ function AppInner({ session, onLogout }) {
     {id:"p3",name:"Sculptra 367mg",cat:"Bioestimulador",qty:7,min:4,unit:"fr",expiry:"09/2026",cost:950,emoji:"🧪",status:"ok"},
     {id:"p4",name:"Fio PDO 29G Mono",cat:"Fios de PDO",qty:48,min:20,unit:"un",expiry:"01/2028",cost:35,emoji:"🧵",status:"ok"},
     {id:"p5",name:"Profhilo 2ml",cat:"Skinbooster",qty:4,min:3,unit:"sir",expiry:"11/2026",cost:520,emoji:"💧",status:"ok"},
+    {id:"p6",name:"Agulha 30G",cat:"Insumos/Descartáveis",qty:200,min:50,unit:"un",expiry:"06/2028",cost:1.2,emoji:"📍",status:"ok"},
+    {id:"p7",name:"Seringa 1ml",cat:"Insumos/Descartáveis",qty:150,min:40,unit:"un",expiry:"06/2028",cost:1.8,emoji:"💉",status:"ok"},
+    {id:"p8",name:"Luva de Procedimento (par)",cat:"Insumos/Descartáveis",qty:300,min:60,unit:"par",expiry:"",cost:0.9,emoji:"🧤",status:"ok"},
+    {id:"p9",name:"Gaze Estéril",cat:"Insumos/Descartáveis",qty:100,min:30,unit:"un",expiry:"",cost:0.5,emoji:"🩹",status:"ok"},
+    {id:"p10",name:"Anestésico Tópico (pomada)",cat:"Insumos/Descartáveis",qty:8,min:3,unit:"un",expiry:"03/2027",cost:65,emoji:"🧴",status:"ok"},
+    {id:"p11",name:"Álcool 70% (frasco)",cat:"Insumos/Descartáveis",qty:12,min:4,unit:"un",expiry:"",cost:12,emoji:"🧪",status:"ok"},
+    {id:"p12",name:"Micropore",cat:"Insumos/Descartáveis",qty:20,min:8,unit:"rolo",expiry:"",cost:4.5,emoji:"🩹",status:"ok"},
   ]);
   const[settingsData,setSettings,loadingSettings]=useSettings({doctorName:"Dra. Sofia",doctorTitle:"Médica Responsável",clinicName:"HarmonizaPro"});
   const[goalsData,setGoals]=useGoals();
@@ -8318,7 +8577,7 @@ function AppInner({ session, onLogout }) {
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
-            page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames}),
+            page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
             page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda}),
