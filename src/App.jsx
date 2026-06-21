@@ -7739,7 +7739,7 @@ function PagamentosCard({allS}){
   );
 }
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
-function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = [], settings, agenda = [], products = []}){
+function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = [], settings, agenda = [], products = [], vouchers = []}){
   const now=new Date();
   const[selMonth,setSelMonth]=useState(now.getMonth());
   const[selYear,setSelYear]=useState(now.getFullYear());
@@ -7854,6 +7854,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     h("div",{style:{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}},
       [
         {k:"geral",l:"📊 Geral"},
+        {k:"indicacoes",l:"🤝 Indicações"},
         {k:"funil",l:"💼 Funil de Orçamentos"},
         {k:"yoy",l:"📆 Comparativo Anual"},
         {k:"horarios",l:"🗓️ Horários"},
@@ -8007,6 +8008,105 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
       h(PagamentosCard,{allS})
     )
     ), // fim relTab==="geral"
+
+    // ── ABA INDICAÇÕES (Ranking geral de indicadores + ROI do programa) ─────
+    relTab==="indicacoes"&&(()=>{
+      const norm=s=>(s||"").trim().toLowerCase();
+      const safeVouchers=Array.isArray(vouchers)?vouchers.filter(Boolean):[];
+
+      // Receita (paga, sessões) de cada paciente — mesmo critério usado no LTV
+      const revenueByPid={};
+      safePats.forEach(p=>{revenueByPid[p.id]=(p.sessions||[]).filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0);});
+
+      // Agrupa pacientes indicadas por quem indicou (chave normalizada do nome)
+      const grupos={};
+      safePats.forEach(p=>{
+        const key=norm(p.indicadoPor);
+        if(!key)return;
+        if(!grupos[key])grupos[key]=[];
+        grupos[key].push(p);
+      });
+
+      // Vouchers do tipo "Indicação" dados como recompensa, somados por destinatário (toName)
+      const custoByKey={};
+      safeVouchers.filter(v=>v.template==="indicacao").forEach(v=>{
+        const key=norm(v.toName);
+        if(!key)return;
+        custoByKey[key]=(custoByKey[key]||0)+(Number(v.value)||0);
+      });
+
+      const ranking=Object.entries(grupos).map(([key,indicados])=>{
+        const referrer=safePats.find(p=>norm(p.name)===key);
+        const nomeExibido=referrer?referrer.name:(indicados[0]?.indicadoPor||key);
+        const qtdIndicados=indicados.length;
+        const receitaGerada=indicados.reduce((a,p)=>a+(revenueByPid[p.id]||0),0);
+        const ticketMedio=qtdIndicados>0?receitaGerada/qtdIndicados:0;
+        const custoRecompensa=custoByKey[key]||0;
+        const roi=custoRecompensa>0?receitaGerada/custoRecompensa:null; // null = orgânico, sem custo registrado
+        return{key,referrer,nomeExibido,qtdIndicados,receitaGerada,ticketMedio,custoRecompensa,roi,indicados};
+      }).sort((a,b)=>b.receitaGerada-a.receitaGerada);
+
+      const totalIndicados=ranking.reduce((a,r)=>a+r.qtdIndicados,0);
+      const totalReceita=ranking.reduce((a,r)=>a+r.receitaGerada,0);
+      const totalCusto=ranking.reduce((a,r)=>a+r.custoRecompensa,0);
+      const roiGeral=totalCusto>0?totalReceita/totalCusto:null;
+      const topReceita=ranking[0]?.receitaGerada||1;
+
+      if(ranking.length===0)return h("div",{style:{textAlign:"center",color:P.text3,fontSize:13,padding:40}},
+        "Nenhuma indicação registrada ainda. Quando uma paciente for cadastrada com 'Indicado(a) por' preenchido, ela aparecerá aqui automaticamente."
+      );
+
+      return h("div",null,
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}},
+          [
+            {l:"Indicadoras Ativas",v:String(ranking.length),c:P.accent},
+            {l:"Pacientes Indicadas",v:String(totalIndicados),c:"#7aaed4"},
+            {l:"Receita Gerada",v:fmtCurr(totalReceita),c:P.green},
+            {l:"ROI do Programa",v:roiGeral!=null?(roiGeral.toFixed(1)+"x"):"Orgânico",c:roiGeral!=null?(roiGeral>=1?P.green:P.red):P.gold},
+          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:k.c}},k.v)
+          ))
+        ),
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:14,padding:"10px 14px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
+          `💡 Custo de recompensa = soma dos vouchers do tipo "🤝 Indicação" emitidos para a indicadora. ROI = receita gerada pelas indicadas ÷ custo da recompensa. Quando não há voucher registrado, a indicação é tratada como orgânica (sem custo direto).`+
+          (totalCusto>0?` Total investido em recompensas: ${fmtCurr(totalCusto)}.`:"")
+        ),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:14}},"Ranking de Indicadoras"),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+          ranking.map((r,i)=>{
+            const pct=topReceita>0?Math.round((r.receitaGerada/topReceita)*100):0;
+            const roiColor=r.roi==null?P.gold:(r.roi>=2?P.green:r.roi>=1?P.yellow:P.red);
+            return h(Card,{key:r.key,style:{cursor:r.referrer?"pointer":"default"},onClick:()=>r.referrer&&onSelectPatient&&onSelectPatient(r.referrer)},
+              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:10,flexWrap:"wrap"}},
+                h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                  h("div",{style:{fontSize:15,color:P.accent,fontFamily:"'Cormorant Garamond',serif",minWidth:24,fontWeight:600}},(i+1)+"°"),
+                  h(Avatar,{name:r.nomeExibido,size:34,idx:i,src:r.referrer?.profilePhoto}),
+                  h("div",null,
+                    h("div",{style:{fontSize:14,color:P.text,fontWeight:600}},r.nomeExibido),
+                    h("div",{style:{fontSize:11,color:P.text3}},r.qtdIndicados+" paciente"+(r.qtdIndicados>1?"s":"")+" indicada"+(r.qtdIndicados>1?"s":"")+(!r.referrer?" · não é paciente cadastrada":""))
+                  )
+                ),
+                h("div",{style:{textAlign:"right"}},
+                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.green}},fmtCurr(r.receitaGerada)),
+                  h("div",{style:{fontSize:10,color:P.text3}},"ticket médio "+fmtCurr(r.ticketMedio))
+                )
+              ),
+              h("div",{style:{height:5,borderRadius:3,background:P.bg3,overflow:"hidden",marginBottom:10}},
+                h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:3}})
+              ),
+              h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",fontSize:11.5,color:P.text2,paddingTop:8,borderTop:`1px solid ${P.border}`}},
+                h("span",null,"Custo recompensa: ",h("b",{style:{color:P.text}},r.custoRecompensa>0?fmtCurr(r.custoRecompensa):"—")),
+                h("span",{style:{color:roiColor,fontWeight:600}},r.roi!=null?("ROI: "+r.roi.toFixed(1)+"x"):"Indicação orgânica")
+              ),
+              h("div",{style:{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}},
+                r.indicados.map(p=>h("span",{key:p.id,style:{fontSize:11,padding:"3px 9px",borderRadius:20,background:"rgba(122,174,212,.1)",border:"1px solid rgba(122,174,212,.2)",color:"#7aaed4"}},p.name.split(" ")[0]+" · "+fmtCurr(revenueByPid[p.id]||0)))
+              )
+            );
+          })
+        )
+      );
+    })(),
 
     // ── ABA HORÁRIOS (Mapa de Horários Mais Produtivos) ─────────────────────
     relTab==="horarios"&&(()=>{
@@ -10278,7 +10378,7 @@ function AppInner({ session, onLogout }) {
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products,maquininhas,setMaquininhas}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
-            page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda,products}),
+            page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda,products,vouchers}),
             page==="intercorrencias_global"&&h(IntercorrenciasGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures:procedureNames,products:products.map(p=>typeof p==="string"?p:(p.name||p))}),
             page==="config"&&h(Configuracoes,{procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas,setMaquininhas})
           )
