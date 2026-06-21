@@ -2982,44 +2982,9 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
     e.dataTransfer.effectAllowed="move";
     e.dataTransfer.setData("text/plain",String(id));
   }
-  function onDragOverSlot(e,date,hour){
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect="move";
-    setDragOver({date,hour});
-  }
-  function onDropSlot(e,date,hour){
-    e.preventDefault();
-    e.stopPropagation();
-    const rawId=e.dataTransfer.getData("text/plain")||String(dragIdRef.current||"");
-    const id=Number(rawId);
-    if(!id)return;
-    const newTime=`${String(hour).padStart(2,"0")}:00`;
-    setAgenda(prev=>prev.map(a=>{
-      if(a.id!==id)return a;
-      const entry={from:`${a.date} ${a.time}`,to:`${date} ${newTime}`,at:new Date().toLocaleString("pt-BR")};
-      return{...a,date,time:newTime,status:"Reagendado",rescheduleHistory:[...(a.rescheduleHistory||[]),entry]};
-    }));
-    setSelDate(date);
-    dragIdRef.current=null;
-    setDragId(null);setDragOver(null);
-  }
   function onDragEnd(){
     dragIdRef.current=null;
     setDragId(null);setDragOver(null);
-  }
-
-  // ── Clique em slot vazio → novo agendamento ──
-  function onClickEmptySlot(date,hour){
-    setEditItem(null);
-    setForm({...blank,date,time:`${String(hour).padStart(2,"0")}:00`});
-    setShowNew(true);
-  }
-
-  // ── Clique duplo em slot → bloquear horário ──
-  function onDblClickSlot(date,hour){
-    setBlockForm({date,time:`${String(hour).padStart(2,"0")}:00`,endTime:`${String(hour+1).padStart(2,"0")}:00`,reason:""});
-    setShowBlockModal(true);
   }
 
   // ── Versões com precisão de 5 minutos (usadas na view Dia) ──
@@ -3065,7 +3030,6 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
   const HOURS=[7,8,9,10,11,12,13,14,15,16,17,18,19,20];
 
   // ─── Estilos reutilizáveis ───
-  const slotBase={height:64,borderBottom:`1px solid rgba(71,35,37,.2)`,cursor:"pointer",transition:"background .12s"};
   const blockBtnStyle={padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid rgba(192,112,112,.35)`,color:P.red};
 
   // ─── CARD DE AGENDAMENTO (drag) ───
@@ -3111,28 +3075,43 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
 
   // ─── COLUNA DE HORAS (view dia/semana) ───
   function HourSlots({date,appts}){
+    const STEP=30, STEPS_PH=60/STEP, STEP_PX_W=64/STEPS_PH;
     return h("div",{
       style:{position:"relative"},
       // onDragOver e onDrop no container pai também, para garantir que o drop funcione
       // mesmo quando o cursor passa sobre o card absoluto
-      onDragOver:e=>{ e.preventDefault(); const hr=7+Math.floor(e.nativeEvent.offsetY/64); setDragOver({date,hour:Math.max(7,Math.min(20,hr))}); },
+      onDragOver:e=>{
+        e.preventDefault();
+        const rawMin=Math.round(e.nativeEvent.offsetY/STEP_PX_W)*STEP;
+        const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
+        setDragOver({date,minute:totalMin});
+      },
       onDrop:e=>{
         e.preventDefault();
-        const hr=7+Math.floor(e.nativeEvent.offsetY/64);
-        onDropSlot(e,date,Math.max(7,Math.min(20,hr)));
+        const rawMin=Math.round(e.nativeEvent.offsetY/STEP_PX_W)*STEP;
+        const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
+        onDropSlotMin(e,date,totalMin);
       }
     },
-      HOURS.map(hr=>{
-        const isOver=dragOver&&dragOver.date===date&&dragOver.hour===hr;
-        return h("div",{
-          key:hr,
-          style:{...slotBase,background:isOver?"rgba(157,119,97,.18)":"transparent"},
-          onClick:()=>{ if(!dragIdRef.current) onClickEmptySlot(date,hr); },
-          onDoubleClick:()=>onDblClickSlot(date,hr),
-          onDragOver:e=>onDragOverSlot(e,date,hr),
-          onDrop:e=>onDropSlot(e,date,hr),
-        });
-      }),
+      HOURS.map(hr=>
+        Array.from({length:STEPS_PH},(_,i)=>{
+          const totalMin=hr*60+i*STEP;
+          const isOver=dragOver&&dragOver.date===date&&dragOver.minute===totalMin;
+          const isHourLine=i===0;
+          return h("div",{
+            key:hr+"_"+i,
+            style:{
+              height:STEP_PX_W,
+              borderBottom:isHourLine?`1px solid rgba(71,35,37,.2)`:`1px solid rgba(71,35,37,.08)`,
+              cursor:"pointer",
+              transition:"background .12s",
+              background:isOver?"rgba(157,119,97,.18)":"transparent"
+            },
+            onClick:()=>{ if(!dragIdRef.current) onClickEmptySlotMin(date,totalMin); },
+            onDoubleClick:()=>onDblClickSlotMin(date,totalMin),
+          });
+        })
+      ),
       (()=>{
         const byTime={};
         appts.forEach(a=>{ const t=a.time||"09:00"; (byTime[t]=byTime[t]||[]).push(a); });
