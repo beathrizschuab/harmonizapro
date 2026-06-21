@@ -7466,6 +7466,21 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const[relTab,setRelTab]=useState("geral");
   const[hmPeriod,setHmPeriod]=useState("6m");
   const[hmMetric,setHmMetric]=useState("atend");
+  // ── Comparativo Anual: anos selecionáveis (multi) + modo ano completo ou mês específico ──
+  const[yoyYears,setYoyYears]=useState(()=>{const y=now.getFullYear();return[y-1,y];});
+  const[yoyMode,setYoyMode]=useState("ano"); // "ano" | "mes"
+  const[yoyMonth,setYoyMonth]=useState(now.getMonth());
+  function toggleYoyYear(y){
+    setYoyYears(prev=>{
+      if(prev.includes(y)){
+        if(prev.length<=1)return prev; // mantém ao menos 1 ano selecionado
+        return prev.filter(x=>x!==y);
+      }
+      const next=[...prev,y].sort((a,b)=>a-b);
+      if(next.length>4)next.shift(); // máximo de 4 anos simultâneos (legibilidade do gráfico)
+      return next;
+    });
+  }
   const h=createElement;
   // SAFE: sempre array, nunca crasha
   const safePats=Array.isArray(patients)?patients.filter(Boolean):[];
@@ -8147,74 +8162,148 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     })(),
 
     relTab==="yoy"&&(()=>{
-      const yA=selYear-1,yB=selYear;
-      const revByYearMonth=year=>Array.from({length:12},(_,m)=>{
-        const ss=allS.filter(s=>{const d=parseDMY2(s.date);return d&&d.getFullYear()===year&&d.getMonth()===m;});
-        return{m,rec:ss.filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0),count:ss.length};
-      });
-      const dataA=revByYearMonth(yA),dataB=revByYearMonth(yB);
-      const totalA=dataA.reduce((a,d)=>a+d.rec,0),totalB=dataB.reduce((a,d)=>a+d.rec,0);
-      const paidCountA=allS.filter(s=>{const d=parseDMY2(s.date);return d&&d.getFullYear()===yA&&s.paid;}).length;
-      const paidCountB=allS.filter(s=>{const d=parseDMY2(s.date);return d&&d.getFullYear()===yB&&s.paid;}).length;
-      const ticketA=paidCountA>0?totalA/paidCountA:0,ticketB=paidCountB>0?totalB/paidCountB:0;
-      const expA=(expenses||[]).filter(e=>{const d=parseAnyDate(e.date);return d&&d.getFullYear()===yA&&e.status!=="Cancelado";}).reduce((a,e)=>a+(Number(e.value)||0),0);
-      const expB=(expenses||[]).filter(e=>{const d=parseAnyDate(e.date);return d&&d.getFullYear()===yB&&e.status!=="Cancelado";}).reduce((a,e)=>a+(Number(e.value)||0),0);
-      const lucroA=totalA-expA,lucroB=totalB-expB;
       const pctVar=(a,b)=>a>0?Math.round(((b-a)/a)*100):(b>0?100:0);
-      const maxMonthVal=Math.max(...dataA.map(d=>d.rec),...dataB.map(d=>d.rec),1);
-      // Ranking de procedimentos: maiores crescimentos e quedas de faturamento entre os dois anos
-      const procYearMap={};
-      allS.forEach(s=>{
-        const d=parseDMY2(s.date);if(!d||!s.paid||!s.procedure)return;
-        const y=d.getFullYear();if(y!==yA&&y!==yB)return;
-        if(!procYearMap[s.procedure])procYearMap[s.procedure]={a:0,b:0};
-        procYearMap[s.procedure][y===yA?"a":"b"]+=Number(s.value)||0;
-      });
-      const procDeltaList=Object.entries(procYearMap).map(([proc,d])=>({proc,a:d.a,b:d.b,delta:d.b-d.a,pct:pctVar(d.a,d.b)})).sort((x,y)=>y.delta-x.delta);
+      const sortedYoyYears=[...yoyYears].sort((a,b)=>a-b);
+      // Eixo de dias comum (modo "mês específico") — usa o maior nº de dias entre os anos selecionados para o mês escolhido
+      const axisDays=yoyMode==="mes"?Math.max(...sortedYoyYears.map(y=>new Date(y,yoyMonth+1,0).getDate())):31;
+      function yearMetrics(year){
+        const monthFilter=yoyMode==="mes"?yoyMonth:null;
+        const ss=allS.filter(s=>{const d=parseDMY2(s.date);return d&&d.getFullYear()===year&&(monthFilter==null||d.getMonth()===monthFilter);});
+        const rec=ss.filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0);
+        const paidCount=ss.filter(s=>s.paid).length;
+        const ticket=paidCount>0?rec/paidCount:0;
+        const exp=(expenses||[]).filter(e=>{const d=parseAnyDate(e.date);return d&&d.getFullYear()===year&&(monthFilter==null||d.getMonth()===monthFilter)&&e.status!=="Cancelado";}).reduce((a,e)=>a+(Number(e.value)||0),0);
+        const lucro=rec-exp;
+        const byMonth=Array.from({length:12},(_,m)=>{
+          const ssm=allS.filter(s=>{const d=parseDMY2(s.date);return d&&d.getFullYear()===year&&d.getMonth()===m;});
+          return{m,rec:ssm.filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0),count:ssm.length};
+        });
+        const byDay=monthFilter==null?[]:Array.from({length:axisDays},(_,i)=>{
+          const day=i+1;
+          const ssd=ss.filter(s=>{const d=parseDMY2(s.date);return d&&d.getDate()===day;});
+          return{day,rec:ssd.filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0),count:ssd.length};
+        });
+        return{year,ss,rec,paidCount,ticket,exp,lucro,byMonth,byDay};
+      }
+      const yoyData=sortedYoyYears.map(yearMetrics);
+      const maxMonthVal=yoyMode==="ano"?Math.max(1,...yoyData.flatMap(d=>d.byMonth.map(m=>m.rec))):1;
+      const maxDayVal=yoyMode==="mes"?Math.max(1,...yoyData.flatMap(d=>d.byDay.map(x=>x.rec))):1;
+      // Ranking de procedimentos: compara o primeiro e o último ano selecionados (crescimento/queda no período)
+      let procDeltaList=[],yFirst=null,yLast=null;
+      if(yoyData.length>=2){
+        yFirst=yoyData[0].year;yLast=yoyData[yoyData.length-1].year;
+        const monthFilter=yoyMode==="mes"?yoyMonth:null;
+        const procYearMap={};
+        allS.forEach(s=>{
+          const d=parseDMY2(s.date);if(!d||!s.paid||!s.procedure)return;
+          if(monthFilter!=null&&d.getMonth()!==monthFilter)return;
+          const y=d.getFullYear();if(y!==yFirst&&y!==yLast)return;
+          if(!procYearMap[s.procedure])procYearMap[s.procedure]={a:0,b:0};
+          procYearMap[s.procedure][y===yFirst?"a":"b"]+=Number(s.value)||0;
+        });
+        procDeltaList=Object.entries(procYearMap).map(([proc,d])=>({proc,a:d.a,b:d.b,delta:d.b-d.a,pct:pctVar(d.a,d.b)})).sort((x,y)=>y.delta-x.delta);
+      }
       const subindo=procDeltaList.filter(p=>p.delta>0).slice(0,5);
       const caindo=procDeltaList.filter(p=>p.delta<0).slice(-5).reverse();
+      const metricDefs=[
+        {key:"rec",label:"Faturamento",fmt:fmtCurr},
+        {key:"paidCount",label:"Sessões Pagas",fmt:v=>String(v)},
+        {key:"ticket",label:"Ticket Médio",fmt:fmtCurr},
+        {key:"lucro",label:"Lucro Líquido",fmt:fmtCurr},
+      ];
+      // Pílulas de anos disponíveis: janela dos últimos anos + qualquer ano já selecionado fora da janela
+      const dataYears=[...new Set(allS.map(s=>{const d=parseDMY2(s.date);return d?d.getFullYear():null;}).filter(Boolean))];
+      const minDataYear=dataYears.length?Math.min(...dataYears):now.getFullYear()-2;
+      const yearWindowStart=Math.min(minDataYear,now.getFullYear()-4);
+      const yearPills=[];
+      for(let y=yearWindowStart;y<=now.getFullYear();y++)yearPills.push(y);
+      yoyYears.forEach(y=>{if(!yearPills.includes(y))yearPills.push(y);});
+      yearPills.sort((a,b)=>a-b);
 
       return h("div",null,
-        h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:20,padding:"10px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12}},
-          h("button",{onClick:()=>setSelYear(y=>y-1),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"←"),
-          h("div",{style:{minWidth:180,textAlign:"center"}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},`${yA} vs ${yB}`)),
-          h("button",{onClick:()=>setSelYear(y=>y+1),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"→")
+        // ── Painel de seleção: modo, mês (se aplicável) e anos ──────────────
+        h("div",{style:{background:P.card,border:`1px solid ${P.border}`,borderRadius:12,padding:16,marginBottom:20}},
+          h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:14}},
+            [{k:"ano",l:"Ano Completo"},{k:"mes",l:"Mês Específico"}].map(md=>h("button",{key:md.k,onClick:()=>setYoyMode(md.k),style:{padding:"6px 16px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${yoyMode===md.k?P.rose:P.border}`,background:yoyMode===md.k?P.rose:"transparent",color:yoyMode===md.k?P.accent3:P.text2}},md.l))
+          ),
+          yoyMode==="mes"&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center",marginBottom:14}},
+            MONTH_NAMES.map((mn,mi)=>h("button",{key:mi,onClick:()=>setYoyMonth(mi),style:{padding:"5px 11px",borderRadius:14,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${yoyMonth===mi?P.accent:P.border}`,background:yoyMonth===mi?P.accent3:"transparent",color:yoyMonth===mi?P.accent:P.text2,fontWeight:yoyMonth===mi?600:400}},mn.slice(0,3)))
+          ),
+          h("div",{style:{textAlign:"center",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}},"Anos selecionados (até 4) — clique para adicionar ou remover"),
+          h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center"}},
+            yearPills.map(y=>{
+              const sel=yoyYears.includes(y);
+              return h("button",{key:y,onClick:()=>toggleYoyYear(y),style:{padding:"6px 15px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${sel?P.rose:P.border}`,background:sel?P.rose:"transparent",color:sel?P.accent3:P.text2,fontWeight:sel?600:400}},String(y));
+            })
+          )
         ),
+        h("div",{style:{textAlign:"center",marginBottom:18}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},
+            sortedYoyYears.join(" · ")+(yoyMode==="mes"?` — ${MONTH_NAMES[yoyMonth]}`:"")
+          )
+        ),
+        // ── KPIs por ano ──────────────────────────────────────────────────
         h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
-          [
-            {l:"Faturamento "+yB,v:fmtCurr(totalB),sub:`${yA}: ${fmtCurr(totalA)}`,pct:pctVar(totalA,totalB)},
-            {l:"Sessões Pagas "+yB,v:String(paidCountB),sub:`${yA}: ${paidCountA}`,pct:pctVar(paidCountA,paidCountB)},
-            {l:"Ticket Médio "+yB,v:fmtCurr(ticketB),sub:`${yA}: ${fmtCurr(ticketA)}`,pct:pctVar(ticketA,ticketB)},
-            {l:"Lucro Líquido "+yB,v:fmtCurr(lucroB),sub:`${yA}: ${fmtCurr(lucroA)}`,pct:pctVar(lucroA,lucroB)},
-          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
-            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},k.l),
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:P.text}},k.v),
-            h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.sub),
-            h("div",{style:{fontSize:12,fontWeight:600,marginTop:4,color:k.pct>=0?P.green:P.red}},`${k.pct>=0?"▲":"▼"} ${Math.abs(k.pct)}%`)
+          metricDefs.map(md=>h(Card,{key:md.key},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10,textAlign:"center"}},md.label),
+            h("div",{style:{display:"flex",flexDirection:"column",gap:0}},
+              yoyData.map((d,i)=>{
+                const val=d[md.key];
+                const prev=i>0?yoyData[i-1][md.key]:null;
+                const pct=prev!=null?pctVar(prev,val):null;
+                return h("div",{key:d.year,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:i<yoyData.length-1?`1px solid ${P.border}`:"none"}},
+                  h("span",{style:{fontSize:11.5,color:P.text3}},String(d.year)),
+                  h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},md.fmt(val)),
+                  pct!=null?h("span",{style:{fontSize:10.5,fontWeight:600,color:pct>=0?P.green:P.red,minWidth:48,textAlign:"right"}},`${pct>=0?"▲":"▼"} ${Math.abs(pct)}%`):h("span",{style:{minWidth:48}})
+                );
+              })
+            )
           ))
         ),
-        h(Card,{style:{marginBottom:18}},
+        // ── Gráfico: mês a mês (ano completo) ou dia a dia (mês específico) ──
+        yoyMode==="ano"?h(Card,{style:{marginBottom:18}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Faturamento Mês a Mês"),
-          h("div",{style:{display:"flex",alignItems:"flex-end",gap:10,height:120}},
-            Array.from({length:12},(_,m)=>{
-              const a=dataA[m].rec,b=dataB[m].rec;
-              return h("div",{key:m,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}},
-                h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",gap:3,width:"100%"}},
-                  h("div",{title:`${yA}: ${fmtCurr(a)}`,style:{flex:1,height:`${(a/maxMonthVal)*100}%`,background:"rgba(155,122,173,.55)",borderRadius:"3px 3px 0 0",minHeight:a>0?3:0}}),
-                  h("div",{title:`${yB}: ${fmtCurr(b)}`,style:{flex:1,height:`${(b/maxMonthVal)*100}%`,background:`linear-gradient(to top,${P.rose},${P.gold})`,borderRadius:"3px 3px 0 0",minHeight:b>0?3:0}})
+          h("div",{style:{display:"flex",alignItems:"flex-end",gap:10,height:130}},
+            Array.from({length:12},(_,m)=>h("div",{key:m,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}},
+              h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",gap:2,width:"100%"}},
+                yoyData.map((d,i)=>{
+                  const v=d.byMonth[m].rec;
+                  return h("div",{key:d.year,title:`${d.year}: ${fmtCurr(v)}`,style:{flex:1,height:`${(v/maxMonthVal)*100}%`,background:colors[i%colors.length],borderRadius:"3px 3px 0 0",minHeight:v>0?3:0}});
+                })
+              ),
+              h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},MONTH_NAMES[m].slice(0,3))
+            ))
+          ),
+          h("div",{style:{display:"flex",gap:16,marginTop:14,fontSize:11,color:P.text3,justifyContent:"center",flexWrap:"wrap"}},
+            yoyData.map((d,i)=>h("div",{key:d.year,style:{display:"flex",alignItems:"center",gap:6}},h("span",{style:{width:10,height:10,borderRadius:2,background:colors[i%colors.length],display:"inline-block"}}),String(d.year)))
+          )
+        ):h(Card,{style:{marginBottom:18}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:4}},`Faturamento por Dia — ${MONTH_NAMES[yoyMonth]}`),
+          h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},"Mesmo dia do mês, comparado entre os anos selecionados"),
+          h("div",{style:{display:"flex",alignItems:"flex-end",gap:3,height:130,overflowX:"auto"}},
+            Array.from({length:axisDays},(_,i)=>{
+              const day=i+1;
+              return h("div",{key:day,style:{flex:"1 0 auto",minWidth:9,display:"flex",flexDirection:"column",alignItems:"center",gap:3}},
+                h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",gap:1,width:"100%"}},
+                  yoyData.map((d,i2)=>{
+                    const dd=d.byDay.find(x=>x.day===day);
+                    const v=dd?dd.rec:0;
+                    return h("div",{key:d.year,title:`${d.year} dia ${day}: ${fmtCurr(v)}`,style:{flex:1,height:`${(v/maxDayVal)*100}%`,background:colors[i2%colors.length],borderRadius:"2px 2px 0 0",minHeight:v>0?2:0}});
+                  })
                 ),
-                h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},MONTH_NAMES[m].slice(0,3))
+                h("div",{style:{fontSize:8,color:P.text3}},day)
               );
             })
           ),
-          h("div",{style:{display:"flex",gap:16,marginTop:14,fontSize:11,color:P.text3,justifyContent:"center"}},
-            h("div",{style:{display:"flex",alignItems:"center",gap:6}},h("span",{style:{width:10,height:10,borderRadius:2,background:"rgba(155,122,173,.55)",display:"inline-block"}}),String(yA)),
-            h("div",{style:{display:"flex",alignItems:"center",gap:6}},h("span",{style:{width:10,height:10,borderRadius:2,background:`linear-gradient(135deg,${P.rose},${P.gold})`,display:"inline-block"}}),String(yB))
+          h("div",{style:{display:"flex",gap:16,marginTop:14,fontSize:11,color:P.text3,justifyContent:"center",flexWrap:"wrap"}},
+            yoyData.map((d,i)=>h("div",{key:d.year,style:{display:"flex",alignItems:"center",gap:6}},h("span",{style:{width:10,height:10,borderRadius:2,background:colors[i%colors.length],display:"inline-block"}}),String(d.year)))
           )
         ),
-        procDeltaList.length>0&&h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}},
+        // ── Ranking de procedimentos: crescimento/queda entre o primeiro e o último ano selecionados ──
+        yoyData.length<2?h(Card,{style:{textAlign:"center",padding:24,color:P.text3,fontSize:13}},"Selecione ao menos 2 anos para ver o ranking de procedimentos em crescimento e queda."):
+        h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}},
           h(Card,null,
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green,marginBottom:12}},"📈 Maiores Crescimentos"),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green,marginBottom:12}},`📈 Maiores Crescimentos (${yFirst} → ${yLast})`),
             subindo.length===0&&h("div",{style:{fontSize:12,color:P.text3}},"Sem crescimento registrado."),
             subindo.map(p=>h("div",{key:p.proc,style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"6px 0",borderBottom:`1px solid ${P.border}`}},
               h("span",{style:{color:P.text}},p.proc),
@@ -8222,7 +8311,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
             ))
           ),
           h(Card,null,
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.red,marginBottom:12}},"📉 Maiores Quedas"),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.red,marginBottom:12}},`📉 Maiores Quedas (${yFirst} → ${yLast})`),
             caindo.length===0&&h("div",{style:{fontSize:12,color:P.text3}},"Sem queda registrada."),
             caindo.map(p=>h("div",{key:p.proc,style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"6px 0",borderBottom:`1px solid ${P.border}`}},
               h("span",{style:{color:P.text}},p.proc),
