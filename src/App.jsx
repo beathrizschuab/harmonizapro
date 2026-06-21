@@ -6411,13 +6411,14 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
         h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
           [
             {l:"Receita do Período",v:fmtCurr(totalReceita),c:P.text},
-            {l:"Custo de Insumos",v:fmtCurr(totalCusto),c:P.red},
+            {l:"Custo de Insumos/Descartáveis",v:fmtCurr(totalCusto),c:P.red},
             {l:"Margem Real",v:fmtCurr(totalMargem)+`  (${totalMargemPct.toFixed(0)}%)`,c:corMargem(totalMargemPct)}
           ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
             h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:k.c}},k.v)
           ))
         ),
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:16}},"O custo considera apenas os insumos/descartáveis (agulha, luva, gaze...) cadastrados na Ficha de Insumos do procedimento — não inclui o custo do produto injetável principal."),
         semFicha.length>0&&h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:10,marginBottom:16,fontSize:12,color:P.yellow}},
           "⚠ Sem ficha de insumos cadastrada (margem mostrada considera custo R$0): "+semFicha.map(r=>r.procedure).join(", ")+". Cadastre em Configurações → Procedimentos."
         ),
@@ -6444,7 +6445,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
                   ),
                   h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginBottom:8,fontSize:12,color:P.text2}},
                     h("span",null,"Receita: ",h("strong",{style:{color:P.text}},fmtCurr(r.receita))),
-                    h("span",null,"Custo insumos: ",h("strong",{style:{color:P.red}},fmtCurr(r.custoInsumos))),
+                    h("span",null,"Custo descartáveis: ",h("strong",{style:{color:P.red}},fmtCurr(r.custoInsumos))),
                     h("span",null,"Custo/sessão: ",h("strong",{style:{color:P.text}},fmtCurr(r.qtd?r.custoInsumos/r.qtd:0)))
                   ),
                   h("div",{style:{height:6,borderRadius:3,background:P.bg3,overflow:"hidden"}},
@@ -7326,16 +7327,13 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const isNew=!initial?.id;
   const insumos=form.insumos||[];
-  const prodNames=(products||[]).map(p=>typeof p==="string"?p:(p.name||p)).sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base"}));
-  // Agrupa as opções do seletor por tipo, para ficar claro a diferença entre produtos injetáveis (com lote/validade)
-  // e insumos/descartáveis (cadastro simples) — ambos podem compor a Ficha de Insumos do procedimento.
-  const injetaveisNames=(products||[]).filter(p=>typeof p!=="string"&&p.cat!==INSUMO_CAT).map(p=>p.name).sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base"}));
+  // A Ficha de Insumos usa só itens da categoria Insumos/Descartáveis (agulha, luva, gaze, anestésico...).
+  // Produtos injetáveis (Botox, ácido hialurônico etc.) não entram aqui — esses são escolhidos direto na sessão.
   const insumosNames=(products||[]).filter(p=>typeof p!=="string"&&p.cat===INSUMO_CAT).map(p=>p.name).sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base"}));
-  const stringNames=(products||[]).filter(p=>typeof p==="string");
   function getProdInfo(name){return (products||[]).find(p=>(typeof p==="string"?p:(p.name||p))===name);}
   function addInsumo(){
-    if(prodNames.length===0)return;
-    setForm(p=>({...p,insumos:[...(p.insumos||[]),{id:Date.now()+Math.random(),product:prodNames[0],qty:1}]}));
+    if(insumosNames.length===0)return;
+    setForm(p=>({...p,insumos:[...(p.insumos||[]),{id:Date.now()+Math.random(),product:insumosNames[0],qty:1}]}));
   }
   function updInsumo(id,key,val){setForm(p=>({...p,insumos:(p.insumos||[]).map(i=>i.id===id?{...i,[key]:val}:i)}));}
   function delInsumo(id){setForm(p=>({...p,insumos:(p.insumos||[]).filter(i=>i.id!==id)}));}
@@ -7361,22 +7359,19 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}},
         h("div",null,
           h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},"🧪 Ficha de Insumos"),
-          h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"O que esse procedimento consome do estoque. Debitado automaticamente ao lançar a sessão.")
+          h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Insumos/descartáveis que esse procedimento consome (agulha, luva, gaze...). Debitado automaticamente ao lançar a sessão.")
         ),
-        h(Btn,{variant:"ghost",onClick:addInsumo,disabled:prodNames.length===0,style:{fontSize:11,padding:"5px 12px"}},"＋ Insumo")
+        h(Btn,{variant:"ghost",onClick:addInsumo,disabled:insumosNames.length===0,style:{fontSize:11,padding:"5px 12px"}},"＋ Insumo")
       ),
-      prodNames.length===0&&h("div",{style:{fontSize:11,color:P.text3}},"Cadastre produtos no Estoque para vinculá-los aqui."),
-      prodNames.length>0&&insumosNames.length===0&&h("div",{style:{fontSize:11,color:P.yellow,background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:8,padding:"7px 10px",marginBottom:8}},"⚠ Nenhum insumo/descartável cadastrado ainda (agulha, luva, gaze...). Cadastre em Estoque → aba 🧰 Insumos / Descartáveis."),
-      insumos.length===0&&prodNames.length>0&&h("div",{style:{fontSize:11,color:P.text3,padding:"6px 0"}},"Nenhum insumo vinculado ainda."),
+      insumosNames.length===0&&h("div",{style:{fontSize:11,color:P.yellow,background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:8,padding:"7px 10px"}},"⚠ Nenhum insumo/descartável cadastrado ainda (agulha, luva, gaze...). Cadastre em Estoque → aba 🧰 Insumos / Descartáveis."),
+      insumos.length===0&&insumosNames.length>0&&h("div",{style:{fontSize:11,color:P.text3,padding:"6px 0"}},"Nenhum insumo vinculado ainda."),
       insumos.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:insumos.length?8:0}},
         insumos.map(ins=>{
           const info=getProdInfo(ins.product);
           const lineCost=(Number(info?.cost)||0)*(Number(ins.qty)||0);
           return h("div",{key:ins.id,style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
             h("select",{value:ins.product,onChange:e=>updInsumo(ins.id,"product",e.target.value),style:{...IS,flex:"1 1 200px"}},
-              injetaveisNames.length>0&&h("optgroup",{label:"💉 Injetáveis"},injetaveisNames.map(n=>h("option",{key:n,value:n},n))),
-              insumosNames.length>0&&h("optgroup",{label:"🧰 Insumos/Descartáveis"},insumosNames.map(n=>h("option",{key:n,value:n},n))),
-              stringNames.length>0&&h("optgroup",{label:"Outros"},stringNames.map(n=>h("option",{key:n,value:n},n)))
+              insumosNames.map(n=>h("option",{key:n,value:n},n))
             ),
             h("input",{type:"number",value:ins.qty,onChange:e=>updInsumo(ins.id,"qty",e.target.value),style:{...IS,width:80,flexShrink:0},placeholder:"Qtd",min:"0",step:"0.1"}),
             h("span",{style:{fontSize:10,color:P.text3,flexShrink:0,minWidth:60}},info?.unit||""),
