@@ -70,6 +70,14 @@ function calcDepositDate(dateISO,prazo){
   d.setDate(d.getDate()+Math.max(0,Number(prazo)||0));
   return d.toISOString().slice(0,10);
 }
+// Soma N meses a uma data ISO (YYYY-MM-DD) — usado para gerar o vencimento de cada parcela
+// de uma despesa parcelada (compra única dividida em N pagamentos mensais).
+function addMonthsISO(dateISO,months){
+  if(!dateISO)return dateISO;
+  const d=new Date(dateISO+"T12:00:00");
+  d.setMonth(d.getMonth()+(Number(months)||0));
+  return d.toISOString().slice(0,10);
+}
 // Calcula simulação completa: taxas, líquido, datas de depósito por parcela
 function calcMaqSimulacao(maq,payMethod,parcelas,valorBruto,dateISO,antecipacao){
   const n=Number(parcelas)||1;
@@ -4367,6 +4375,12 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     // 3) clique duplicado no salvar → nada muda entre as duas chamadas, então ajustarDebitoLote não mexe no estoque de novo.
     const nextDebit=(sForm.loteId&&Number(sForm.qtdUsada)>0)?{product:sForm.product,loteId:sForm.loteId,qty:Number(sForm.qtdUsada)}:null;
     s.stockDebit=ajustarDebitoLote(setProducts,s.stockDebit,nextDebit,`Sessão ${s.procedure} · ${patient.name}`);
+    // ── Funil de Orçamentos: vincula automaticamente a sessão a um orçamento aberto compatível ──
+    // Se o paciente tem um orçamento (não recusado/expirado) que inclui este procedimento e ainda
+    // não foi marcado como realizado, esta sessão "fecha" esse item automaticamente — sem precisar
+    // clicar em "Converter em Tratamento".
+    const orcMatch=(patient.orcamentos||[]).find(o=>o.status!=="recusado"&&o.status!=="expirado"&&(o.items||[]).includes(s.procedure)&&!(o.linkedProcs||[]).includes(s.procedure));
+    s.fromOrcId=orcMatch?orcMatch.id:(editSess?editSess.fromOrcId:null)||null;
     // ── Débito automático de insumos via Ficha Técnica do procedimento (estoque mais completo) ──
     // Cada vez que o procedimento da sessão é definido/alterado, estorna os insumos da ficha antiga (se houver)
     // e debita os da ficha atual, escolhendo lote automaticamente por vencimento (FEFO). Não depende de
@@ -4381,7 +4395,19 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         setTimeout(()=>alert("⚠ Estoque insuficiente para: "+faltantes.map(f=>`${f.product} (faltam ${f.faltam})`).join(", ")+".\n\nA sessão foi salva normalmente, mas verifique o estoque."),50);
       }
     }
-    upd(p=>editSess?{...p,sessions:(p.sessions||[]).map(x=>x.id===s.id?s:x),lastVisit:s.date}:{...p,sessions:[s,...(p.sessions||[])],lastVisit:s.date});
+    upd(p=>{
+      const sessions=editSess?(p.sessions||[]).map(x=>x.id===s.id?s:x):[s,...(p.sessions||[])];
+      let orcamentos=p.orcamentos||[];
+      if(orcMatch){
+        orcamentos=orcamentos.map(o=>{
+          if(o.id!==orcMatch.id)return o;
+          const linkedProcs=[...new Set([...(o.linkedProcs||[]),s.procedure])];
+          const isFull=(o.items||[]).length>0&&(o.items||[]).every(it=>linkedProcs.includes(it));
+          return{...o,linkedProcs,status:o.status==="espera"?"aprovado":o.status,convertedAt:o.convertedAt||s.date,fullyConvertedAt:isFull?(o.fullyConvertedAt||s.date):(o.fullyConvertedAt||null)};
+        });
+      }
+      return{...p,sessions,lastVisit:s.date,orcamentos};
+    });
     // Sincronizar com Financeiro automaticamente
     const patName=patient.name;
     if(s.finStatus!=="Cancelado"){
@@ -4501,8 +4527,10 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   function deleteOrcamento(id){if(window.confirm("Excluir orçamento?"))upd(p=>({...p,orcamentos:(p.orcamentos||[]).filter(o=>o.id!==id)}));}
   function updateOrcStatus(id,status){upd(p=>({...p,orcamentos:(p.orcamentos||[]).map(o=>o.id===id?{...o,status}:o)}));}
   function converterEmTratamento(orc){
-    const novasSessoes=(orc.items||[]).map((item,i)=>({id:Date.now()+i,date:new Date().toLocaleDateString("pt-BR"),procedure:item,doctor:"Dra. Sofia",product:"",dose:"",region:"",location:locations[0]||"",value:orc.items.length>0?Math.round(orc.value/orc.items.length):0,paid:false,finStatus:"Pendente",payMethod:"Pendente",parcelas:1,notes:"Gerado do orçamento: "+orc.title,evolution:"",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:90,lote:"",qtdUsada:""}));
-    upd(p=>({...p,sessions:[...novasSessoes,...(p.sessions||[])],lastVisit:new Date().toLocaleDateString("pt-BR"),orcamentos:(p.orcamentos||[]).map(o=>o.id===orc.id?{...o,status:"aprovado",convertedAt:new Date().toLocaleDateString("pt-BR")}:o)}));
+    const linkedProcs=orc.linkedProcs||[];
+    const pendingItems=(orc.items||[]).filter(item=>!linkedProcs.includes(item));
+    const novasSessoes=pendingItems.map((item,i)=>({id:Date.now()+i,date:new Date().toLocaleDateString("pt-BR"),procedure:item,doctor:"Dra. Sofia",product:"",dose:"",region:"",location:locations[0]||"",value:orc.items.length>0?Math.round(orc.value/orc.items.length):0,paid:false,finStatus:"Pendente",payMethod:"Pendente",parcelas:1,notes:"Gerado do orçamento: "+orc.title,evolution:"",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:90,lote:"",qtdUsada:"",fromOrcId:orc.id}));
+    upd(p=>({...p,sessions:[...novasSessoes,...(p.sessions||[])],lastVisit:novasSessoes.length?new Date().toLocaleDateString("pt-BR"):p.lastVisit,orcamentos:(p.orcamentos||[]).map(o=>o.id===orc.id?{...o,status:"aprovado",convertedAt:o.convertedAt||new Date().toLocaleDateString("pt-BR"),fullyConvertedAt:o.fullyConvertedAt||new Date().toLocaleDateString("pt-BR"),linkedProcs:[...new Set([...linkedProcs,...pendingItems])]}:o)}));
     // Criar lançamentos pendentes no Financeiro para cada sessão gerada
     setTimeout(()=>novasSessoes.forEach(s=>syncIncome(s,patient.name)),0);
     setTab("prontuario");
@@ -4702,7 +4730,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           const sc=sCfg[orc.status]||sCfg.espera;
           return h(Card,{key:orc.id,style:{border:`1px solid ${orc.status==="aprovado"?"rgba(122,173,138,.35)":orc.status==="recusado"?"rgba(192,112,112,.25)":P.border}`}},
             h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}},
-              h("div",{style:{flex:1}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:4}},orc.title),h("div",{style:{fontSize:11,color:P.text3}},"Criado em "+orc.created+(orc.expiry?" · Expira em "+orc.expiry:"")),orc.convertedAt&&h("div",{style:{fontSize:11,color:P.green,marginTop:2}},"✓ Convertido em tratamento em "+orc.convertedAt)),
+              h("div",{style:{flex:1}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:4}},orc.title),h("div",{style:{fontSize:11,color:P.text3}},"Criado em "+orc.created+(orc.expiry?" · Expira em "+orc.expiry:"")),orc.fullyConvertedAt&&h("div",{style:{fontSize:11,color:P.green,marginTop:2}},"✓ Tratamento concluído em "+orc.fullyConvertedAt),!orc.fullyConvertedAt&&orc.convertedAt&&h("div",{style:{fontSize:11,color:P.accent,marginTop:2}},`🔗 Em andamento desde ${orc.convertedAt} · ${(orc.linkedProcs||[]).length}/${(orc.items||[]).length} procedimento(s) realizado(s)`)),
               h("span",{style:{fontSize:11,padding:"4px 10px",borderRadius:12,color:sc.color,background:sc.bg,border:`1px solid ${sc.color}33`,flexShrink:0}},sc.label)
             ),
             (orc.items||[]).length>0&&h("div",{style:{marginBottom:12}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"Procedimentos"),h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},(orc.items||[]).map((item,i)=>h("div",{key:i,style:{display:"flex",alignItems:"center",gap:5,fontSize:12,padding:"4px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text}},h("span",{style:{color:P.green}},"☑"),item)))),
@@ -4711,7 +4739,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
               h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
                 orc.status!=="aprovado"&&orc.status!=="recusado"&&h(Btn,{variant:"ghost",onClick:()=>updateOrcStatus(orc.id,"aprovado"),style:{fontSize:11,padding:"5px 10px",color:P.green,border:`1px solid ${P.green}44`}},"🟢 Aprovar"),
                 orc.status!=="recusado"&&h(Btn,{variant:"ghost",onClick:()=>updateOrcStatus(orc.id,"recusado"),style:{fontSize:11,padding:"5px 10px",color:P.red,border:`1px solid ${P.red}44`}},"🔴 Recusar"),
-                orc.status==="aprovado"&&!orc.convertedAt&&h(Btn,{onClick:()=>converterEmTratamento(orc),style:{fontSize:11,padding:"5px 12px",background:`linear-gradient(135deg,${P.green},#5aad7a)`}},"⚡ Converter em Tratamento"),
+                orc.status==="aprovado"&&!orc.fullyConvertedAt&&(orc.items||[]).length>(orc.linkedProcs||[]).length&&h(Btn,{onClick:()=>converterEmTratamento(orc),style:{fontSize:11,padding:"5px 12px",background:`linear-gradient(135deg,${P.green},#5aad7a)`}},(orc.linkedProcs||[]).length>0?"⚡ Lançar Procedimentos Restantes":"⚡ Converter em Tratamento"),
                 h(Btn,{variant:"ghost",onClick:()=>{setEditOrc(orc);setOrcForm({...orc,value:String(orc.value),items:[...orc.items]});setShowOrc(true);},style:{fontSize:11,padding:"5px 10px"}},"✎"),
                 h(Btn,{variant:"danger",onClick:()=>deleteOrcamento(orc.id),style:{fontSize:11,padding:"5px 10px"}},"🗑")
               )
@@ -6078,7 +6106,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
   const[excelYear,setExcelYear]=useState(now.getFullYear());
   const[excelDateFrom,setExcelDateFrom]=useState("");
   const[excelDateTo,setExcelDateTo]=useState("");
-  const blankExp={desc:"",date:"",dueDate:"",cat:"Outros",value:"",status:"Pago",notes:"",parcelas:"",taxaMaq:"",isRecurring:false,dayOfMonth:String(now.getDate())};
+  const blankExp={desc:"",date:"",dueDate:"",cat:"Outros",value:"",status:"Pago",notes:"",parcelas:"",taxaMaq:"",isRecurring:false,dayOfMonth:String(now.getDate()),isInstallment:false,numParcelas:"2"};
   const blankInc={desc:"",date:"",dueDate:"",cat:"Sessão",value:"",payMethod:"Pix",status:"Pago",notes:"",parcelas:"1",taxaMaq:"",patientName:"",maquininha:"",antecipacao:""};
   const[form,setForm]=useState(blankExp);
   const[incForm,setIncForm]=useState(blankInc);
@@ -6261,6 +6289,28 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       setRecurringExpenses(prev=>[...(Array.isArray(prev)?prev:[]),rule]);
       const novas=generateRecurringExpenses([rule],expenses,new Date());
       if(novas.length>0)setExpenses(prev=>[...prev,...novas]);
+    }else if(form.isInstallment&&!editExp){
+      // Despesa parcelada (compra única dividida em N pagamentos mensais, ex: equipamento em 6x).
+      // Diferente da recorrente: não é uma regra perpétua, são N lançamentos já fixos e vinculados
+      // por um groupId — cada parcela é uma despesa normal, editável/pagável individualmente.
+      const n=Math.max(2,Number(form.numParcelas)||2);
+      const totalCents=Math.round((Number(form.value)||0)*100);
+      const baseCents=Math.floor(totalCents/n);
+      const restoCents=totalCents-baseCents*n;
+      const groupId=Date.now();
+      const baseDate=form.date||new Date().toISOString().slice(0,10);
+      const novasParcelas=Array.from({length:n},(_,i)=>({
+        id:groupId+i+1,
+        desc:`${form.desc} (${i+1}/${n})`,
+        date:addMonthsISO(baseDate,i),
+        dueDate:addMonthsISO(baseDate,i),
+        cat:form.cat,
+        value:(baseCents+(i===n-1?restoCents:0))/100,
+        status:"Pendente",
+        notes:form.notes||"",
+        groupId,parcelaNum:i+1,parcelaTotal:n,isInstallment:true,
+      }));
+      setExpenses(prev=>[...prev,...novasParcelas]);
     }else if(editExp){
       setExpenses(prev=>prev.map(e=>e.id===editExp.id?{...e,...form,dueDate,value:Number(form.value)||0}:e));
     }else{
@@ -6300,9 +6350,20 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     else setIncomes(prev=>[...prev,entry]);
     setShowNewInc(false);setEditInc(null);setIncForm(blankInc);
   }
-  function delExp(id){if(window.confirm("Excluir despesa?"))setExpenses(prev=>prev.filter(e=>e.id!==id));}
+  function delExp(e){
+    const exp=typeof e==="object"?e:expenses.find(x=>x.id===e);
+    if(!exp)return;
+    if(exp.groupId){
+      const totalParc=(exp.parcelaTotal)||expenses.filter(x=>x.groupId===exp.groupId).length;
+      const excluirTodas=window.confirm(`Esta despesa faz parte de uma compra parcelada (parcela ${exp.parcelaNum}/${totalParc}).\n\nOK = excluir TODAS as ${totalParc} parcelas dessa compra.\nCancelar = excluir apenas esta parcela.`);
+      if(excluirTodas){ setExpenses(prev=>prev.filter(x=>x.groupId!==exp.groupId)); return; }
+      if(window.confirm("Excluir apenas esta parcela?"))setExpenses(prev=>prev.filter(x=>x.id!==exp.id));
+      return;
+    }
+    if(window.confirm("Excluir despesa?"))setExpenses(prev=>prev.filter(x=>x.id!==exp.id));
+  }
   function delInc(id){if(window.confirm("Excluir entrada?"))setIncomes(prev=>prev.filter(i=>i.id!==id));}
-  function openEditExp(e){setEditExp(e);setForm({...e,value:String(e.value),isRecurring:false,dayOfMonth:String(now.getDate())});setShowNewExp(true);}
+  function openEditExp(e){setEditExp(e);setForm({...e,value:String(e.value),isRecurring:false,isInstallment:false,dayOfMonth:String(now.getDate())});setShowNewExp(true);}
   function openEditInc(i){setEditInc(i);setIncForm({...i,value:String(i.value)});setShowNewInc(true);}
   async function handleExportPDF(){
     setExportingPdf(true);
@@ -6557,13 +6618,14 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
             h("div",{style:{fontSize:13,color:P.text}},e.desc),
             h("div",{style:{fontSize:11,color:P.text3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
               `${e.date} · ${e.cat}`,
+              e.groupId&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:"rgba(155,122,173,.14)",color:"#9b7aad",fontWeight:600}},`💳 ${e.parcelaNum}/${e.parcelaTotal}`),
               venc&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:venc.bg,color:venc.color,fontWeight:600}},venc.label)
             )
           ),
           h("div",{style:{display:"flex",alignItems:"center",gap:8}},
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.red}},`− ${fmtCurr(e.value)}`),
             h("button",{onClick:()=>openEditExp(e),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"✎"),
-            h("button",{onClick:()=>delExp(e.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
+            h("button",{onClick:()=>delExp(e),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
           )
         );}),
         h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:P.text3}},"Total no período"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.red}},`− ${fmtCurr(filteredExpenses.reduce((a,e)=>a+Number(e.value||0),0))}`))
@@ -7213,19 +7275,31 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     h(Modal,{open:showNewExp,onClose:()=>{setShowNewExp(false);setEditExp(null);},title:editExp?"✎ Editar Despesa":"＋ Nova Despesa",width:480},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Descrição"},h(Inp,{value:form.desc,onChange:fv("desc"),placeholder:"Ex: Aluguel Barra Olímpica"})),
-        h(Field,{label:form.isRecurring?"A partir de":"Data",half:true},h(Inp,{type:"date",value:form.date,onChange:fv("date")})),
-        !form.isRecurring&&h(Field,{label:"Vencimento",half:true},h(Inp,{type:"date",value:form.dueDate||form.date,onChange:fv("dueDate")})),
+        h(Field,{label:form.isRecurring?"A partir de":form.isInstallment?"Data da 1ª parcela":"Data",half:true},h(Inp,{type:"date",value:form.date,onChange:fv("date")})),
+        !form.isRecurring&&!form.isInstallment&&h(Field,{label:"Vencimento",half:true},h(Inp,{type:"date",value:form.dueDate||form.date,onChange:fv("dueDate")})),
         h(Field,{label:"Categoria",half:true},h(Sel,{value:form.cat,onChange:fv("cat"),options:EXPENSE_CATS})),
-        h(Field,{label:"Valor (R$)",half:true},h(Inp,{value:form.value,onChange:fv("value"),placeholder:"0,00"})),
-        !form.isRecurring&&h(Field,{label:"Status",half:true},h(Sel,{value:form.status,onChange:fv("status"),options:["Pago","Pendente","Cancelado"]})),
-        !editExp&&h(Field,null,
+        h(Field,{label:form.isInstallment?"Valor Total da Compra (R$)":"Valor (R$)",half:true},h(Inp,{value:form.value,onChange:fv("value"),placeholder:"0,00"})),
+        !form.isRecurring&&!form.isInstallment&&h(Field,{label:"Status",half:true},h(Sel,{value:form.status,onChange:fv("status"),options:["Pago","Pendente","Cancelado"]})),
+        !editExp&&h(Field,{half:true},
           h("label",{style:{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"9px 12px",background:form.isRecurring?P.card2:P.bg3,border:`1px solid ${form.isRecurring?P.accent:P.border}`,borderRadius:8}},
-            h("input",{type:"checkbox",checked:!!form.isRecurring,onChange:e=>setForm(p=>({...p,isRecurring:e.target.checked})),style:{width:15,height:15,accentColor:P.rose,cursor:"pointer"}}),
-            h("span",{style:{fontSize:12.5,color:P.text}},"🔁 Despesa recorrente (lança automaticamente todo mês)")
+            h("input",{type:"checkbox",checked:!!form.isRecurring,onChange:e=>setForm(p=>({...p,isRecurring:e.target.checked,isInstallment:e.target.checked?false:p.isInstallment})),style:{width:15,height:15,accentColor:P.rose,cursor:"pointer"}}),
+            h("span",{style:{fontSize:12.5,color:P.text}},"🔁 Recorrente (todo mês)")
+          )
+        ),
+        !editExp&&h(Field,{half:true},
+          h("label",{style:{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"9px 12px",background:form.isInstallment?P.card2:P.bg3,border:`1px solid ${form.isInstallment?P.accent:P.border}`,borderRadius:8}},
+            h("input",{type:"checkbox",checked:!!form.isInstallment,onChange:e=>setForm(p=>({...p,isInstallment:e.target.checked,isRecurring:e.target.checked?false:p.isRecurring})),style:{width:15,height:15,accentColor:P.rose,cursor:"pointer"}}),
+            h("span",{style:{fontSize:12.5,color:P.text}},"💳 Compra parcelada (não recorrente)")
           )
         ),
         form.isRecurring&&!editExp&&h(Field,{label:"Dia do lançamento",half:true},h(Inp,{value:form.dayOfMonth,onChange:fv("dayOfMonth"),placeholder:"Ex: 5"})),
         form.isRecurring&&!editExp&&h("div",{style:{flex:"1 1 100%",fontSize:11,color:P.text3,marginTop:-6,marginBottom:4}},"A despesa deste mês será lançada agora como Pendente. Nos meses seguintes, ela será lançada automaticamente todo dia escolhido."),
+        form.isInstallment&&!editExp&&h(Field,{label:"Número de Parcelas",half:true},h(Inp,{value:form.numParcelas,onChange:fv("numParcelas"),placeholder:"Ex: 6"})),
+        form.isInstallment&&!editExp&&h("div",{style:{flex:"1 1 100%",fontSize:11,color:P.text3,marginTop:-6,marginBottom:4}},(()=>{
+          const n=Math.max(2,Number(form.numParcelas)||2);
+          const v=(Number(form.value)||0)/n;
+          return `Serão geradas ${n} despesas de ${fmtCurr(v)} cada (status Pendente), com vencimento mensal a partir da data informada. Cada parcela poderá ser editada/marcada como paga individualmente.`;
+        })()),
         h(Field,{label:"Observações"},h(TA,{value:form.notes,onChange:fv("notes"),placeholder:"Notas...",rows:2}))
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}},h(Btn,{variant:"ghost",onClick:()=>{setShowNewExp(false);setEditExp(null);}},"Cancelar"),h(Btn,{onClick:saveExp},editExp?"Salvar":"Adicionar"))
@@ -7395,7 +7469,10 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const h=createElement;
   // SAFE: sempre array, nunca crasha
   const safePats=Array.isArray(patients)?patients.filter(Boolean):[];
-  const parseDMY2=s=>{if(!s)return null;try{const[d,m,y]=String(s).split("/");const dt=new Date(y+"-"+m+"-"+d);return isNaN(dt)?null:dt;}catch{return null;}};
+  // Sessões podem ter a data salva em DD/MM/AAAA (padrão br) ou AAAA-MM-DD (quando vem de input type=date).
+  // parseAnyDate (helper global) já trata os dois formatos — usamos ele aqui para não perder sessões
+  // no cálculo de nenhuma aba do relatório.
+  const parseDMY2=s=>parseAnyDate(s);
   const allS=safePats.flatMap(p=>((p&&Array.isArray(p.sessions)?p.sessions:[])).filter(Boolean).map(s=>({...s,pname:p.name||"",pid:p.id,value:Number(s.value)||0,procedure:typeof s.procedure==="string"?s.procedure:String(s.procedure||"")})));
   const monthSessions=allS.filter(s=>{try{const d=parseDMY2(s.date);return d&&d.getMonth()===selMonth&&d.getFullYear()===selYear;}catch{return false;}});
   const monthRevenue=monthSessions.filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0);
@@ -7480,6 +7557,8 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     h("div",{style:{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}},
       [
         {k:"geral",l:"📊 Geral"},
+        {k:"funil",l:"💼 Funil de Orçamentos"},
+        {k:"yoy",l:"📆 Comparativo Anual"},
         {k:"horarios",l:"🗓️ Horários"},
         {k:"ltv",l:"💎 LTV Pacientes"},
         {k:"churn",l:"📉 Churn & Retenção"},
@@ -7973,6 +8052,187 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     })(),
 
     // ── ABA POR UNIDADE ───────────────────────────────────────────────────
+    relTab==="funil"&&(()=>{
+      const allOrc=safePats.flatMap(p=>(p.orcamentos||[]).map(o=>({...o,pname:p.name,pat:p})));
+      if(allOrc.length===0)return h(Card,{style:{textAlign:"center",padding:40}},
+        h("div",{style:{fontSize:32,marginBottom:12}},"💼"),
+        h("div",{style:{color:P.text3,fontSize:14}},"Nenhum orçamento registrado ainda."),
+        h("div",{style:{color:P.text3,fontSize:12,marginTop:6}},"Crie orçamentos na ficha do paciente (aba Orçamentos) para acompanhar o funil de conversão aqui.")
+      );
+      const totalOrc=allOrc.length;
+      const convertidos=allOrc.filter(o=>!!o.convertedAt);
+      const recusados=allOrc.filter(o=>o.status==="recusado");
+      const expirados=allOrc.filter(o=>o.status==="expirado"&&!o.convertedAt);
+      const emEspera=allOrc.filter(o=>o.status==="espera"&&!o.convertedAt);
+      const valorConvertido=convertidos.reduce((a,o)=>a+(Number(o.value)||0),0);
+      const valorPerdido=[...recusados,...expirados].reduce((a,o)=>a+(Number(o.value)||0),0);
+      const valorEmAberto=emEspera.reduce((a,o)=>a+(Number(o.value)||0),0);
+      const totalValor=allOrc.reduce((a,o)=>a+(Number(o.value)||0),0);
+      const taxaConversao=totalOrc>0?Math.round((convertidos.length/totalOrc)*100):0;
+      // Tempo médio até a conversão (dias entre criação e o início real do tratamento)
+      const tempos=convertidos.map(o=>{const d1=parseAnyDate(o.created),d2=parseAnyDate(o.convertedAt);return(d1&&d2)?Math.max(0,Math.round((d2-d1)/864e5)):null;}).filter(x=>x!=null);
+      const tempoMedio=tempos.length>0?Math.round(tempos.reduce((a,b)=>a+b,0)/tempos.length):null;
+      // Conversão por procedimento: quantas vezes foi orçado (em orçamentos ainda válidos) vs quantas foi de fato realizado
+      const procFunil={};
+      allOrc.filter(o=>o.status!=="recusado"&&o.status!=="expirado").forEach(o=>{
+        (o.items||[]).forEach(item=>{
+          if(!procFunil[item])procFunil[item]={orcado:0,convertido:0};
+          procFunil[item].orcado++;
+          if((o.linkedProcs||[]).includes(item))procFunil[item].convertido++;
+        });
+      });
+      const procFunilList=Object.entries(procFunil).map(([proc,d])=>[proc,{...d,pct:d.orcado>0?Math.round((d.convertido/d.orcado)*100):0}]).sort((a,b)=>b[1].orcado-a[1].orcado);
+      // Orçamentos em aberto aguardando decisão, ordenados por valor
+      const hoje=new Date();
+      const abertosOrdenados=emEspera.map(o=>{const dc=parseAnyDate(o.created);const dias=dc?Math.floor((hoje-dc)/864e5):null;return{...o,dias};}).sort((a,b)=>(b.value||0)-(a.value||0));
+
+      return h("div",null,
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:18}},
+          [
+            {l:"Taxa de Conversão",v:taxaConversao+"%",c:taxaConversao>=50?P.green:taxaConversao>=25?P.yellow:P.red},
+            {l:"Valor Convertido",v:fmtCurr(valorConvertido),c:P.green},
+            {l:"Valor em Aberto",v:fmtCurr(valorEmAberto),c:P.yellow},
+            {l:"Valor Perdido",v:fmtCurr(valorPerdido),c:P.red},
+          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:k.c}},k.v)))
+        ),
+        h(Card,{style:{marginBottom:18}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Funil de Orçamentos"),
+          h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},`${totalOrc} orçamento(s) no total · ${fmtCurr(totalValor)} orçados`),
+          h("div",{style:{display:"flex",flexDirection:"column",gap:12}},
+            [
+              {l:"🟢 Convertidos (iniciaram tratamento)",v:convertidos.length,sub:fmtCurr(valorConvertido),color:P.green},
+              {l:"🟡 Em Espera",v:emEspera.length,sub:fmtCurr(valorEmAberto),color:P.yellow},
+              {l:"🔴 Recusados / Expirados",v:recusados.length+expirados.length,sub:fmtCurr(valorPerdido),color:P.red},
+            ].map(row=>{
+              const pct=totalOrc>0?Math.round((row.v/totalOrc)*100):0;
+              return h("div",{key:row.l},
+                h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,marginBottom:4}},
+                  h("span",{style:{color:P.text}},row.l),
+                  h("span",{style:{color:row.color,fontWeight:600}},`${row.v} (${pct}%) · ${row.sub}`)
+                ),
+                h("div",{style:{height:6,borderRadius:3,background:P.bg3,overflow:"hidden"}},
+                  h("div",{style:{height:"100%",width:pct+"%",background:row.color,borderRadius:3}})
+                )
+              );
+            })
+          ),
+          tempoMedio!=null&&h("div",{style:{marginTop:14,fontSize:12,color:P.text3}},`⏱ Tempo médio até o início do tratamento: ${tempoMedio} dia(s) após o orçamento`)
+        ),
+        procFunilList.length>0&&h(Card,{style:{marginBottom:18}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Conversão por Procedimento"),
+          h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+            procFunilList.map(([proc,d])=>h("div",{key:proc,style:{display:"flex",alignItems:"center",gap:10}},
+              h("div",{style:{flex:1,fontSize:12.5,color:P.text}},proc),
+              h("div",{style:{flex:2,height:6,borderRadius:3,background:P.bg3,overflow:"hidden"}},
+                h("div",{style:{height:"100%",width:d.pct+"%",background:d.pct>=50?P.green:d.pct>=25?P.yellow:P.red,borderRadius:3}})
+              ),
+              h("div",{style:{fontSize:11,color:P.text3,minWidth:90,textAlign:"right"}},`${d.convertido}/${d.orcado} · ${d.pct}%`)
+            ))
+          )
+        ),
+        abertosOrdenados.length>0&&h(Card,null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:4}},"Orçamentos Aguardando Decisão"),
+          h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},`${abertosOrdenados.length} orçamento(s) em espera · ${fmtCurr(valorEmAberto)} em jogo`),
+          h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+            abertosOrdenados.slice(0,15).map(o=>h("div",{key:o.id,onClick:()=>{onSelectPatient&&onSelectPatient(o.pat);onNav&&onNav("prontuario");},style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:P.bg3,borderRadius:8,cursor:onSelectPatient?"pointer":"default",gap:10,flexWrap:"wrap"}},
+              h("div",null,
+                h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},o.pname),
+                h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},o.title+(o.dias!=null?` · há ${o.dias} dia(s)`:""))
+              ),
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.yellow}},fmtCurr(o.value))
+            ))
+          )
+        )
+      );
+    })(),
+
+    relTab==="yoy"&&(()=>{
+      const yA=selYear-1,yB=selYear;
+      const revByYearMonth=year=>Array.from({length:12},(_,m)=>{
+        const ss=allS.filter(s=>{const d=parseDMY2(s.date);return d&&d.getFullYear()===year&&d.getMonth()===m;});
+        return{m,rec:ss.filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0),count:ss.length};
+      });
+      const dataA=revByYearMonth(yA),dataB=revByYearMonth(yB);
+      const totalA=dataA.reduce((a,d)=>a+d.rec,0),totalB=dataB.reduce((a,d)=>a+d.rec,0);
+      const paidCountA=allS.filter(s=>{const d=parseDMY2(s.date);return d&&d.getFullYear()===yA&&s.paid;}).length;
+      const paidCountB=allS.filter(s=>{const d=parseDMY2(s.date);return d&&d.getFullYear()===yB&&s.paid;}).length;
+      const ticketA=paidCountA>0?totalA/paidCountA:0,ticketB=paidCountB>0?totalB/paidCountB:0;
+      const expA=(expenses||[]).filter(e=>{const d=parseAnyDate(e.date);return d&&d.getFullYear()===yA&&e.status!=="Cancelado";}).reduce((a,e)=>a+(Number(e.value)||0),0);
+      const expB=(expenses||[]).filter(e=>{const d=parseAnyDate(e.date);return d&&d.getFullYear()===yB&&e.status!=="Cancelado";}).reduce((a,e)=>a+(Number(e.value)||0),0);
+      const lucroA=totalA-expA,lucroB=totalB-expB;
+      const pctVar=(a,b)=>a>0?Math.round(((b-a)/a)*100):(b>0?100:0);
+      const maxMonthVal=Math.max(...dataA.map(d=>d.rec),...dataB.map(d=>d.rec),1);
+      // Ranking de procedimentos: maiores crescimentos e quedas de faturamento entre os dois anos
+      const procYearMap={};
+      allS.forEach(s=>{
+        const d=parseDMY2(s.date);if(!d||!s.paid||!s.procedure)return;
+        const y=d.getFullYear();if(y!==yA&&y!==yB)return;
+        if(!procYearMap[s.procedure])procYearMap[s.procedure]={a:0,b:0};
+        procYearMap[s.procedure][y===yA?"a":"b"]+=Number(s.value)||0;
+      });
+      const procDeltaList=Object.entries(procYearMap).map(([proc,d])=>({proc,a:d.a,b:d.b,delta:d.b-d.a,pct:pctVar(d.a,d.b)})).sort((x,y)=>y.delta-x.delta);
+      const subindo=procDeltaList.filter(p=>p.delta>0).slice(0,5);
+      const caindo=procDeltaList.filter(p=>p.delta<0).slice(-5).reverse();
+
+      return h("div",null,
+        h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:20,padding:"10px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12}},
+          h("button",{onClick:()=>setSelYear(y=>y-1),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"←"),
+          h("div",{style:{minWidth:180,textAlign:"center"}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},`${yA} vs ${yB}`)),
+          h("button",{onClick:()=>setSelYear(y=>y+1),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"→")
+        ),
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
+          [
+            {l:"Faturamento "+yB,v:fmtCurr(totalB),sub:`${yA}: ${fmtCurr(totalA)}`,pct:pctVar(totalA,totalB)},
+            {l:"Sessões Pagas "+yB,v:String(paidCountB),sub:`${yA}: ${paidCountA}`,pct:pctVar(paidCountA,paidCountB)},
+            {l:"Ticket Médio "+yB,v:fmtCurr(ticketB),sub:`${yA}: ${fmtCurr(ticketA)}`,pct:pctVar(ticketA,ticketB)},
+            {l:"Lucro Líquido "+yB,v:fmtCurr(lucroB),sub:`${yA}: ${fmtCurr(lucroA)}`,pct:pctVar(lucroA,lucroB)},
+          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},k.l),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:P.text}},k.v),
+            h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.sub),
+            h("div",{style:{fontSize:12,fontWeight:600,marginTop:4,color:k.pct>=0?P.green:P.red}},`${k.pct>=0?"▲":"▼"} ${Math.abs(k.pct)}%`)
+          ))
+        ),
+        h(Card,{style:{marginBottom:18}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Faturamento Mês a Mês"),
+          h("div",{style:{display:"flex",alignItems:"flex-end",gap:10,height:120}},
+            Array.from({length:12},(_,m)=>{
+              const a=dataA[m].rec,b=dataB[m].rec;
+              return h("div",{key:m,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}},
+                h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",gap:3,width:"100%"}},
+                  h("div",{title:`${yA}: ${fmtCurr(a)}`,style:{flex:1,height:`${(a/maxMonthVal)*100}%`,background:"rgba(155,122,173,.55)",borderRadius:"3px 3px 0 0",minHeight:a>0?3:0}}),
+                  h("div",{title:`${yB}: ${fmtCurr(b)}`,style:{flex:1,height:`${(b/maxMonthVal)*100}%`,background:`linear-gradient(to top,${P.rose},${P.gold})`,borderRadius:"3px 3px 0 0",minHeight:b>0?3:0}})
+                ),
+                h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},MONTH_NAMES[m].slice(0,3))
+              );
+            })
+          ),
+          h("div",{style:{display:"flex",gap:16,marginTop:14,fontSize:11,color:P.text3,justifyContent:"center"}},
+            h("div",{style:{display:"flex",alignItems:"center",gap:6}},h("span",{style:{width:10,height:10,borderRadius:2,background:"rgba(155,122,173,.55)",display:"inline-block"}}),String(yA)),
+            h("div",{style:{display:"flex",alignItems:"center",gap:6}},h("span",{style:{width:10,height:10,borderRadius:2,background:`linear-gradient(135deg,${P.rose},${P.gold})`,display:"inline-block"}}),String(yB))
+          )
+        ),
+        procDeltaList.length>0&&h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}},
+          h(Card,null,
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green,marginBottom:12}},"📈 Maiores Crescimentos"),
+            subindo.length===0&&h("div",{style:{fontSize:12,color:P.text3}},"Sem crescimento registrado."),
+            subindo.map(p=>h("div",{key:p.proc,style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"6px 0",borderBottom:`1px solid ${P.border}`}},
+              h("span",{style:{color:P.text}},p.proc),
+              h("span",{style:{color:P.green,fontWeight:600}},`+${fmtCurr(p.delta)} (+${p.pct}%)`)
+            ))
+          ),
+          h(Card,null,
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.red,marginBottom:12}},"📉 Maiores Quedas"),
+            caindo.length===0&&h("div",{style:{fontSize:12,color:P.text3}},"Sem queda registrada."),
+            caindo.map(p=>h("div",{key:p.proc,style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"6px 0",borderBottom:`1px solid ${P.border}`}},
+              h("span",{style:{color:P.text}},p.proc),
+              h("span",{style:{color:P.red,fontWeight:600}},`${fmtCurr(p.delta)} (${p.pct}%)`)
+            ))
+          )
+        )
+      );
+    })(),
+
     relTab==="unidades"&&(()=>{
       const locationNames=[...new Set(allS.map(s=>s.location).filter(Boolean))];
       if(locationNames.length===0)return h(Card,{style:{textAlign:"center",padding:40}},
