@@ -248,6 +248,89 @@ function loadJsPDF(){
   return _jsPDFLoadPromise;
 }
 
+// ─── EXPORTAÇÃO PARA EXCEL (.xlsx) ────────────────────────────────────────────
+let _xlsxLoadPromise=null;
+function loadXLSX(){
+  if(window.XLSX)return Promise.resolve(window.XLSX);
+  if(_xlsxLoadPromise)return _xlsxLoadPromise;
+  _xlsxLoadPromise=new Promise((resolve,reject)=>{
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload=()=>resolve(window.XLSX);
+    s.onerror=()=>reject(new Error("Não foi possível carregar o gerador de Excel. Verifique sua conexão."));
+    document.head.appendChild(s);
+  });
+  return _xlsxLoadPromise;
+}
+// Gera e baixa um .xlsx com Receitas, Despesas e Resumo do período informado.
+// `periodo` = {from:Date, to:Date, label:string}. Recebe os dados já calculados pelo Financeiro
+// (sessões/entradas/despesas de TODO o histórico — o filtro de período é aplicado aqui dentro).
+async function generateFinanceiroExcel({allS,incomes,expenses,periodo},{settings}={}){
+  const XLSX=await loadXLSX();
+  const{from,to,label}=periodo;
+  const inPeriod=dateStr=>{ const dt=parseAnyDate(dateStr); return dt&&dt>=from&&dt<=to; };
+
+  // ── Aba Receitas: sessões pagas + entradas manuais (sem vínculo de sessão) dentro do período ──
+  const sessReceitas=allS.filter(s=>s.paid&&s.finStatus!=="Cancelado"&&inPeriod(s.date)).map(s=>({
+    "Data":s.date,"Tipo":"Sessão","Descrição":s.procedure||"",
+    "Paciente":s.pname||"","Forma de Pagamento":s.payMethod||"",
+    "Valor (R$)":Number(s.value||0),"Status":s.finStatus||(s.paid?"Pago":"Pendente"),
+  }));
+  const incReceitas=(incomes||[]).filter(i=>!i.sessRef&&i.status==="Pago"&&inPeriod(i.date)).map(i=>({
+    "Data":i.date,"Tipo":"Entrada Manual","Descrição":i.desc||i.patientName||"",
+    "Paciente":i.patientName||"","Forma de Pagamento":i.payMethod||"",
+    "Valor (R$)":Number(i.value||0),"Status":i.status||"Pago",
+  }));
+  const receitas=[...sessReceitas,...incReceitas].sort((a,b)=>(parseAnyDate(a["Data"])||0)-(parseAnyDate(b["Data"])||0));
+
+  // ── Aba Despesas: todas as despesas (pagas/pendentes) dentro do período ──
+  const despesas=(expenses||[]).filter(e=>inPeriod(e.date)).sort((a,b)=>(parseAnyDate(a.date)||0)-(parseAnyDate(b.date)||0)).map(e=>({
+    "Data":e.date,"Descrição":e.desc||"","Categoria":e.cat||"",
+    "Valor (R$)":Number(e.value||0),"Status":e.status||"",
+    "Recorrente":e.recurringId?"Sim":"Não","Observações":e.notes||"",
+  }));
+
+  // ── Aba Resumo: totais consolidados, pronto pra repassar ao contador ──
+  const totalReceitas=receitas.reduce((a,r)=>a+r["Valor (R$)"],0);
+  const totalDespesasPagas=despesas.filter(d=>d.Status==="Pago").reduce((a,d)=>a+d["Valor (R$)"],0);
+  const totalDespesasPendentes=despesas.filter(d=>d.Status!=="Pago"&&d.Status!=="Cancelado").reduce((a,d)=>a+d["Valor (R$)"],0);
+  const totalDespesasGeral=despesas.filter(d=>d.Status!=="Cancelado").reduce((a,d)=>a+d["Valor (R$)"],0);
+  const porCategoria={};
+  despesas.filter(d=>d.Status!=="Cancelado").forEach(d=>{ porCategoria[d.Categoria]=(porCategoria[d.Categoria]||0)+d["Valor (R$)"]; });
+  const resumo=[
+    {"Indicador":"Período","Valor":label},
+    {"Indicador":"Clínica","Valor":settings?.clinicName||"HarmonizaPro"},
+    {"Indicador":"","Valor":""},
+    {"Indicador":"Total de Receitas (R$)","Valor":totalReceitas},
+    {"Indicador":"Total de Despesas Pagas (R$)","Valor":totalDespesasPagas},
+    {"Indicador":"Total de Despesas Pendentes (R$)","Valor":totalDespesasPendentes},
+    {"Indicador":"Total de Despesas (R$)","Valor":totalDespesasGeral},
+    {"Indicador":"Resultado do Período (R$)","Valor":totalReceitas-totalDespesasGeral},
+    {"Indicador":"","Valor":""},
+    {"Indicador":"— Despesas por Categoria —","Valor":""},
+    ...Object.entries(porCategoria).sort((a,b)=>b[1]-a[1]).map(([cat,val])=>({"Indicador":cat,"Valor":val})),
+  ];
+
+  // ── Monta o workbook ──
+  const wb=XLSX.utils.book_new();
+  const wsResumo=XLSX.utils.json_to_sheet(resumo,{skipHeader:false});
+  wsResumo["!cols"]=[{wch:32},{wch:20}];
+  XLSX.utils.book_append_sheet(wb,wsResumo,"Resumo");
+
+  const wsReceitas=XLSX.utils.json_to_sheet(receitas.length?receitas:[{"Data":"","Tipo":"","Descrição":"","Paciente":"","Forma de Pagamento":"","Valor (R$)":"","Status":""}]);
+  wsReceitas["!cols"]=[{wch:12},{wch:14},{wch:28},{wch:24},{wch:18},{wch:14},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,wsReceitas,"Receitas");
+
+  const wsDespesas=XLSX.utils.json_to_sheet(despesas.length?despesas:[{"Data":"","Descrição":"","Categoria":"","Valor (R$)":"","Status":"","Recorrente":"","Observações":""}]);
+  wsDespesas["!cols"]=[{wch:12},{wch:28},{wch:18},{wch:14},{wch:12},{wch:12},{wch:30}];
+  XLSX.utils.book_append_sheet(wb,wsDespesas,"Despesas");
+
+  const fileName=`Financeiro_${label.replace(/[\\/:*?"<>|]/g,"-")}.xlsx`;
+  XLSX.writeFile(wb,fileName);
+  return{receitasCount:receitas.length,despesasCount:despesas.length,fileName};
+}
+
+
 async function generatePatientDossier(patient,{products,settings}={}){
   const jsPDFCtor=await loadJsPDF();
   const doc=new jsPDFCtor({unit:"pt",format:"a4"});
@@ -5721,9 +5804,16 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
   const[finTab,setFinTab]=useState("entradas");
   const[viewTab,setViewTab]=useState("resumo"); // resumo | fluxo
   const[exportingPdf,setExportingPdf]=useState(false);
+  const[showExportExcel,setShowExportExcel]=useState(false);
+  const[exportingExcel,setExportingExcel]=useState(false);
   const now=new Date();
   const[selMonth,setSelMonth]=useState(now.getMonth());
   const[selYear,setSelYear]=useState(now.getFullYear());
+  const[excelPeriodMode,setExcelPeriodMode]=useState("month"); // month | quarter | year | custom
+  const[excelMonth,setExcelMonth]=useState(now.getMonth());
+  const[excelYear,setExcelYear]=useState(now.getFullYear());
+  const[excelDateFrom,setExcelDateFrom]=useState("");
+  const[excelDateTo,setExcelDateTo]=useState("");
   const blankExp={desc:"",date:"",cat:"Outros",value:"",status:"Pago",notes:"",parcelas:"",taxaMaq:"",isRecurring:false,dayOfMonth:String(now.getDate())};
   const blankInc={desc:"",date:"",cat:"Sessão",value:"",payMethod:"Pix",status:"Pago",notes:"",parcelas:"1",taxaMaq:"",patientName:""};
   const[form,setForm]=useState(blankExp);
@@ -5924,9 +6014,48 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     }catch(e){ alert(e.message||"Erro ao gerar o PDF. Tente novamente."); }
     finally{ setExportingPdf(false); }
   }
+  // Calcula o intervalo {from,to,label} de acordo com o modo escolhido no modal de exportação Excel
+  function resolveExcelPeriodo(){
+    if(excelPeriodMode==="month"){
+      const from=new Date(excelYear,excelMonth,1,0,0,0);
+      const to=new Date(excelYear,excelMonth+1,0,23,59,59);
+      return{from,to,label:`${MONTH_NAMES[excelMonth]} de ${excelYear}`};
+    }
+    if(excelPeriodMode==="quarter"){
+      const q=Math.floor(excelMonth/3);
+      const from=new Date(excelYear,q*3,1,0,0,0);
+      const to=new Date(excelYear,q*3+3,0,23,59,59);
+      return{from,to,label:`${q+1}º Trimestre de ${excelYear}`};
+    }
+    if(excelPeriodMode==="year"){
+      const from=new Date(excelYear,0,1,0,0,0);
+      const to=new Date(excelYear,11,31,23,59,59);
+      return{from,to,label:`Ano de ${excelYear}`};
+    }
+    // custom
+    const from=excelDateFrom?new Date(excelDateFrom+"T00:00:00"):new Date(2000,0,1);
+    const to=excelDateTo?new Date(excelDateTo+"T23:59:59"):new Date(2100,0,1);
+    const fmt=d=>d.toLocaleDateString("pt-BR");
+    return{from,to,label:`${fmt(from)} a ${fmt(to)}`};
+  }
+  async function handleExportExcel(){
+    setExportingExcel(true);
+    try{
+      const periodo=resolveExcelPeriodo();
+      const{receitasCount,despesasCount}=await generateFinanceiroExcel({allS,incomes,expenses,periodo},{settings:settings||{}});
+      if(receitasCount===0&&despesasCount===0){
+        alert("Nenhuma receita ou despesa encontrada nesse período. O arquivo foi gerado mesmo assim, mas vazio — confira o período selecionado.");
+      }
+      setShowExportExcel(false);
+    }catch(e){ alert(e.message||"Erro ao gerar o Excel. Tente novamente."); }
+    finally{ setExportingExcel(false); }
+  }
 
   return h("div",null,
-    h(SectionHeader,{title:"Fluxo de Caixa",sub:"Resumo financeiro completo",action:h(Btn,{variant:"ghost",onClick:handleExportPDF,disabled:exportingPdf,style:{fontSize:12,padding:"8px 16px"}},exportingPdf?"Gerando...":"📄 Exportar PDF")}),
+    h(SectionHeader,{title:"Fluxo de Caixa",sub:"Resumo financeiro completo",action:h("div",{style:{display:"flex",gap:8}},
+      h(Btn,{variant:"ghost",onClick:()=>setShowExportExcel(true),style:{fontSize:12,padding:"8px 16px"}},"📊 Exportar Excel"),
+      h(Btn,{variant:"ghost",onClick:handleExportPDF,disabled:exportingPdf,style:{fontSize:12,padding:"8px 16px"}},exportingPdf?"Gerando...":"📄 Exportar PDF")
+    )}),
 
     // ── Navegador de mês ──────────────────────────────────────────────────
     h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:20,padding:"10px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12}},
@@ -6510,6 +6639,41 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
         h("div",{style:{flex:"1 1 100%",fontSize:11,color:P.text3}},"Alterações aqui valem para os próximos lançamentos. Lançamentos já gerados em meses anteriores não são alterados.")
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}},h(Btn,{variant:"ghost",onClick:()=>setEditRecurring(null)},"Cancelar"),h(Btn,{onClick:saveRecurringEdit},"Salvar"))
+    ),
+
+    // ── Modal: Exportar Excel (.xlsx) — escolha do período ──
+    h(Modal,{open:showExportExcel,onClose:()=>setShowExportExcel(false),title:"📊 Exportar para Excel",width:460},
+      h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},"Gera uma planilha .xlsx com as abas Resumo, Receitas e Despesas — pronta para enviar ao contador ou importar no Google Sheets."),
+      h("div",{style:{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}},
+        [{k:"month",l:"Mês"},{k:"quarter",l:"Trimestre"},{k:"year",l:"Ano"},{k:"custom",l:"Período personalizado"}].map(m=>
+          h("button",{key:m.k,onClick:()=>setExcelPeriodMode(m.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:excelPeriodMode===m.k?P.rose:"transparent",border:`1px solid ${excelPeriodMode===m.k?P.rose:P.border}`,color:excelPeriodMode===m.k?P.accent3:P.text2}},m.l)
+        )
+      ),
+      excelPeriodMode==="month"&&h("div",{style:{display:"flex",gap:12}},
+        h(Field,{label:"Mês",half:true},
+          h("select",{value:String(excelMonth),onChange:e=>setExcelMonth(Number(e.target.value)),style:{...IS,width:"100%"}},
+            MONTH_NAMES.map((n,i)=>h("option",{key:i,value:String(i)},n))
+          )
+        ),
+        h(Field,{label:"Ano",half:true},h(Inp,{type:"number",value:String(excelYear),onChange:v=>setExcelYear(Number(v)||now.getFullYear())}))
+      ),
+      excelPeriodMode==="quarter"&&h("div",{style:{display:"flex",gap:12}},
+        h(Field,{label:"Trimestre",half:true},
+          h("select",{value:String(Math.floor(excelMonth/3)),onChange:e=>setExcelMonth(Number(e.target.value)*3),style:{...IS,width:"100%"}},
+            ["1º Trimestre","2º Trimestre","3º Trimestre","4º Trimestre"].map((n,i)=>h("option",{key:i,value:String(i)},n))
+          )
+        ),
+        h(Field,{label:"Ano",half:true},h(Inp,{type:"number",value:String(excelYear),onChange:v=>setExcelYear(Number(v)||now.getFullYear())}))
+      ),
+      excelPeriodMode==="year"&&h(Field,{label:"Ano"},h(Inp,{type:"number",value:String(excelYear),onChange:v=>setExcelYear(Number(v)||now.getFullYear())})),
+      excelPeriodMode==="custom"&&h("div",{style:{display:"flex",gap:12}},
+        h(Field,{label:"De",half:true},h(Inp,{type:"date",value:excelDateFrom,onChange:setExcelDateFrom})),
+        h(Field,{label:"Até",half:true},h(Inp,{type:"date",value:excelDateTo,onChange:setExcelDateTo}))
+      ),
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:18}},
+        h(Btn,{variant:"ghost",onClick:()=>setShowExportExcel(false)},"Cancelar"),
+        h(Btn,{onClick:handleExportExcel,disabled:exportingExcel||(excelPeriodMode==="custom"&&(!excelDateFrom||!excelDateTo))},exportingExcel?"Gerando...":"⬇ Baixar Excel")
+      )
     )
   );
 }
