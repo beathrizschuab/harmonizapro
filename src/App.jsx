@@ -2620,16 +2620,32 @@ function _smoothPath(pts){
 }
 function EvolucaoFinanceiraChart({data}){
   const h=createElement;
-  const W=600,H=220,padX=26,padTop=30,padBot=28;
-  const max=Math.max(...data.map(d=>d.value),1)*1.12;
-  const stepX=data.length>1?(W-padX*2)/(data.length-1):0;
-  const pts=data.map((d,i)=>({x:padX+i*stepX,y:H-padBot-(d.value/max)*(H-padTop-padBot),v:d.value,label:d.label}));
+  const W=600,H=240,padX=14,padLeft=40,padTop=26,padBot=28;
+  const rawMax=Math.max(...data.map(d=>d.value),1);
+  // calcula um topo "redondo" para o eixo Y (ex: 20k, 40k, 60k...)
+  const tickCount=4;
+  const rawStep=rawMax/tickCount;
+  const mag=Math.pow(10,Math.floor(Math.log10(Math.max(rawStep,1))));
+  const norm=rawStep/mag;
+  const niceNorm=norm<=1?1:norm<=2?2:norm<=2.5?2.5:norm<=5?5:10;
+  const step=niceNorm*mag;
+  const topVal=step*tickCount;
+  const ticks=Array.from({length:tickCount+1},(_,i)=>step*i);
+  const fmtTick=v=>v===0?"0":(v>=1000?(v/1000)+"k":String(Math.round(v)));
+  const yOf=v=>H-padBot-(v/topVal)*(H-padTop-padBot);
+  const stepX=data.length>1?(W-padLeft-padX*2)/(data.length-1):0;
+  const pts=data.map((d,i)=>({x:padLeft+padX+i*stepX,y:yOf(d.value),v:d.value,label:d.label}));
   const linePath=_smoothPath(pts);
   const areaPath=`${linePath} L${pts[pts.length-1].x},${H-padBot} L${pts[0].x},${H-padBot} Z`;
-  return h("svg",{viewBox:`0 0 ${W} ${H}`,style:{width:"100%",height:200,display:"block",overflow:"visible"}},
+  return h("svg",{viewBox:`0 0 ${W} ${H}`,style:{width:"100%",height:220,display:"block",overflow:"visible"}},
     h("defs",null,h("linearGradient",{id:"evolFinGrad",x1:"0",y1:"0",x2:"0",y2:"1"},
       h("stop",{offset:"0%",stopColor:P.rose,stopOpacity:.32}),
       h("stop",{offset:"100%",stopColor:P.rose,stopOpacity:0})
+    )),
+    // ── Linhas horizontais de grade + valores do eixo Y ──
+    ticks.map((t,i)=>h(Fragment,{key:"grid"+i},
+      h("line",{x1:padLeft,y1:yOf(t),x2:W-padX,y2:yOf(t),stroke:P.border,strokeWidth:1,strokeDasharray:t===0?"none":"3,4"}),
+      h("text",{x:padLeft-8,y:yOf(t)+3.5,textAnchor:"end",fontSize:9.5,fill:P.text3},fmtTick(t))
     )),
     h("path",{d:areaPath,fill:"url(#evolFinGrad)",stroke:"none"}),
     h("path",{d:linePath,fill:"none",stroke:P.rose,strokeWidth:2.6,strokeLinecap:"round"}),
@@ -4424,10 +4440,10 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           graves:all.filter(ic=>["Grave","Emergencial"].includes(icSeverityOf(ic))).length
         };
         return h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}},
-          [{l:"Total",v:all.length,c:P.accent},{l:"Em Acompanhamento",v:stats.acomp,c:"#7aaed4"},{l:"Resolvidas",v:stats.resolv,c:P.green},{l:"Graves/Emergenciais",v:stats.graves,c:P.red}].map(s=>
-            h(Card,{key:s.l,style:{textAlign:"center",padding:14}},
-              h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:5}},s.l),
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:s.c}},s.v)
+          [{l:"Total",v:all.length,c:P.rose},{l:"Em Acompanhamento",v:stats.acomp,c:"#7aaed4"},{l:"Resolvidas",v:stats.resolv,c:P.green},{l:"Graves/Emergenciais",v:stats.graves,c:P.red}].map(s=>
+            h("div",{key:s.l,style:{textAlign:"center",padding:14,borderRadius:12,background:s.c}},
+              h("div",{style:{fontSize:9.5,color:"rgba(255,255,255,.85)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:5}},s.l),
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:"#fff"}},s.v)
             )
           )
         );
@@ -6739,7 +6755,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
     h(SectionHeader,{title:"Configurações",sub:"Gerencie procedimentos, locais e dados da clínica"}),
     // Tab bar
     h("div",{style:{display:"flex",gap:6,marginBottom:20,borderBottom:`1px solid ${P.border}`,paddingBottom:0}},
-      TABS.map(t=>h("button",{key:t.k,onClick:()=>setTab(t.k),style:{padding:"9px 18px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===t.k?P.rose:"transparent"}`,color:tab===t.k?P.accent3:P.text2,cursor:"pointer",fontSize:13,fontFamily:"'DM Sans',sans-serif",fontWeight:tab===t.k?600:400,marginBottom:-1,transition:"all .15s"}},t.l))
+      TABS.map(t=>h("button",{key:t.k,onClick:()=>setTab(t.k),style:{padding:"9px 18px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===t.k?P.rose:"transparent"}`,color:tab===t.k?P.rose:P.text2,cursor:"pointer",fontSize:13,fontFamily:"'DM Sans',sans-serif",fontWeight:tab===t.k?600:400,marginBottom:-1,transition:"all .15s"}},t.l))
     ),
 
     // ── ABA PROCEDIMENTOS ────────────────────────────────────────────────────
@@ -7296,10 +7312,10 @@ function IntercorrenciasGlobal({patients,setPatients,onSelectPatient,onNav,proce
   return h("div",null,
     h(SectionHeader,{title:"Intercorrências",sub:"Painel clínico de intercorrências da clínica"}),
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:18}},
-      [{l:"Total Registradas",v:stats.total,c:P.accent},{l:"Em Acompanhamento",v:stats.acomp,c:"#7aaed4"},{l:"Resolvidas",v:stats.resolv,c:P.green},{l:"Graves / Emergenciais",v:stats.graves,c:P.red}].map(s=>
-        h(Card,{key:s.l,style:{textAlign:"center"}},
-          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},s.l),
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:s.c}},s.v)
+      [{l:"Total Registradas",v:stats.total,c:P.rose},{l:"Em Acompanhamento",v:stats.acomp,c:"#7aaed4"},{l:"Resolvidas",v:stats.resolv,c:P.green},{l:"Graves / Emergenciais",v:stats.graves,c:P.red}].map(s=>
+        h("div",{key:s.l,style:{textAlign:"center",padding:20,borderRadius:12,background:s.c}},
+          h("div",{style:{fontSize:10,color:"rgba(255,255,255,.85)",textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},s.l),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:"#fff"}},s.v)
         )
       )
     ),
