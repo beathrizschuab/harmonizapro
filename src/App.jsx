@@ -3199,7 +3199,7 @@ function EvolucaoFinanceiraChart({data}){
   );
 }
 
-function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,procedures=[],settings,returnRules,isMobile=false,isTablet=false,goals={},setGoals,incomes=[],expenses=[]}){
+function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,procedures=[],settings,returnRules,isMobile=false,isTablet=false,goals={},setGoals,incomes=[],expenses=[],products=[]}){
   const today=new Date();
   const todayStr=today.toISOString().slice(0,10);
   const todayBirthdays=patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();});
@@ -3283,6 +3283,58 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
       );
     })(),
     h(RetornosPendentes,{patients,returnRules,onSelectPatient,onNav,onScheduleReturn,mini:true}),
+    // ── Alerta proativo: lotes de injetáveis vencendo nos próximos 60 dias ──
+    (()=>{
+      // Varre todos os produtos com lotes, coleta os que têm alerta
+      const loteAlerts=products
+        .filter(p=>p.cat!=="Insumos/Descartáveis"&&Array.isArray(p.lotes))
+        .flatMap(p=>(p.lotes||[]).filter(l=>l.qtd>0).map(l=>({...l,prodName:p.name,prodEmoji:p.emoji||"💉"})))
+        .map(l=>({...l,alerta:calcValidadeAlerta(l.validade,60)}))
+        .filter(l=>l.alerta)
+        .sort((a,b)=>b.alerta.urgencia-a.alerta.urgencia||(a.alerta.dias-b.alerta.dias));
+      if(!loteAlerts.length)return null;
+      const hasVencido=loteAlerts.some(l=>l.alerta.urgencia===3);
+      const hasCrit=loteAlerts.some(l=>l.alerta.urgencia>=2);
+      const borderColor=hasVencido||hasCrit?"rgba(192,112,112,.45)":"rgba(196,169,106,.4)";
+      const bgGrad=hasVencido||hasCrit
+        ?"linear-gradient(135deg,rgba(192,112,112,.12),rgba(192,112,112,.04))"
+        :"linear-gradient(135deg,rgba(196,169,106,.12),rgba(196,169,106,.04))";
+      const titleColor=hasVencido||hasCrit?P.red:P.yellow;
+      const icon=hasVencido?"🚨":hasCrit?"⚠️":"📦";
+      return h("div",{style:{marginBottom:14,padding:"16px 20px",background:bgGrad,border:`1px solid ${borderColor}`,borderRadius:14,boxShadow:"0 2px 16px rgba(192,112,112,.06)"}},
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+            h("span",{style:{fontSize:26}},icon),
+            h("div",null,
+              h("div",{style:{fontSize:14,color:titleColor,fontWeight:700,letterSpacing:".02em"}},
+                hasVencido?"Lotes Vencidos no Estoque":"Validade Próxima — Estoque"
+              ),
+              h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},
+                `${loteAlerts.length} lote${loteAlerts.length>1?"s":""} requer${loteAlerts.length>1?"em":""} atenção`
+              )
+            )
+          ),
+          h("button",{
+            onClick:()=>onNav("estoque"),
+            style:{fontSize:11,color:titleColor,background:titleColor==="var"?"rgba(192,112,112,.1)":titleColor===P.red?"rgba(192,112,112,.1)":"rgba(196,169,106,.1)",border:`1px solid ${titleColor==="var"?"rgba(192,112,112,.3)":titleColor===P.red?"rgba(192,112,112,.3)":"rgba(196,169,106,.3)"}`,borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}
+          },"Ver estoque →")
+        ),
+        h("div",{style:{display:"flex",flexWrap:"wrap",gap:8}},
+          loteAlerts.slice(0,6).map(l=>{
+            const ac=l.alerta;
+            return h("div",{key:l.id||l.codigo,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 14px",background:"rgba(255,255,255,.55)",border:`1px solid ${ac.color}33`,borderRadius:12,flex:"1 1 auto",minWidth:200}},
+              h("span",{style:{fontSize:20,flexShrink:0}},l.prodEmoji),
+              h("div",{style:{flex:1,minWidth:0}},
+                h("div",{style:{fontSize:13,color:P.text,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},l.prodName),
+                h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},`Lote ${l.codigo||"—"} · ${l.qtd} ${l.qtd===1?"un":"un"} restante${l.qtd!==1?"s":""}`)
+              ),
+              h("span",{style:{fontSize:10,padding:"2px 9px",borderRadius:10,background:ac.color+"22",color:ac.color,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}},ac.label)
+            );
+          })
+        ),
+        loteAlerts.length>6&&h("div",{style:{fontSize:11,color:P.text3,marginTop:10}},`+ ${loteAlerts.length-6} lote(s) adicional(is)...`)
+      );
+    })(),
     // KPIs
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:isMobile?10:14,marginBottom:22}},
       [{l:"Receita do Mês",v:`R$${(totalRec/1000||48.2).toFixed(1)}k`,sub:"Sessões pagas",c:KPI.green},{l:"Consultas Hoje",v:todayAppts.length,sub:`${todayAppts.filter(a=>a.status==="Realizado").length} realizadas`,c:KPI.purple},{l:"Pacientes Ativos",v:patients.length,sub:"cadastrados",c:KPI.orange},{l:"A Receber",v:fmtCurr(totalPend||6800),sub:"pendências",c:KPI.blue}].map(k=>h(Card,{key:k.l,style:{position:"relative",overflow:"hidden",background:`${k.c}1A`,border:`1px solid ${k.c}40`}},
@@ -5720,6 +5772,22 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     )
   );
 }
+// ─── HELPER GLOBAL: alerta de validade de lote (MM/YYYY) ─────────────────────
+// Retorna {color, label, dias} se vencido/crítico/próximo, ou null se OK
+function calcValidadeAlerta(valStr,limDias=60){
+  if(!valStr)return null;
+  try{
+    const[m,y]=valStr.split("/");
+    const dt=new Date(Number(y),Number(m)-1,1);
+    const hoje=new Date();
+    const dias=Math.floor((dt-hoje)/864e5);
+    if(dias<0)return{color:P.red,label:"Vencido!",dias,urgencia:3};
+    if(dias<=30)return{color:P.red,label:`Vence em ${dias}d`,dias,urgencia:2};
+    if(dias<=limDias)return{color:P.yellow,label:`Vence em ${dias}d`,dias,urgencia:1};
+    return null;
+  }catch{return null;}
+}
+
 // ─── ESTOQUE (com lotes) ──────────────────────────────────────────────────────
 const INSUMO_CAT="Insumos/Descartáveis";
 function Estoque({products,setProducts}){
@@ -5762,20 +5830,8 @@ function Estoque({products,setProducts}){
     return q===0?"critical":q<min?"low":"ok";
   }
 
-  // Alerta de validade: retorna cor se lote vence em ≤ 60 dias
-  function validadeAlerta(valStr) {
-    if (!valStr) return null;
-    try {
-      const [m, y] = valStr.split("/");
-      const dt = new Date(Number(y), Number(m)-1, 1);
-      const hoje = new Date();
-      const dias = Math.floor((dt - hoje) / 864e5);
-      if (dias < 0) return { color: P.red, label: "Vencido!" };
-      if (dias <= 30) return { color: P.red, label: `Vence em ${dias}d` };
-      if (dias <= 60) return { color: P.yellow, label: `Vence em ${dias}d` };
-      return null;
-    } catch { return null; }
-  }
+  // Alerta de validade: delega para o helper global (definido antes deste componente)
+  function validadeAlerta(valStr){ return calcValidadeAlerta(valStr,60); }
 
   const visible=(filter==="all"?injetaveis:injetaveis.filter(i=>{
     const st = i.lotes ? calcStatus(i.lotes, i.min) : i.status;
@@ -10596,7 +10652,7 @@ function AppInner({ session, onLogout }) {
         // Conteúdo principal
         h("div",{style:{flex:1,overflowY:"auto",padding:isMobile?12:24}},
           h(ErrorBoundary,{key:page},
-            page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,onScheduleReturn:handleScheduleReturn,procedures:procedureNames,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses}),
+            page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,onScheduleReturn:handleScheduleReturn,procedures:procedureNames,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses,products}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn}),
             page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null)}),
