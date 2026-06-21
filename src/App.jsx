@@ -5790,7 +5790,18 @@ function calcValidadeAlerta(valStr,limDias=60){
 
 // ─── ESTOQUE (com lotes) ──────────────────────────────────────────────────────
 const INSUMO_CAT="Insumos/Descartáveis";
-function Estoque({products,setProducts}){
+// Categorias padrão de injetáveis — podem ser estendidas via Configurações
+const DEFAULT_INJET_CATS=["Toxina Botulínica","Ácido Hialurônico","Bioestimulador","Fios de PDO","Anestésico","Skinbooster","Outros"];
+// Tipos de regra de consumo de insumo
+// fixo      → qty unidades por procedimento, sempre
+// por_dose  → ceil(doseUsada / doseRef) × qty (ex: 1 seringa a cada 15U)
+// cap_visita→ qty unidades por visita (não por procedimento); se o paciente faz 3 procedimentos, debita só qty total
+const INSUMO_REGRAS=[
+  {k:"fixo",       l:"Fixo por procedimento",    hint:"Ex: 1 agulha, 5 gazes"},
+  {k:"por_dose",   l:"Por dose aplicada",         hint:"Ex: 1 seringa a cada 15U de toxina"},
+  {k:"cap_visita", l:"Cap por visita (compartilhado)", hint:"Ex: 2 cânulas para toda a visita, independente do nº de áreas"},
+];
+function Estoque({products,setProducts,stockCats,setStockCats}){
   const[subTab,setSubTab]=useState("injetaveis"); // injetaveis | insumos
   const[filter,setFilter]=useState("all");
   const[showNew,setShowNew]=useState(false);
@@ -5809,7 +5820,7 @@ function Estoque({products,setProducts}){
   const ifv=k=>v=>setInsumoForm(p=>({...p,[k]:v}));
   const lfv=k=>v=>setLoteForm(p=>({...p,[k]:v}));
   const h=createElement;
-  const cats=["Toxina Botulínica","Ácido Hialurônico","Bioestimulador","Fios de PDO","Anestésico","Skinbooster","Outros"];
+  const cats=Array.isArray(stockCats)&&stockCats.length>0?stockCats:DEFAULT_INJET_CATS;
   const stCfg={critical:{color:P.red,bg:"rgba(192,112,112,.12)",l:"⚠ Crítico"},low:{color:P.yellow,bg:"rgba(196,169,106,.12)",l:"⚡ Baixo"},ok:{color:P.green,bg:"rgba(122,173,138,.12)",l:"✓ OK"}};
 
   // ── Separação dos dois universos: Injetáveis (com lotes/validade) vs Insumos/Descartáveis (cadastro simples) ──
@@ -9137,34 +9148,77 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
       h(Field,{label:"Valor Padrão (R$)"},h(Inp,{type:"number",value:form.defaultValue||"",onChange:fv("defaultValue"),placeholder:"Ex: 850"})),
       h(Field,{label:"Descrição / Observações"},h(Inp,{value:form.descricao||"",onChange:fv("descricao"),placeholder:"Ex: Neuromodulador para relaxamento muscular"}))
     ),
-    // ── Ficha de Insumos (BOM) — usados para débito automático de estoque e cálculo de margem ──
+  // ── Ficha de Insumos (BOM) — usados para débito automático de estoque e cálculo de margem ──
     h("div",{style:{background:P.card,border:`1px solid ${P.border}`,borderRadius:10,padding:14,marginBottom:14}},
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}},
         h("div",null,
           h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},"🧪 Ficha de Insumos"),
-          h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Insumos/descartáveis que esse procedimento consome (agulha, luva, gaze...). Debitado automaticamente ao lançar a sessão.")
+          h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Insumos/descartáveis consumidos. Configure a regra de consumo de cada um.")
         ),
         h(Btn,{variant:"ghost",onClick:addInsumo,disabled:insumosNames.length===0,style:{fontSize:11,padding:"5px 12px"}},"＋ Insumo")
       ),
-      insumosNames.length===0&&h("div",{style:{fontSize:11,color:P.yellow,background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:8,padding:"7px 10px"}},"⚠ Nenhum insumo/descartável cadastrado ainda (agulha, luva, gaze...). Cadastre em Estoque → aba 🧰 Insumos / Descartáveis."),
+      insumosNames.length===0&&h("div",{style:{fontSize:11,color:P.yellow,background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:8,padding:"7px 10px"}},"⚠ Nenhum insumo/descartável cadastrado ainda. Cadastre em Estoque → aba 🧰 Insumos / Descartáveis."),
       insumos.length===0&&insumosNames.length>0&&h("div",{style:{fontSize:11,color:P.text3,padding:"6px 0"}},"Nenhum insumo vinculado ainda."),
-      insumos.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:insumos.length?8:0}},
+      insumos.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:10,marginBottom:insumos.length?8:0}},
         insumos.map(ins=>{
           const info=getProdInfo(ins.product);
-          const lineCost=(Number(info?.cost)||0)*(Number(ins.qty)||0);
-          return h("div",{key:ins.id,style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
-            h("select",{value:ins.product,onChange:e=>updInsumo(ins.id,"product",e.target.value),style:{...IS,flex:"1 1 200px"}},
-              insumosNames.map(n=>h("option",{key:n,value:n},n))
+          const regra=ins.regra||"fixo";
+          const lineCost=(()=>{
+            if(regra==="fixo")return(Number(info?.cost)||0)*(Number(ins.qty)||0);
+            if(regra==="por_dose")return(Number(info?.cost)||0); // custo por seringa/unidade de despacho
+            if(regra==="cap_visita")return(Number(info?.cost)||0)*(Number(ins.qty)||0);
+            return 0;
+          })();
+          return h("div",{key:ins.id,style:{background:P.bg3,border:`1px solid ${P.border}`,borderRadius:8,padding:"10px 12px"}},
+            // Linha 1: produto + botão remover
+            h("div",{style:{display:"flex",gap:8,alignItems:"center",marginBottom:8}},
+              h("select",{value:ins.product,onChange:e=>updInsumo(ins.id,"product",e.target.value),style:{...IS,flex:"1 1 180px"}},
+                insumosNames.map(n=>h("option",{key:n,value:n},n))
+              ),
+              h("span",{style:{fontSize:10,color:P.text3,background:P.card,border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",flexShrink:0}},info?.unit||"un"),
+              h("button",{onClick:()=>delInsumo(ins.id),style:{background:"transparent",border:"none",color:P.red,cursor:"pointer",fontSize:16,flexShrink:0,lineHeight:1}},"×")
             ),
-            h("input",{type:"number",value:ins.qty,onChange:e=>updInsumo(ins.id,"qty",e.target.value),style:{...IS,width:80,flexShrink:0},placeholder:"Qtd",min:"0",step:"0.1"}),
-            h("span",{style:{fontSize:10,color:P.text3,flexShrink:0,minWidth:60}},info?.unit||""),
-            h("span",{style:{fontSize:11,color:P.text2,flexShrink:0,minWidth:70,textAlign:"right"}},fmtCurr(lineCost)),
-            h("button",{onClick:()=>delInsumo(ins.id),style:{background:"transparent",border:"none",color:P.red,cursor:"pointer",fontSize:14,flexShrink:0}},"×")
+            // Linha 2: tipo de regra (chips)
+            h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}},
+              INSUMO_REGRAS.map(r=>h("button",{key:r.k,onClick:()=>updInsumo(ins.id,"regra",r.k),style:{fontSize:11,padding:"3px 10px",borderRadius:20,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:regra===r.k?P.rose:"transparent",border:`1px solid ${regra===r.k?P.rose:P.border}`,color:regra===r.k?P.accent3:P.text2,transition:"all .12s"}},r.l))
+            ),
+            // Linha 3: campos dependendo da regra
+            h("div",{style:{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}},
+              regra==="fixo"&&h(Fragment,null,
+                h("div",{style:{flex:"0 0 auto"}},
+                  h("div",{style:{fontSize:10,color:P.text3,marginBottom:3}},`Qtd por procedimento (${info?.unit||"un"})`),
+                  h("input",{type:"number",value:ins.qty,onChange:e=>updInsumo(ins.id,"qty",e.target.value),style:{...IS,width:90},placeholder:"1",min:"0",step:"0.1"})
+                ),
+                h("div",{style:{fontSize:11,color:P.text3,paddingBottom:6}},INSUMO_REGRAS[0].hint)
+              ),
+              regra==="por_dose"&&h(Fragment,null,
+                h("div",null,
+                  h("div",{style:{fontSize:10,color:P.text3,marginBottom:3}},"Dose de referência (U/ml por unidade)"),
+                  h("input",{type:"number",value:ins.doseRef||"",onChange:e=>updInsumo(ins.id,"doseRef",e.target.value),style:{...IS,width:90},placeholder:"Ex: 15",min:"0.1",step:"0.1"})
+                ),
+                h("div",null,
+                  h("div",{style:{fontSize:10,color:P.text3,marginBottom:3}},"Unidades despachadas"),
+                  h("input",{type:"number",value:ins.qty,onChange:e=>updInsumo(ins.id,"qty",e.target.value),style:{...IS,width:80},placeholder:"1",min:"1",step:"1"})
+                ),
+                ins.doseRef&&h("div",{style:{fontSize:11,color:P.accent,paddingBottom:6,alignSelf:"flex-end"}},`= ceil(dose ÷ ${ins.doseRef}) × ${ins.qty||1} ${info?.unit||"un"}`)
+              ),
+              regra==="cap_visita"&&h(Fragment,null,
+                h("div",null,
+                  h("div",{style:{fontSize:10,color:P.text3,marginBottom:3}},"Cap por visita (máx total)"),
+                  h("input",{type:"number",value:ins.qty,onChange:e=>updInsumo(ins.id,"qty",e.target.value),style:{...IS,width:80},placeholder:"2",min:"1",step:"1"})
+                ),
+                h("div",{style:{fontSize:11,color:P.text3,paddingBottom:6}},INSUMO_REGRAS[2].hint)
+              ),
+              h("div",{style:{marginLeft:"auto",paddingBottom:6,textAlign:"right",flexShrink:0}},
+                h("div",{style:{fontSize:10,color:P.text3}},regra==="por_dose"?"custo/unid.":"custo est."),
+                h("div",{style:{fontSize:13,color:P.rose,fontWeight:600}},fmtCurr(lineCost))
+              )
+            )
           );
         })
       ),
       insumos.length>0&&h("div",{style:{display:"flex",justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${P.border}`}},
-        h("span",{style:{fontSize:11,color:P.text3}},"Custo total de insumos por sessão"),
+        h("span",{style:{fontSize:11,color:P.text3}},"Custo estimado de insumos por sessão"),
         h("span",{style:{fontSize:14,color:P.rose,fontWeight:600}},fmtCurr(custoTotalInsumos))
       )
     ),
@@ -9176,7 +9230,7 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
 }
 
 
-function Configuracoes({procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas=[],setMaquininhas}){
+function Configuracoes({procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas=[],setMaquininhas,stockCats,setStockCats}){
   const h=createElement;
   const[tab,setTab]=useState("procedimentos");
   const[newLoc,setNewLoc]=useState("");
@@ -9184,6 +9238,14 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   const[newSkFreq,setNewSkFreq]=useState("");
   const[newCat,setNewCat]=useState("");
   const[newCatIcon,setNewCatIcon]=useState("🩺");
+  // ── Categorias de injetáveis (Estoque) ──────────────────────────────────
+  const[newStockCat,setNewStockCat]=useState("");
+  const efectiveStockCats=Array.isArray(stockCats)&&stockCats.length>0?stockCats:DEFAULT_INJET_CATS;
+  function addStockCat(){const t=newStockCat.trim();if(t&&!efectiveStockCats.includes(t)){setStockCats([...efectiveStockCats,t]);setNewStockCat("");}}
+  function delStockCat(cat){
+    if(products.some(p=>p.cat===cat)){alert("Categoria em uso por produto(s). Remova-os primeiro.");return;}
+    if(window.confirm("Excluir categoria: "+cat+"?"))setStockCats(efectiveStockCats.filter(c=>c!==cat));
+  }
   const cats=Array.isArray(procCats)&&procCats.length>0?procCats:["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios / Lifting","Skincare Clínico","Avaliação / Consultoria","Outros"];
   // ── Maquininha state ──────────────────────────────────────────────────────
   const[editMaq,setEditMaq]=useState(null);
@@ -9229,7 +9291,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   const skFreqs=(skincareConfig&&skincareConfig.frequencias)||[];
 
   function saveProc(procObjRaw){
-    const procObj={...procObjRaw,insumos:(procObjRaw.insumos||[]).map(i=>({id:i.id,product:i.product,qty:Number(i.qty)||0})).filter(i=>i.product&&i.qty>0)};
+    const procObj={...procObjRaw,insumos:(procObjRaw.insumos||[]).map(i=>({id:i.id,product:i.product,qty:Number(i.qty)||0,regra:i.regra||"fixo",doseRef:i.regra==="por_dose"?(Number(i.doseRef)||0):undefined})).filter(i=>i.product&&i.qty>0)};
     const exists=procedures.find(x=>getName(x)===procObj.name);
     if(exists){
       setProcedures(prev=>prev.map(p=>getName(p)===procObj.name?procObj:p));
@@ -9259,7 +9321,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   function addNewProc(formData){
     const name=(formData.name||"").trim();
     if(!name)return;
-    const obj={id:"proc_"+Date.now(),name,categoria:formData.categoria||"Outros",descricao:formData.descricao||"",revisionDays:Number(formData.revisionDays)||0,maintenanceDays:Number(formData.maintenanceDays)||0,sessoesPadrao:Number(formData.sessoesPadrao)||1,defaultValue:Number(formData.defaultValue)||0,duration:formData.duration||"1 hora",insumos:(formData.insumos||[]).map(i=>({id:i.id,product:i.product,qty:Number(i.qty)||0})).filter(i=>i.product&&i.qty>0)};
+    const obj={id:"proc_"+Date.now(),name,categoria:formData.categoria||"Outros",descricao:formData.descricao||"",revisionDays:Number(formData.revisionDays)||0,maintenanceDays:Number(formData.maintenanceDays)||0,sessoesPadrao:Number(formData.sessoesPadrao)||1,defaultValue:Number(formData.defaultValue)||0,duration:formData.duration||"1 hora",insumos:(formData.insumos||[]).map(i=>({id:i.id,product:i.product,qty:Number(i.qty)||0,regra:i.regra||"fixo",doseRef:i.regra==="por_dose"?(Number(i.doseRef)||0):undefined})).filter(i=>i.product&&i.qty>0)};
     saveProc(obj);
   }
 
@@ -9270,7 +9332,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   function addSkFreq(){const t=newSkFreq.trim();if(t&&!skFreqs.includes(t)){setSkincareConfig(s=>({...(s||{}),produtos:skProds,frequencias:[...skFreqs,t]}));setNewSkFreq("");}}
   function delSkFreq(f){setSkincareConfig(s=>({...(s||{}),produtos:skProds,frequencias:skFreqs.filter(x=>x!==f)}));}
 
-  const TABS=[{k:"procedimentos",l:"🩺 Procedimentos"},{k:"locais",l:"📍 Locais"},{k:"skincare",l:"🧴 Skincare"},{k:"maquininhas",l:"💳 Maquininhas"},{k:"clinica",l:"👩‍⚕️ Clínica"}];
+  const TABS=[{k:"procedimentos",l:"🩺 Procedimentos"},{k:"locais",l:"📍 Locais"},{k:"estoque",l:"📦 Estoque"},{k:"skincare",l:"🧴 Skincare"},{k:"maquininhas",l:"💳 Maquininhas"},{k:"clinica",l:"👩‍⚕️ Clínica"}];
 
   // Formulário de procedimento (novo ou edição)
   return h("div",null,
@@ -9360,6 +9422,40 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
           ),
           h("button",{onClick:()=>delLoc(ln),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15}},locations.length>1?"×":"")
         );})
+      )
+    ),
+
+    // ── ABA ESTOQUE ──────────────────────────────────────────────────────────
+    tab==="estoque"&&h("div",null,
+      // Categorias de Injetáveis
+      h(Card,{style:{marginBottom:16}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:4}},"💉 Categorias de Injetáveis"),
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:14}},"Estas categorias aparecem no cadastro de produtos injetáveis (com controle de lote e validade). Adicione categorias como Laser, Enzimas, Vitaminas, etc."),
+        h("div",{style:{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}},
+          h(Inp,{value:newStockCat,onChange:setNewStockCat,placeholder:"Nova categoria... ex: Vitaminas, Enzimas, Laser",style:{flex:"1 1 240px"}}),
+          h(Btn,{onClick:addStockCat,style:{flexShrink:0}},"＋ Adicionar")
+        ),
+        h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+          efectiveStockCats.map(cat=>h("div",{key:cat,style:{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:P.bg3,border:`1px solid ${P.border}`,borderRadius:20}},
+            h("span",{style:{fontSize:13}},"💉"),
+            h("span",{style:{fontSize:12,color:P.text2}},cat),
+            h("button",{onClick:()=>delStockCat(cat),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:13,lineHeight:1,padding:"0 2px"}},"×")
+          ))
+        )
+      ),
+      // Regras de consumo — referência
+      h(Card,{style:{background:"rgba(157,119,97,.05)",border:`1px solid rgba(157,119,97,.2)`}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.accent,marginBottom:4}},"⚙️ Regras de Consumo de Insumos"),
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:14}},"As regras abaixo são configuradas por insumo dentro de cada procedimento (Configurações → Procedimentos → Ficha de Insumos)."),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+          INSUMO_REGRAS.map(r=>h("div",{key:r.k,style:{display:"flex",gap:12,padding:"10px 14px",background:P.card,borderRadius:10,border:`1px solid ${P.border}`,alignItems:"flex-start"}},
+            h("div",{style:{width:10,height:10,borderRadius:"50%",background:P.rose,flexShrink:0,marginTop:4}}),
+            h("div",null,
+              h("div",{style:{fontSize:13,color:P.text,fontWeight:600,marginBottom:2}},r.l),
+              h("div",{style:{fontSize:11,color:P.text3}},r.hint)
+            )
+          ))
+        )
       )
     ),
 
@@ -10375,6 +10471,7 @@ function AppInner({ session, onLogout }) {
   const[locationsRaw,setLocations,loadingLocations]=useSupaTable("locations",INIT_LOCATIONS.map((name,i)=>({id:"loc_"+i,name})));
   const[returnRulesRaw,setReturnRules,loadingRules]=useSupaTable("return_rules",INIT_RETURN_RULES);
   const[procCatsRaw,setProcCats]=useSupaTable("proc_cats",["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios / Lifting","Skincare Clínico","Avaliação / Consultoria","Outros"]);
+  const[stockCatsRaw,setStockCats]=useSupaTable("stock_cats",DEFAULT_INJET_CATS);
   const[skincareConfig,setSkincareConfig]=useSupaTable("skincare_config",{
     produtos:["Vitamina C","Retinol","Ácido Glicólico","Ácido Hialurônico","Protetor Solar FPS 50+","Niacinamida","Peptídeos","Bakuchiol","AHA/BHA","Ceramidas","Água Micelar","Hidratante Facial"],
     frequencias:["Diário","Noturno","2x por semana","Semanal","Mensal","Conforme necessário"]
@@ -10396,6 +10493,7 @@ function AppInner({ session, onLogout }) {
   const locations=Array.isArray(locationsRaw)?locationsRaw:[];
   const returnRules=Array.isArray(returnRulesRaw)?returnRulesRaw:[];
   const procCats=Array.isArray(procCatsRaw)?procCatsRaw:[];
+  const stockCats=Array.isArray(stockCatsRaw)&&stockCatsRaw.length?stockCatsRaw:DEFAULT_INJET_CATS;
   const vouchers=Array.isArray(vouchersRaw)?vouchersRaw:[];
   const voucherTemplates=(Array.isArray(voucherTemplatesRaw)&&voucherTemplatesRaw.length)?voucherTemplatesRaw:DEFAULT_VOUCHER_TEMPLATES;
   const maquininhas=Array.isArray(maquininhasRaw)?maquininhasRaw:[];
@@ -10659,13 +10757,13 @@ function AppInner({ session, onLogout }) {
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,maquininhas}),
-            page==="estoque"&&h(Estoque,{products,setProducts}),
+            page==="estoque"&&h(Estoque,{products,setProducts,stockCats,setStockCats}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products,maquininhas,setMaquininhas}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
             page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda,products,vouchers,goals:goalsData,setGoals}),
             page==="intercorrencias_global"&&h(IntercorrenciasGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures:procedureNames,products:products.map(p=>typeof p==="string"?p:(p.name||p))}),
-            page==="config"&&h(Configuracoes,{procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas,setMaquininhas})
+            page==="config"&&h(Configuracoes,{procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas,setMaquininhas,stockCats,setStockCats})
           )
         )
       )
