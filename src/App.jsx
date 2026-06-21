@@ -3022,6 +3022,43 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
     setShowBlockModal(true);
   }
 
+  // ── Versões com precisão de 5 minutos (usadas na view Dia) ──
+  function minutesToHHMM(totalMin){
+    const h=Math.floor(totalMin/60),m=totalMin%60;
+    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+  }
+  function onClickEmptySlotMin(date,totalMin){
+    setEditItem(null);
+    setForm({...blank,date,time:minutesToHHMM(totalMin)});
+    setShowNew(true);
+  }
+  function onDblClickSlotMin(date,totalMin){
+    setBlockForm({date,time:minutesToHHMM(totalMin),endTime:minutesToHHMM(totalMin+60),reason:""});
+    setShowBlockModal(true);
+  }
+  function onDragOverSlotMin(e,date,totalMin){
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect="move";
+    setDragOver({date,minute:totalMin});
+  }
+  function onDropSlotMin(e,date,totalMin){
+    e.preventDefault();
+    e.stopPropagation();
+    const rawId=e.dataTransfer.getData("text/plain")||String(dragIdRef.current||"");
+    const id=Number(rawId);
+    if(!id)return;
+    const newTime=minutesToHHMM(totalMin);
+    setAgenda(prev=>prev.map(a=>{
+      if(a.id!==id)return a;
+      const entry={from:`${a.date} ${a.time}`,to:`${date} ${newTime}`,at:new Date().toLocaleString("pt-BR")};
+      return{...a,date,time:newTime,status:"Reagendado",rescheduleHistory:[...(a.rescheduleHistory||[]),entry]};
+    }));
+    setSelDate(date);
+    dragIdRef.current=null;
+    setDragId(null);setDragOver(null);
+  }
+
   const dayAppts=agenda.filter(a=>a.date===selDate).sort((a,b)=>a.time.localeCompare(b.time));
   const getWeekDays=(dateStr)=>{const d=new Date(dateStr+"T12:00");const dow=d.getDay();return Array.from({length:7},(_,i)=>{const nd=new Date(d);nd.setDate(d.getDate()-dow+i);return nd.toISOString().slice(0,10);});};
   const weekDays=getWeekDays(selDate);
@@ -3107,12 +3144,78 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
           const widthPct=100/n;
           const leftPct=idx*widthPct;
           const [hh,mm]=t.split(":").map(Number);
-          const top=(hh-7)*64+(mm/60)*64+2;
-          // Altura proporcional à duração real (início → fim), 64px = 1 hora
+          const top=(hh-7)*64+(mm/60)*64;
+          // Altura proporcional à duração real (início → fim), 64px = 1 hora — sem folga, vai exatamente até o horário final
           const durMin=a.blocked
             ?(()=>{ if(!a.endTime)return 60; const[eh,em]=a.endTime.split(":").map(Number); return Math.max(15,(eh*60+em)-(hh*60+mm)); })()
             :durationToMin(a.duration);
-          const height=Math.max(22,(durMin/60)*64-4);
+          const height=Math.max(20,(durMin/60)*64);
+          return h("div",{key:a.id,style:{position:"absolute",left:`calc(${leftPct}% + 2px)`,width:`calc(${widthPct}% - 4px)`,top,height,zIndex:2,pointerEvents:"none"}},
+            h("div",{style:{pointerEvents:"auto",height:"100%"}},
+              h(ApptCard,{a,compact:true,big:n===1,fitHeight:true})
+            )
+          );
+        });
+      })()
+    );
+  }
+
+  // ─── COLUNA DE HORAS — VIEW DIA (precisão de 5 em 5 minutos) ───
+  const MIN_STEP=5; // granularidade em minutos
+  const STEPS_PER_HOUR=60/MIN_STEP; // 12
+  const STEP_PX=64/STEPS_PER_HOUR; // px por bloco de 5min
+  function HourSlotsDay({date,appts}){
+    return h("div",{
+      style:{position:"relative"},
+      onDragOver:e=>{
+        e.preventDefault();
+        const rawMin=Math.round(e.nativeEvent.offsetY/STEP_PX)*MIN_STEP;
+        const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
+        setDragOver({date,minute:totalMin});
+      },
+      onDrop:e=>{
+        e.preventDefault();
+        const rawMin=Math.round(e.nativeEvent.offsetY/STEP_PX)*MIN_STEP;
+        const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
+        onDropSlotMin(e,date,totalMin);
+      }
+    },
+      // Sub-faixas de 5 minutos por hora (12 por hora)
+      HOURS.map(hr=>
+        Array.from({length:STEPS_PER_HOUR},(_,i)=>{
+          const totalMin=hr*60+i*MIN_STEP;
+          const isOver=dragOver&&dragOver.date===date&&dragOver.minute===totalMin;
+          const isHourLine=i===0;
+          return h("div",{
+            key:hr+"_"+i,
+            style:{
+              height:STEP_PX,
+              borderBottom:isHourLine?`1px solid rgba(71,35,37,.2)`:`1px solid rgba(71,35,37,.05)`,
+              cursor:"pointer",
+              transition:"background .1s",
+              background:isOver?"rgba(157,119,97,.18)":"transparent"
+            },
+            onClick:()=>{ if(!dragIdRef.current) onClickEmptySlotMin(date,totalMin); },
+            onDoubleClick:()=>onDblClickSlotMin(date,totalMin),
+          });
+        })
+      ),
+      (()=>{
+        const byTime={};
+        appts.forEach(a=>{ const t=a.time||"09:00"; (byTime[t]=byTime[t]||[]).push(a); });
+        return appts.map(a=>{
+          const t=a.time||"09:00";
+          const group=byTime[t];
+          const idx=group.indexOf(a);
+          const n=group.length;
+          const widthPct=100/n;
+          const leftPct=idx*widthPct;
+          const [hh,mm]=t.split(":").map(Number);
+          const top=(hh-7)*64+(mm/60)*64;
+          const durMin=a.blocked
+            ?(()=>{ if(!a.endTime)return 60; const[eh,em]=a.endTime.split(":").map(Number); return Math.max(15,(eh*60+em)-(hh*60+mm)); })()
+            :durationToMin(a.duration);
+          const height=Math.max(20,(durMin/60)*64);
           return h("div",{key:a.id,style:{position:"absolute",left:`calc(${leftPct}% + 2px)`,width:`calc(${widthPct}% - 4px)`,top,height,zIndex:2,pointerEvents:"none"}},
             h("div",{style:{pointerEvents:"auto",height:"100%"}},
               h(ApptCard,{a,compact:true,big:n===1,fitHeight:true})
@@ -3146,7 +3249,10 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
       // Coluna de horas
       h("div",{style:{borderRight:`1px solid ${P.border}`}},
         h("div",{style:{height:48,borderBottom:`1px solid ${P.border}`}}),
-        HOURS.map(hr=>h("div",{key:hr,style:{height:64,borderBottom:`1px solid ${P.border}`,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:6,fontSize:10,color:P.text3}},`${String(hr).padStart(2,"0")}:00`))
+        HOURS.map(hr=>h("div",{key:hr,style:{height:64,borderBottom:`1px solid ${P.border}`,position:"relative",fontSize:10,color:P.text3}},
+          h("span",{style:{position:"absolute",top:-6,right:6,background:P.bg2,padding:"0 3px"}},`${String(hr).padStart(2,"0")}:00`),
+          [15,30,45].map(m=>h("span",{key:m,style:{position:"absolute",top:(m/60)*64-5,right:6,fontSize:8.5,color:P.text3,opacity:.55}},`:${m}`))
+        ))
       ),
       // Coluna do dia
       h("div",null,
@@ -3155,7 +3261,7 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
           h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,flex:1,textAlign:"center"}},new Date(selDate+"T12:00").toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"})),
           h("button",{onClick:()=>{const d=new Date(selDate+"T12:00");d.setDate(d.getDate()+1);setSelDate(d.toISOString().slice(0,10));},style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,width:26,height:26,color:P.text2,cursor:"pointer",fontSize:13}},"›")
         ),
-        h(HourSlots,{date:selDate,appts:agenda.filter(a=>a.date===selDate)})
+        h(HourSlotsDay,{date:selDate,appts:agenda.filter(a=>a.date===selDate)})
       )
     ),
 
