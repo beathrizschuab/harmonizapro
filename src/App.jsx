@@ -7327,6 +7327,11 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
   const isNew=!initial?.id;
   const insumos=form.insumos||[];
   const prodNames=(products||[]).map(p=>typeof p==="string"?p:(p.name||p)).sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base"}));
+  // Agrupa as opções do seletor por tipo, para ficar claro a diferença entre produtos injetáveis (com lote/validade)
+  // e insumos/descartáveis (cadastro simples) — ambos podem compor a Ficha de Insumos do procedimento.
+  const injetaveisNames=(products||[]).filter(p=>typeof p!=="string"&&p.cat!==INSUMO_CAT).map(p=>p.name).sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base"}));
+  const insumosNames=(products||[]).filter(p=>typeof p!=="string"&&p.cat===INSUMO_CAT).map(p=>p.name).sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base"}));
+  const stringNames=(products||[]).filter(p=>typeof p==="string");
   function getProdInfo(name){return (products||[]).find(p=>(typeof p==="string"?p:(p.name||p))===name);}
   function addInsumo(){
     if(prodNames.length===0)return;
@@ -7361,6 +7366,7 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
         h(Btn,{variant:"ghost",onClick:addInsumo,disabled:prodNames.length===0,style:{fontSize:11,padding:"5px 12px"}},"＋ Insumo")
       ),
       prodNames.length===0&&h("div",{style:{fontSize:11,color:P.text3}},"Cadastre produtos no Estoque para vinculá-los aqui."),
+      prodNames.length>0&&insumosNames.length===0&&h("div",{style:{fontSize:11,color:P.yellow,background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:8,padding:"7px 10px",marginBottom:8}},"⚠ Nenhum insumo/descartável cadastrado ainda (agulha, luva, gaze...). Cadastre em Estoque → aba 🧰 Insumos / Descartáveis."),
       insumos.length===0&&prodNames.length>0&&h("div",{style:{fontSize:11,color:P.text3,padding:"6px 0"}},"Nenhum insumo vinculado ainda."),
       insumos.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:insumos.length?8:0}},
         insumos.map(ins=>{
@@ -7368,7 +7374,9 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
           const lineCost=(Number(info?.cost)||0)*(Number(ins.qty)||0);
           return h("div",{key:ins.id,style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
             h("select",{value:ins.product,onChange:e=>updInsumo(ins.id,"product",e.target.value),style:{...IS,flex:"1 1 200px"}},
-              prodNames.map(n=>h("option",{key:n,value:n},n))
+              injetaveisNames.length>0&&h("optgroup",{label:"💉 Injetáveis"},injetaveisNames.map(n=>h("option",{key:n,value:n},n))),
+              insumosNames.length>0&&h("optgroup",{label:"🧰 Insumos/Descartáveis"},insumosNames.map(n=>h("option",{key:n,value:n},n))),
+              stringNames.length>0&&h("optgroup",{label:"Outros"},stringNames.map(n=>h("option",{key:n,value:n},n)))
             ),
             h("input",{type:"number",value:ins.qty,onChange:e=>updInsumo(ins.id,"qty",e.target.value),style:{...IS,width:80,flexShrink:0},placeholder:"Qtd",min:"0",step:"0.1"}),
             h("span",{style:{fontSize:10,color:P.text3,flexShrink:0,minWidth:60}},info?.unit||""),
