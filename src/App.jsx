@@ -25,6 +25,8 @@ const icStatusOf=ic=>ic.status||"Em Acompanhamento";
 const icConductsOf=ic=>(ic.conducts&&ic.conducts.length)?ic.conducts:(ic.conduct?[{id:"legacy_c",date:ic.date,text:ic.conduct}]:[]);
 const icEvolutionsOf=ic=>ic.evolutions||[];
 const EXPENSE_CATS=["Aluguel","Marketing","Fornecedores","Produtos","Impostos","Equipamentos","Funcionários","Outros"];
+// Sub-canais de origem quando a paciente veio de Campanha (origem==="campanha")
+const CAMPAIGN_CHANNELS=["Instagram","Facebook/Meta Ads","Google Ads","WhatsApp","Indicação Direta (boca a boca)","Influencer/Parceria","Evento","Outro"];
 // Paleta vibrante para cards de KPI com fundo colorido (vouchers, pacotes, estoque, aniversariantes, retornos, dashboard)
 const KPI={
   purple:"#8B5CF6", blue:"#3B82F6", green:"#22C55E", red:"#EF4444", yellow:"#EAB308",
@@ -441,7 +443,7 @@ async function generatePacientesExcel(patients){
     "Nome":p.name||"","Idade":calcAge(p),"Data Nasc.":p.birthDate?new Date(p.birthDate+"T12:00:00").toLocaleDateString("pt-BR"):"",
     "Telefone":p.phone||"","E-mail":p.email||"","CPF":p.cpf||"",
     "Status":PAT_STATUS_CFG?.[p.status]?.label||p.status||"","Tipo Sanguíneo":p.bloodType||"",
-    "Origem":p.origem==="indicacao"?"Indicação":p.origem==="nova"?"Nova":(p.origem||""), "Indicado Por":p.indicadoPor||"",
+    "Origem":p.origem==="indicacao"?"Indicação":p.origem==="nova"?"Nova":(p.origem||""), "Canal Campanha":p.canalCampanha||"", "Indicado Por":p.indicadoPor||"",
     "Total de Sessões":(p.sessions||[]).length, "Última Visita":p.lastVisit||"",
     "Alergias (resumo)":p.allergies||"",
   }));
@@ -3009,7 +3011,144 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
   );
 }
 
-// ─── GRÁFICO: EVOLUÇÃO FINANCEIRA (área suave) ───────────────────────────────
+// ─── ORÇAMENTO DE DESPESAS POR CATEGORIA (Previsto vs. Realizado) ────────────
+// Reaproveita a mesma tabela "goals" (key-value), usando chaves no formato
+// "AAAA-MM::expCat::Categoria". Diferente da meta por procedimento, as categorias
+// são fixas (EXPENSE_CATS), então não há fluxo de "adicionar" — só definir o previsto.
+const expCatGoalKey=(y,m,cat)=>`${y}-${String(m+1).padStart(2,"0")}::expCat::${cat}`;
+
+function MetaDespesasPorCategoria({expenses=[],selMonth,selYear,goals,setGoals,compact=false,onNav}){
+  const h=createElement;
+  const prefix=expCatGoalKey(selYear,selMonth,"");
+  const safeGoals=goals||{};
+
+  const inMonth=d=>{const dt=parseAnyDate(d);return dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear;};
+  const realizadoByCat=useMemo(()=>{
+    const map={};
+    (expenses||[]).filter(e=>e&&e.status!=="Cancelado"&&inMonth(e.date)).forEach(e=>{
+      const cat=e.cat||"Outros";
+      map[cat]=(map[cat]||0)+(Number(e.value)||0);
+    });
+    return map;
+  },[expenses,selMonth,selYear]);
+
+  // Mostra todas as categorias com meta definida OU com gasto realizado no mês (mesmo sem meta, para não escondê-las)
+  const definedCats=EXPENSE_CATS.filter(cat=>Number(safeGoals[prefix+cat])>0||Number(realizadoByCat[cat])>0);
+  const rows=definedCats.map(cat=>{
+    const previsto=Number(safeGoals[prefix+cat])||0;
+    const realizado=Number(realizadoByCat[cat])||0;
+    const pct=previsto>0?(realizado/previsto)*100:0;
+    return{cat,previsto,realizado,pct};
+  }).sort((a,b)=>b.pct-a.pct);
+
+  const totalPrevisto=rows.reduce((a,r)=>a+r.previsto,0);
+  const totalRealizado=rows.reduce((a,r)=>a+r.realizado,0);
+
+  const[editingCat,setEditingCat]=useState(null);
+  const[inputVal,setInputVal]=useState("");
+
+  function openEdit(cat,curMeta){setEditingCat(cat);setInputVal(curMeta>0?String(curMeta):"");}
+  function saveMeta(cat){
+    const val=Number(String(inputVal).replace(/\D/g,""))||0;
+    setGoals(prev=>{
+      const next={...(prev||{})};
+      if(val>0)next[prefix+cat]=val;else delete next[prefix+cat];
+      return next;
+    });
+    setEditingCat(null);setInputVal("");
+  }
+  function removeMeta(cat){
+    if(!window.confirm(`Remover o orçamento previsto de "${cat}"?`))return;
+    setGoals(prev=>{const next={...(prev||{})};delete next[prefix+cat];return next;});
+  }
+  const catsWithoutMeta=EXPENSE_CATS.filter(c=>!definedCats.includes(c));
+
+  // ── Modo compacto (widget dentro do DRE) ──
+  if(compact){
+    if(rows.length===0)return null;
+    return h("div",{style:{marginBottom:14,padding:"14px 18px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12}},
+      h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:6}},
+        h("div",null,
+          h("div",{style:{fontSize:13,color:P.text,fontWeight:700}},"📐 Orçamento de Despesas"),
+          h("div",{style:{fontSize:11,color:P.text3}},`${MONTH_NAMES[selMonth]} ${selYear} · Previsto vs. Realizado`)
+        ),
+        onNav&&h("button",{onClick:()=>onNav("relatorios"),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid rgba(157,119,97,.3)`,borderRadius:8,padding:"4px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},"Ver tudo →")
+      ),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+        rows.slice(0,4).map(r=>{
+          const barColor=r.pct>100?P.red:r.pct>=90?P.yellow:P.green;
+          return h("div",{key:r.cat},
+            h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4,gap:8}},
+              h("span",{style:{color:P.text2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},r.cat),
+              h("span",{style:{color:barColor,fontWeight:600,flexShrink:0}},fmtCurr(r.realizado)+" / "+fmtCurr(r.previsto))
+            ),
+            h("div",{style:{width:"100%",height:6,background:P.bg3,borderRadius:10,overflow:"hidden"}},
+              h("div",{style:{width:`${Math.min(r.pct,100)}%`,height:"100%",background:r.pct>100?P.red:`linear-gradient(90deg,${P.rose},${barColor})`,borderRadius:10,transition:"width .5s cubic-bezier(.4,0,.2,1)"}})
+            )
+          );
+        }),
+        rows.length>4&&h("div",{style:{fontSize:10.5,color:P.text3}},`+ ${rows.length-4} categoria${rows.length-4>1?"s":""} com orçamento`)
+      )
+    );
+  }
+
+  // ── Modo completo (Financeiro / Relatórios) ──
+  return h(Card,{style:{marginBottom:18}},
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,flexWrap:"wrap",gap:8}},
+      h("div",null,
+        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"📐 Orçamento de Despesas por Categoria"),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},`${MONTH_NAMES[selMonth]} ${selYear}`)
+      ),
+      h("div",{style:{fontSize:12,color:P.text3,textAlign:"right"}},
+        h("div",null,"Previsto: "+h("span",{style:{color:P.text,fontWeight:600}},fmtCurr(totalPrevisto))),
+        h("div",{style:{marginTop:2}},"Realizado: "+h("span",{style:{color:totalRealizado>totalPrevisto&&totalPrevisto>0?P.red:P.text,fontWeight:600}},fmtCurr(totalRealizado)))
+      )
+    ),
+    h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},"Defina o previsto por categoria e acompanhe o gasto real do mês."),
+    rows.length===0&&h("div",{style:{textAlign:"center",padding:"16px 0",color:P.text3,fontSize:13}},"Nenhum orçamento de despesa definido ainda."),
+    h("div",{style:{display:"flex",flexDirection:"column",gap:14}},
+      rows.map(r=>{
+        const barColor=r.pct>100?P.red:r.pct>=90?P.yellow:P.green;
+        const isEditing=editingCat===r.cat;
+        return h("div",{key:r.cat},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:8}},
+            h("span",{style:{fontSize:13,color:P.text}},r.cat),
+            isEditing
+              ?h("div",{style:{display:"flex",alignItems:"center",gap:6}},
+                  h("span",{style:{fontSize:11,color:P.text3}},"R$"),
+                  h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(r.cat);if(e.key==="Escape")setEditingCat(null);},placeholder:"ex: 2500",style:{width:90,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"5px 8px",color:P.text,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:"none"}}),
+                  h("button",{onClick:()=>saveMeta(r.cat),style:{background:P.rose,border:"none",borderRadius:6,color:P.accent3,cursor:"pointer",padding:"5px 10px",fontSize:11,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},"✓"),
+                  h("button",{onClick:()=>setEditingCat(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"5px 8px",fontSize:11,fontFamily:"'DM Sans',sans-serif"}},"✕")
+                )
+              :h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}},
+                  h("span",{style:{fontSize:12.5,color:barColor,fontWeight:600}},fmtCurr(r.realizado)+(r.previsto>0?" de "+fmtCurr(r.previsto):" (sem orçamento)")),
+                  r.previsto>0&&h("span",{style:{fontSize:11,fontWeight:700,padding:"1px 8px",borderRadius:12,background:r.pct>100?"rgba(192,112,112,.15)":r.pct>=90?"rgba(196,169,106,.15)":"rgba(122,173,138,.15)",color:barColor}},`${Math.round(r.pct)}%`),
+                  h("button",{onClick:()=>openEdit(r.cat,r.previsto),title:"Editar previsto",style:{background:"transparent",border:"none",color:P.text3,cursor:"pointer",fontSize:13,padding:2}},"✎"),
+                  r.previsto>0&&h("button",{onClick:()=>removeMeta(r.cat),title:"Remover previsto",style:{background:"transparent",border:"none",color:P.text3,cursor:"pointer",fontSize:13,padding:2}},"🗑")
+                )
+          ),
+          h("div",{style:{width:"100%",height:7,background:P.bg3,borderRadius:10,overflow:"hidden"}},
+            h("div",{style:{width:`${r.previsto>0?Math.min(r.pct,100):0}%`,height:"100%",background:r.pct>100?P.red:`linear-gradient(90deg,${P.rose},${barColor})`,borderRadius:10,transition:"width .5s cubic-bezier(.4,0,.2,1)"}})
+          ),
+          r.pct>100&&r.previsto>0&&h("div",{style:{fontSize:10.5,color:P.red,marginTop:3}},`⚠ Excedeu em ${fmtCurr(r.realizado-r.previsto)}`)
+        );
+      })
+    ),
+    catsWithoutMeta.length>0&&h("div",{style:{marginTop:16,paddingTop:14,borderTop:`1px solid ${P.border}`}},
+      h("div",{style:{fontSize:11,color:P.text3,marginBottom:8}},"Categorias sem orçamento definido:"),
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+        catsWithoutMeta.map(cat=>h("button",{key:cat,onClick:()=>openEdit(cat,0),style:{fontSize:11.5,padding:"5px 12px",borderRadius:20,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid ${P.border}`,color:P.text2}},"＋ "+cat))
+      ),
+      editingCat&&catsWithoutMeta.includes(editingCat)&&h("div",{style:{display:"flex",alignItems:"center",gap:6,marginTop:10}},
+        h("span",{style:{fontSize:12,color:P.text}},editingCat+":"),
+        h("span",{style:{fontSize:11,color:P.text3}},"R$"),
+        h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(editingCat);if(e.key==="Escape")setEditingCat(null);},placeholder:"ex: 2500",style:{width:90,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"5px 8px",color:P.text,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:"none"}}),
+        h("button",{onClick:()=>saveMeta(editingCat),style:{background:P.rose,border:"none",borderRadius:6,color:P.accent3,cursor:"pointer",padding:"5px 10px",fontSize:11,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},"✓"),
+        h("button",{onClick:()=>setEditingCat(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"5px 8px",fontSize:11,fontFamily:"'DM Sans',sans-serif"}},"✕")
+      )
+    )
+  );
+}
 function _smoothPath(pts){
   if(pts.length<2)return "";
   let d=`M${pts[0].x},${pts[0].y}`;
@@ -3904,7 +4043,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   const[filter,setFilter]=useState("all");
   const[showNew,setShowNew]=useState(false);
   const[exportingExcel,setExportingExcel]=useState(false);
-  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active",origem:"nova",indicadoPor:""};
+  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active",origem:"nova",indicadoPor:"",canalCampanha:""};
   const[form,setForm]=useState(blank);
   async function handleExportExcel(){
     setExportingExcel(true);
@@ -3937,7 +4076,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
     const np={id:Date.now(),...form,age:Number(form.age),profilePhoto:profPhoto,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
       complaints:form.complaints.split(",").map(s=>s.trim()).filter(Boolean),tags:[],
       anamnese:{healthHistory:form.healthHistory,medications:form.medications,smoking:form.smoking,pregnancy:form.pregnancy,previousProcedures:form.previousProcedures,skinType:form.skinType,fitzpatrick:form.fitzpatrick,allergiesDetail:form.allergiesDetail,contraindications:form.contraindications,musicStyle:form.musicStyle,importantAlerts:form.allergies&&form.allergies!=="Nenhuma"?[form.allergies]:[]}};
-    setPatients(prev=>[...prev,{...np,origem:form.origem||"nova",indicadoPor:form.indicadoPor||""}]);setShowNew(false);setForm(blank);setProfPhoto(null);
+    setPatients(prev=>[...prev,{...np,origem:form.origem||"nova",indicadoPor:form.indicadoPor||"",canalCampanha:form.origem==="campanha"?(form.canalCampanha||""):""}]);setShowNew(false);setForm(blank);setProfPhoto(null);
   }
   return h("div",null,
     h(SectionHeader,{title:"Pacientes",sub:`${patients.length} pacientes cadastrados`,action:h("div",{style:{display:"flex",gap:8}},
@@ -4007,7 +4146,8 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
         h(Field,{label:"Principais Queixas"},h(TA,{value:form.complaints,onChange:fv("complaints"),placeholder:"Separadas por vírgula",rows:2})),
         h(Field,{label:"Procedimentos Anteriores"},h(TA,{value:form.previousProcedures,onChange:fv("previousProcedures"),placeholder:"Histórico...",rows:2})),
         h(Field,{label:"Origem da Paciente"},h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},[{k:"nova",l:"🌟 Nova"},{k:"indicacao",l:"🤝 Indicação"},{k:"campanha",l:"📣 Campanha"},{k:"recorrente",l:"🔄 Recorrente"}].map(o=>h("button",{key:o.k,onClick:()=>setForm(p=>({...p,origem:o.k})),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:form.origem===o.k?P.rose:"transparent",border:`1px solid ${form.origem===o.k?P.rose:P.border}`,color:form.origem===o.k?P.accent3:P.text2}},o.l)))),
-        form.origem==="indicacao"&&h(Field,{label:"Indicado(a) por"},h(Inp,{value:form.indicadoPor,onChange:fv("indicadoPor"),placeholder:"Nome de quem indicou"}))
+        form.origem==="indicacao"&&h(Field,{label:"Indicado(a) por"},h(Inp,{value:form.indicadoPor,onChange:fv("indicadoPor"),placeholder:"Nome de quem indicou"})),
+        form.origem==="campanha"&&h(Field,{label:"Canal da Campanha"},h(Sel,{value:form.canalCampanha||"",onChange:fv("canalCampanha"),options:["",...CAMPAIGN_CHANNELS]}))
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},
         h(Btn,{variant:"ghost",onClick:()=>setShowNew(false)},"Cancelar"),
@@ -4584,7 +4724,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             patient.phone&&h("span",{style:{fontSize:12,color:P.text3}},"📞 "+patient.phone),
             patient.email&&h("span",{style:{fontSize:12,color:P.text3}},"✉ "+patient.email),
             patient.cpf&&h("span",{style:{fontSize:12,color:P.text3}},"CPF "+patient.cpf),
-            patient.origem&&h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(157,119,97,.12)",color:P.accent,border:"1px solid rgba(157,119,97,.2)"}},(()=>({nova:"🌟 Nova",indicacao:"🤝 Indicação",campanha:"📣 Campanha",recorrente:"🔄 Recorrente"})[patient.origem]||patient.origem)()),
+            patient.origem&&h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(157,119,97,.12)",color:P.accent,border:"1px solid rgba(157,119,97,.2)"}},(()=>({nova:"🌟 Nova",indicacao:"🤝 Indicação",campanha:"📣 Campanha"+(patient.canalCampanha?" — "+patient.canalCampanha:""),recorrente:"🔄 Recorrente"})[patient.origem]||patient.origem)()),
             patient.indicadoPor&&h("span",{style:{fontSize:12,color:P.text3}},"Ind. por: "+patient.indicadoPor)
           ),
           patient.anamnese?.musicStyle&&h("div",{style:{fontSize:12,color:P.text3,marginBottom:6}},`🎵 ${patient.anamnese.musicStyle}`),
@@ -7004,6 +7144,9 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
           )
         ),
 
+        // ── Orçamento de Despesas por Categoria (Previsto vs. Realizado) ──
+        setGoals&&h(MetaDespesasPorCategoria,{expenses,selMonth,selYear,goals:goals||{},setGoals}),
+
         // ── Conciliação por método de pagamento ──
         h(Card,null,
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:4}},"Conciliação por Forma de Pagamento"),
@@ -7650,7 +7793,7 @@ function DonutChart({catList,totalCat}){
 function OrigemFaturamento({patients,selMonth,selYear,parseDMY2}){
   const h=createElement;
   const safePats=Array.isArray(patients)?patients.filter(Boolean):[];
-  const allS=safePats.flatMap(p=>(Array.isArray(p.sessions)?p.sessions:[]).filter(Boolean).map(s=>({...s,value:Number(s.value)||0,origem:p.origem||"nova",indicadoPor:p.indicadoPor||"",pname:p.name,pid:p.id,since:p.since})));
+  const allS=safePats.flatMap(p=>(Array.isArray(p.sessions)?p.sessions:[]).filter(Boolean).map(s=>({...s,value:Number(s.value)||0,origem:p.origem||"nova",indicadoPor:p.indicadoPor||"",canalCampanha:p.canalCampanha||"",pname:p.name,pid:p.id,since:p.since})));
   const monthS=allS.filter(s=>{try{const d=parseDMY2(s.date);return d&&d.getMonth()===selMonth&&d.getFullYear()===selYear&&s.paid;}catch{return false;}});
   const total=monthS.reduce((a,s)=>a+s.value,0)||1;
 
@@ -7675,6 +7818,11 @@ function OrigemFaturamento({patients,selMonth,selYear,parseDMY2}){
   ];
 
   const indicacoes=safePats.filter(p=>p.origem==="indicacao"&&p.indicadoPor);
+  // Quebra de Campanha por sub-canal (Instagram, Google Ads etc.)
+  const campMap={};
+  monthS.filter(s=>s.origem==="campanha").forEach(s=>{const ch=s.canalCampanha||"Não informado";campMap[ch]=(campMap[ch]||0)+s.value;});
+  const campChannels=Object.entries(campMap).sort((a,b)=>b[1]-a[1]);
+  const totalCamp=campChannels.reduce((a,[,v])=>a+v,0)||1;
 
   if(monthS.length===0)return null;
   return h(Card,{style:{marginBottom:22,border:"1px solid rgba(157,119,97,.3)"}},
@@ -7702,12 +7850,29 @@ function OrigemFaturamento({patients,selMonth,selYear,parseDMY2}){
         )
       ))
     ),
-    indicacoes.length>0&&h("div",null,
+    indicacoes.length>0&&h("div",{style:{marginBottom:campChannels.length>0?16:0}},
       h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,fontWeight:600}},"🤝 Pacientes por Indicação"),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
         indicacoes.map(p=>h("div",{key:p.id,style:{fontSize:12,padding:"4px 10px",borderRadius:20,background:"rgba(122,174,212,.1)",border:"1px solid rgba(122,174,212,.2)",color:"#7aaed4"}},
           p.name.split(" ")[0]+" → ind. por "+p.indicadoPor
         ))
+      )
+    ),
+    campChannels.length>0&&h("div",null,
+      h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,fontWeight:600}},"📣 Campanha por Canal"),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+        campChannels.map(([ch,val])=>{
+          const pct=Math.round((val/totalCamp)*100);
+          return h("div",{key:ch},
+            h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text2,marginBottom:4}},
+              h("span",null,ch),
+              h("span",{style:{color:P.yellow,fontWeight:600}},fmtCurr(val)+" · "+pct+"%")
+            ),
+            h("div",{style:{height:4,borderRadius:2,background:P.bg3,overflow:"hidden"}},
+              h("div",{style:{height:"100%",width:pct+"%",background:P.yellow,borderRadius:2}})
+            )
+          );
+        })
       )
     )
   );
@@ -7739,7 +7904,7 @@ function PagamentosCard({allS}){
   );
 }
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
-function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = [], settings, agenda = [], products = [], vouchers = []}){
+function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = [], settings, agenda = [], products = [], vouchers = [], goals = {}, setGoals}){
   const now=new Date();
   const[selMonth,setSelMonth]=useState(now.getMonth());
   const[selYear,setSelYear]=useState(now.getFullYear());
@@ -7856,6 +8021,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
         {k:"geral",l:"📊 Geral"},
         {k:"indicacoes",l:"🤝 Indicações"},
         {k:"funil",l:"💼 Funil de Orçamentos"},
+        {k:"orcamento_despesas",l:"📐 Orçamento de Despesas"},
         {k:"yoy",l:"📆 Comparativo Anual"},
         {k:"horarios",l:"🗓️ Horários"},
         {k:"ltv",l:"💎 LTV Pacientes"},
@@ -8479,6 +8645,27 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
         });
       });
       const procFunilList=Object.entries(procFunil).map(([proc,d])=>[proc,{...d,pct:d.orcado>0?Math.round((d.convertido/d.orcado)*100):0}]).sort((a,b)=>b[1].orcado-a[1].orcado);
+      // ── Conversão por Canal de Origem (Nova / Indicação / Campanha+sub-canal / Recorrente) ──
+      // Reaproveita patient.origem (já usado em "Origem do Faturamento") e o sub-canal de Campanha.
+      const origemLabel=o=>{
+        const pat=o.pat||{};
+        const orig=pat.origem||"nova";
+        if(orig==="campanha")return"📣 Campanha"+(pat.canalCampanha?" — "+pat.canalCampanha:" — Não informado");
+        if(orig==="indicacao")return"🤝 Indicação";
+        if(orig==="recorrente")return"🔄 Recorrente";
+        return"🌟 Nova";
+      };
+      const origemFunilMap={};
+      allOrc.forEach(o=>{
+        const key=origemLabel(o);
+        if(!origemFunilMap[key])origemFunilMap[key]={orcado:0,convertido:0,valorOrcado:0,valorConvertido:0,valorPerdido:0,valorEmAberto:0};
+        const g=origemFunilMap[key];
+        g.orcado++; g.valorOrcado+=Number(o.value)||0;
+        if(o.convertedAt){g.convertido++; g.valorConvertido+=Number(o.value)||0;}
+        else if(o.status==="recusado"||o.status==="expirado"){g.valorPerdido+=Number(o.value)||0;}
+        else if(o.status==="espera"){g.valorEmAberto+=Number(o.value)||0;}
+      });
+      const origemFunilList=Object.entries(origemFunilMap).map(([label,d])=>[label,{...d,pct:d.orcado>0?Math.round((d.convertido/d.orcado)*100):0}]).sort((a,b)=>b[1].orcado-a[1].orcado);
       // Orçamentos em aberto aguardando decisão, ordenados por valor
       const hoje=new Date();
       const abertosOrdenados=emEspera.map(o=>{const dc=parseAnyDate(o.created);const dias=dc?Math.floor((hoje-dc)/864e5):null;return{...o,dias};}).sort((a,b)=>(b.value||0)-(a.value||0));
@@ -8527,6 +8714,36 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
             ))
           )
         ),
+        origemFunilList.length>0&&h(Card,{style:{marginBottom:18}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4,flexWrap:"wrap",gap:8}},
+            h("div",null,
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Conversão por Canal de Origem"),
+              h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Qual canal traz orçamentos que de fato convertem em tratamento")
+            )
+          ),
+          h("div",{style:{display:"flex",flexDirection:"column",gap:14,marginTop:10}},
+            origemFunilList.map(([label,d])=>{
+              const barColor=d.pct>=50?P.green:d.pct>=25?P.yellow:P.red;
+              return h("div",{key:label},
+                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12.5,marginBottom:5,flexWrap:"wrap",gap:6}},
+                  h("span",{style:{color:P.text,fontWeight:500}},label),
+                  h("span",{style:{color:barColor,fontWeight:600}},`${d.convertido}/${d.orcado} convertidos · ${d.pct}%`)
+                ),
+                h("div",{style:{height:6,borderRadius:3,background:P.bg3,overflow:"hidden",marginBottom:5}},
+                  h("div",{style:{height:"100%",width:d.pct+"%",background:barColor,borderRadius:3}})
+                ),
+                h("div",{style:{display:"flex",gap:14,flexWrap:"wrap"}},
+                  h("span",{style:{fontSize:10.5,color:P.green}},"✓ "+fmtCurr(d.valorConvertido)+" convertido"),
+                  d.valorEmAberto>0&&h("span",{style:{fontSize:10.5,color:P.yellow}},"⏳ "+fmtCurr(d.valorEmAberto)+" em aberto"),
+                  d.valorPerdido>0&&h("span",{style:{fontSize:10.5,color:P.red}},"✗ "+fmtCurr(d.valorPerdido)+" perdido")
+                )
+              );
+            })
+          ),
+          h("div",{style:{marginTop:14,paddingTop:12,borderTop:`1px solid ${P.border}`,fontSize:11,color:P.text3}},
+            "💡 Cruze com a aba \"🤝 Indicações\" para ver o ROI de cada indicadora e decidir onde investir o orçamento de marketing."
+          )
+        ),
         abertosOrdenados.length>0&&h(Card,null,
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:4}},"Orçamentos Aguardando Decisão"),
           h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},`${abertosOrdenados.length} orçamento(s) em espera · ${fmtCurr(valorEmAberto)} em jogo`),
@@ -8542,6 +8759,18 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
         )
       );
     })(),
+
+    // ── ABA ORÇAMENTO DE DESPESAS (Previsto vs. Realizado por categoria) ───
+    relTab==="orcamento_despesas"&&h("div",null,
+      h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:18}},
+        h("button",{onClick:prevMonth,style:{background:"transparent",border:"1px solid "+P.border,borderRadius:6,width:28,height:28,color:P.text2,cursor:"pointer",fontSize:14}},"‹"),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.rose,minWidth:160,textAlign:"center"}},MONTH_NAMES[selMonth]+" "+selYear),
+        h("button",{onClick:nextMonth,style:{background:"transparent",border:"1px solid "+P.border,borderRadius:6,width:28,height:28,color:P.text2,cursor:"pointer",fontSize:14}},"›")
+      ),
+      setGoals
+        ?h(MetaDespesasPorCategoria,{expenses,selMonth,selYear,goals:goals||{},setGoals})
+        :h(Card,{style:{textAlign:"center",padding:30,color:P.text3,fontSize:13}},"Orçamento de despesas indisponível (metas não carregadas).")
+    ),
 
     relTab==="yoy"&&(()=>{
       const pctVar=(a,b)=>a>0?Math.round(((b-a)/a)*100):(b>0?100:0);
@@ -10378,7 +10607,7 @@ function AppInner({ session, onLogout }) {
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products,maquininhas,setMaquininhas}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
-            page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda,products,vouchers}),
+            page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda,products,vouchers,goals:goalsData,setGoals}),
             page==="intercorrencias_global"&&h(IntercorrenciasGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures:procedureNames,products:products.map(p=>typeof p==="string"?p:(p.name||p))}),
             page==="config"&&h(Configuracoes,{procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas,setMaquininhas})
           )
