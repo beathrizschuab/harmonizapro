@@ -1439,6 +1439,26 @@ function markerUnitCost(allProducts,productName){
   const p=(allProducts||[]).find(x=>(x.name||"").toLowerCase()===String(productName).toLowerCase());
   return p?Number(p.cost)||0:0;
 }
+// ─── CUSTO E MARGEM POR SESSÃO/PROCEDIMENTO ───────────────────────────────────
+// Calcula o custo real de uma sessão somando: (1) o produto injetável principal escolhido
+// na sessão (s.product/s.qtdUsada) e (2) os insumos debitados automaticamente pela Ficha
+// Técnica do procedimento (s.autoStockDebits), usando o custo unitário cadastrado no Estoque
+// (allProducts[].cost). Não depende de nenhum dado novo — só lê o que já é gravado na sessão.
+function sessionCost(s,allProducts){
+  if(!s)return 0;
+  let cost=0;
+  if(s.product&&Number(s.qtdUsada)>0)cost+=markerUnitCost(allProducts,s.product)*Number(s.qtdUsada);
+  (s.autoStockDebits||[]).forEach(d=>{ if(d&&d.product)cost+=markerUnitCost(allProducts,d.product)*(Number(d.qty)||0); });
+  return cost;
+}
+// Margem de uma sessão: receita (value) - custo de produtos/insumos. Retorna {cost,margin,marginPct}.
+function sessionMargin(s,allProducts){
+  const cost=sessionCost(s,allProducts);
+  const value=Number(s?.value)||0;
+  const margin=value-cost;
+  const marginPct=value>0?Math.round((margin/value)*100):0;
+  return{cost,margin,marginPct};
+}
 function MarkerDot({m,idx,active,onClick}){
   const h=createElement;
   return h("div",{
@@ -5994,6 +6014,14 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     + monthIncomesExtra.filter(i=>i.status!=="Pago").reduce((a,i)=>a+Number(i.value||0),0);
   const totalExp=monthExpenses.reduce((a,e)=>a+Number(e.value||0),0);
 
+  // ── Custo de produtos/insumos e Margem Bruta do mês ─────────────────────
+  // Custo = produto principal (s.product/qtdUsada) + insumos auto-debitados pela ficha técnica,
+  // calculado a partir do custo unitário cadastrado no Estoque. Só considera sessões pagas
+  // (custo de sessão pendente entra quando ela for paga, junto com a receita).
+  const monthCostProdutos=monthSessions.filter(s=>s.paid).reduce((a,s)=>a+sessionCost(s,products),0);
+  const margemBruta=received-monthCostProdutos;
+  const margemBrutaPct=received>0?Math.round((margemBruta/received)*100):0;
+
   // ── Receita do mês anterior (para % de variação na meta) ──
   const prevMNum=selMonth===0?11:selMonth-1;
   const prevMYear=selMonth===0?selYear-1:selYear;
@@ -6147,8 +6175,11 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     setGoals&&h(MetaFaturamento,{received,selMonth,selYear,goals:goals||{},setGoals,prevMonthReceived}),
     setGoals&&h(MetaPorProcedimento,{procedures,patients,selMonth,selYear,goals:goals||{},setGoals}),
 
-    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:14}},
       [{l:"Receita do Mês",v:fmtCurr(received),c:P.accent},{l:"Despesas do Mês",v:fmtCurr(totalExp),c:P.red},{l:"Lucro Líquido",v:fmtCurr(received-totalExp),c:P.green},{l:"A Receber",v:fmtCurr(pending),c:P.yellow}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)))
+    ),
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14,marginBottom:22}},
+      [{l:"Custo de Produtos/Insumos",v:fmtCurr(monthCostProdutos),c:P.red},{l:"Margem Bruta",v:fmtCurr(margemBruta)+`  (${margemBrutaPct}%)`,c:margemBrutaPct>=60?P.green:margemBrutaPct>=35?P.yellow:P.red}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:k.c}},k.v)))
     ),
 
     h(Card,{style:{marginBottom:18}},
@@ -6579,54 +6610,61 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     })(),
 
     viewTab==="margem"&&(()=>{
-      // Junta sessões realizadas/pagas do mês selecionado com a Ficha de Insumos de cada procedimento
-      // para calcular: Receita, Custo de Insumos, Margem (R$ e %) por procedimento.
-      const getProdInfo=name=>(products||[]).find(p=>(typeof p==="string"?p:(p.name||p))===name);
+      // Junta sessões realizadas/pagas do mês selecionado com o custo real de cada sessão
+      // (produto injetável principal + insumos/descartáveis da ficha técnica, via sessionCost)
+      // para calcular: Receita, Custo de Produtos, Margem (R$ e %) por procedimento.
       const getInsumos=procName=>{
         const procObj=(proceduresFull||[]).find(p=>(typeof p==="string"?p:(p.name||p))===procName);
         return (procObj&&typeof procObj==="object"&&Array.isArray(procObj.insumos))?procObj.insumos:[];
       };
-      const custoInsumosPorSessao=procName=>getInsumos(procName).reduce((a,i)=>{
-        const info=getProdInfo(i.product);
-        return a+(Number(info?.cost)||0)*(Number(i.qty)||0);
-      },0);
       // Considera sessões pagas no mês selecionado (mesmo critério de receita usado no resto do Financeiro)
       const sessoesValidas=monthSessions.filter(s=>s.paid&&s.finStatus!=="Cancelado");
       const porProc={};
       sessoesValidas.forEach(s=>{
         const key=s.procedure||"Sem procedimento";
-        if(!porProc[key])porProc[key]={procedure:key,qtd:0,receita:0,custoInsumos:0,temFicha:getInsumos(key).length>0};
+        if(!porProc[key])porProc[key]={procedure:key,qtd:0,receita:0,custoProduto:0,custoInsumos:0,semInsumoNemProduto:0,temFicha:getInsumos(key).length>0};
+        const custoPrincipal=(s.product&&Number(s.qtdUsada)>0)?markerUnitCost(products,s.product)*Number(s.qtdUsada):0;
+        const custoInsumos=(s.autoStockDebits||[]).reduce((a,d)=>a+(d&&d.product?markerUnitCost(products,d.product)*(Number(d.qty)||0):0),0);
         porProc[key].qtd+=1;
         porProc[key].receita+=Number(s.value||0);
-        porProc[key].custoInsumos+=custoInsumosPorSessao(key);
+        porProc[key].custoProduto+=custoPrincipal;
+        porProc[key].custoInsumos+=custoInsumos;
+        if(custoPrincipal===0&&custoInsumos===0)porProc[key].semInsumoNemProduto+=1;
       });
-      const ranking=Object.values(porProc).map(r=>({
-        ...r,
-        margem:r.receita-r.custoInsumos,
-        margemPct:r.receita>0?((r.receita-r.custoInsumos)/r.receita*100):0,
-      })).sort((a,b)=>b.receita-a.receita);
+      const ranking=Object.values(porProc).map(r=>{
+        const custoTotal=r.custoProduto+r.custoInsumos;
+        return{
+          ...r,custoTotal,
+          margem:r.receita-custoTotal,
+          margemPct:r.receita>0?((r.receita-custoTotal)/r.receita*100):0,
+        };
+      }).sort((a,b)=>b.receita-a.receita);
       const totalReceita=ranking.reduce((a,r)=>a+r.receita,0);
-      const totalCusto=ranking.reduce((a,r)=>a+r.custoInsumos,0);
+      const totalCustoProduto=ranking.reduce((a,r)=>a+r.custoProduto,0);
+      const totalCustoInsumos=ranking.reduce((a,r)=>a+r.custoInsumos,0);
+      const totalCusto=totalCustoProduto+totalCustoInsumos;
       const totalMargem=totalReceita-totalCusto;
       const totalMargemPct=totalReceita>0?(totalMargem/totalReceita*100):0;
-      const semFicha=ranking.filter(r=>!r.temFicha&&r.qtd>0);
+      // Avisa quando nenhuma sessão do procedimento teve produto OU insumo registrado — margem pode estar subestimando o custo
+      const semNadaRegistrado=ranking.filter(r=>r.semInsumoNemProduto===r.qtd&&r.qtd>0);
 
       function corMargem(pct){ return pct>=60?P.green:pct>=35?P.yellow:P.red; }
 
       return h("div",null,
-        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}},
           [
             {l:"Receita do Período",v:fmtCurr(totalReceita),c:P.text},
-            {l:"Custo de Insumos/Descartáveis",v:fmtCurr(totalCusto),c:P.red},
+            {l:"Custo Produto Principal",v:fmtCurr(totalCustoProduto),c:P.red},
+            {l:"Custo Insumos/Descartáveis",v:fmtCurr(totalCustoInsumos),c:P.yellow},
             {l:"Margem Real",v:fmtCurr(totalMargem)+`  (${totalMargemPct.toFixed(0)}%)`,c:corMargem(totalMargemPct)}
           ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
             h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:k.c}},k.v)
           ))
         ),
-        h("div",{style:{fontSize:11,color:P.text3,marginBottom:16}},"O custo considera apenas os insumos/descartáveis (agulha, luva, gaze...) cadastrados na Ficha de Insumos do procedimento — não inclui o custo do produto injetável principal."),
-        semFicha.length>0&&h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:10,marginBottom:16,fontSize:12,color:P.yellow}},
-          "⚠ Sem ficha de insumos cadastrada (margem mostrada considera custo R$0): "+semFicha.map(r=>r.procedure).join(", ")+". Cadastre em Configurações → Procedimentos."
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:16}},"Custo = produto injetável principal escolhido na sessão (Botox, ácido hialurônico etc., com lote/quantidade usada) + insumos/descartáveis debitados automaticamente pela Ficha Técnica do procedimento. Sessões sem produto nem ficha de insumos entram com custo R$0 — a margem real pode estar maior do que o registrado."),
+        semNadaRegistrado.length>0&&h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:10,marginBottom:16,fontSize:12,color:P.yellow}},
+          "⚠ Nenhum produto/insumo registrado nas sessões pagas deste período (margem mostrada = receita total, custo R$0): "+semNadaRegistrado.map(r=>r.procedure).join(", ")+". Vincule o produto usado na sessão e/ou cadastre a Ficha de Insumos em Configurações → Procedimentos."
         ),
         ranking.length===0
           ?h(Card,{style:{textAlign:"center",padding:40}},
@@ -6642,7 +6680,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
                   h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10,marginBottom:10}},
                     h("div",null,
                       h("div",{style:{fontSize:14,color:P.text,fontWeight:600}},r.procedure),
-                      h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},`${r.qtd} sessão${r.qtd>1?"ões":""} paga${r.qtd>1?"s":""}`+(r.temFicha?"":" · sem ficha de insumos"))
+                      h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},`${r.qtd} sessão${r.qtd>1?"ões":""} paga${r.qtd>1?"s":""}`+(r.semInsumoNemProduto>0?` · ${r.semInsumoNemProduto} sem produto/insumo registrado`:""))
                     ),
                     h("div",{style:{textAlign:"right"}},
                       h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:mc}},fmtCurr(r.margem)),
@@ -6651,8 +6689,9 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
                   ),
                   h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginBottom:8,fontSize:12,color:P.text2}},
                     h("span",null,"Receita: ",h("strong",{style:{color:P.text}},fmtCurr(r.receita))),
-                    h("span",null,"Custo descartáveis: ",h("strong",{style:{color:P.red}},fmtCurr(r.custoInsumos))),
-                    h("span",null,"Custo/sessão: ",h("strong",{style:{color:P.text}},fmtCurr(r.qtd?r.custoInsumos/r.qtd:0)))
+                    h("span",null,"Custo produto: ",h("strong",{style:{color:P.red}},fmtCurr(r.custoProduto))),
+                    h("span",null,"Custo insumos: ",h("strong",{style:{color:P.yellow}},fmtCurr(r.custoInsumos))),
+                    h("span",null,"Custo/sessão: ",h("strong",{style:{color:P.text}},fmtCurr(r.qtd?r.custoTotal/r.qtd:0)))
                   ),
                   h("div",{style:{height:6,borderRadius:3,background:P.bg3,overflow:"hidden"}},
                     h("div",{style:{height:"100%",width:barPct+"%",background:mc,borderRadius:3,transition:"width .2s"}})
@@ -6858,7 +6897,7 @@ function PagamentosCard({allS}){
   );
 }
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
-function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = [], settings, agenda = []}){
+function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = [], settings, agenda = [], products = []}){
   const now=new Date();
   const[selMonth,setSelMonth]=useState(now.getMonth());
   const[selYear,setSelYear]=useState(now.getFullYear());
@@ -6876,8 +6915,8 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const monthRevenue=monthSessions.filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0);
   // procedimentos
   const procMap={};
-  monthSessions.forEach(s=>{if(!s.procedure)return;if(!procMap[s.procedure])procMap[s.procedure]={count:0,total:0,paid:0,pending:0};procMap[s.procedure].count++;procMap[s.procedure].total+=(Number(s.value)||0);if(s.paid)procMap[s.procedure].paid+=(Number(s.value)||0);else procMap[s.procedure].pending+=(Number(s.value)||0);});
-  const procList=Object.entries(procMap).sort((a,b)=>b[1].total-a[1].total);
+  monthSessions.forEach(s=>{if(!s.procedure)return;if(!procMap[s.procedure])procMap[s.procedure]={count:0,total:0,paid:0,pending:0,cost:0};procMap[s.procedure].count++;procMap[s.procedure].total+=(Number(s.value)||0);if(s.paid){procMap[s.procedure].paid+=(Number(s.value)||0);procMap[s.procedure].cost+=sessionCost(s,products);}else procMap[s.procedure].pending+=(Number(s.value)||0);});
+  const procList=Object.entries(procMap).map(([proc,data])=>[proc,{...data,margem:data.paid-data.cost,margemPct:data.paid>0?Math.round(((data.paid-data.cost)/data.paid)*100):0}]).sort((a,b)=>b[1].total-a[1].total);
   const colors=[P.rose,P.gold,P.accent,"#7aaed4","#7aad8a","#9b7aad","#8a5c7a","#5a8a7a"];
   // donut categorias
   const catMap={};
@@ -6984,13 +7023,14 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
           const val=chartMode==="receita"?data.total:data.count;
           const pct=Math.round((val/maxBarVal)*100);
           const ticket=data.count>0?Math.round(data.total/data.count):0;
+          const mc=data.margemPct>=60?P.green:data.margemPct>=35?P.yellow:P.red;
           return h("div",{key:proc,style:{marginBottom:14}},
             h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}},
               h("div",{style:{display:"flex",alignItems:"center",gap:8}},h("span",{style:{display:"inline-block",width:10,height:10,borderRadius:2,background:colors[i%colors.length],flexShrink:0}}),h("span",{style:{fontSize:13,color:P.text,fontWeight:500}},proc)),
               h("div",{style:{display:"flex",alignItems:"center",gap:16,flexShrink:0}},h("span",{style:{fontSize:11,color:P.text3}},data.count+"x · ticket "+fmtCurr(ticket)),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:colors[i%colors.length]}},chartMode==="receita"?fmtCurr(data.total):data.count))
             ),
             h("div",{style:{height:8,borderRadius:4,background:P.bg3,overflow:"hidden"}},h("div",{style:{height:"100%",width:pct+"%",background:colors[i%colors.length],borderRadius:4,transition:"width .4s ease"}})),
-            h("div",{style:{display:"flex",gap:12,marginTop:4}},h("span",{style:{fontSize:10,color:P.green}},"✓ "+fmtCurr(data.paid)),data.pending>0&&h("span",{style:{fontSize:10,color:P.yellow}},"⏳ "+fmtCurr(data.pending)))
+            h("div",{style:{display:"flex",gap:12,marginTop:4,flexWrap:"wrap"}},h("span",{style:{fontSize:10,color:P.green}},"✓ "+fmtCurr(data.paid)),data.pending>0&&h("span",{style:{fontSize:10,color:P.yellow}},"⏳ "+fmtCurr(data.pending)),data.paid>0&&h("span",{style:{fontSize:10,color:mc,fontWeight:600}},"📐 margem "+fmtCurr(data.margem)+" ("+data.margemPct+"%)"))
           );
         })),
         h("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",gap:12}},
@@ -9010,7 +9050,7 @@ function AppInner({ session, onLogout }) {
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
-            page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda}),
+            page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda,products}),
             page==="intercorrencias_global"&&h(IntercorrenciasGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures:procedureNames,products:products.map(p=>typeof p==="string"?p:(p.name||p))}),
             page==="config"&&h(Configuracoes,{procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats})
           )
