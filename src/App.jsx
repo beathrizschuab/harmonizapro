@@ -330,6 +330,72 @@ async function generateFinanceiroExcel({allS,incomes,expenses,periodo},{settings
   return{receitasCount:receitas.length,despesasCount:despesas.length,fileName};
 }
 
+// Gera e baixa um .xlsx com todos os pacientes: cadastro, histórico de sessões e anamnese (dados clínicos).
+// Sempre exporta a base completa (sem filtro de período) — é um cadastro de pessoas, não um fluxo financeiro.
+async function generatePacientesExcel(patients){
+  const XLSX=await loadXLSX();
+  const calcAge=p=>{
+    if(p.birthDate){
+      const bd=new Date(p.birthDate+"T12:00:00");
+      if(!isNaN(bd)){
+        const t=new Date();
+        let a=t.getFullYear()-bd.getFullYear();
+        const m=t.getMonth()-bd.getMonth();
+        if(m<0||(m===0&&t.getDate()<bd.getDate()))a--;
+        return a;
+      }
+    }
+    return Number(p.age)||"";
+  };
+
+  // ── Aba Pacientes: cadastro + status + resumo de atividade ──
+  const pacientes=(patients||[]).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"","pt-BR",{sensitivity:"base"})).map(p=>({
+    "Nome":p.name||"","Idade":calcAge(p),"Data Nasc.":p.birthDate?new Date(p.birthDate+"T12:00:00").toLocaleDateString("pt-BR"):"",
+    "Telefone":p.phone||"","E-mail":p.email||"","CPF":p.cpf||"",
+    "Status":PAT_STATUS_CFG?.[p.status]?.label||p.status||"","Tipo Sanguíneo":p.bloodType||"",
+    "Origem":p.origem==="indicacao"?"Indicação":p.origem==="nova"?"Nova":(p.origem||""), "Indicado Por":p.indicadoPor||"",
+    "Total de Sessões":(p.sessions||[]).length, "Última Visita":p.lastVisit||"",
+    "Alergias (resumo)":p.allergies||"",
+  }));
+
+  // ── Aba Sessões: histórico completo de atendimentos de todos os pacientes ──
+  const sessoes=(patients||[]).flatMap(p=>(p.sessions||[]).map(s=>({
+    "Paciente":p.name||"","Data":s.date||"","Procedimento":s.procedure||"",
+    "Região":s.region||"","Valor (R$)":Number(s.value||0),"Forma de Pagamento":s.payMethod||"",
+    "Status Pagamento":s.finStatus||(s.paid?"Pago":"Pendente"),"Profissional":s.doctor||"",
+    "Observações":s.notes||"",
+  }))).sort((a,b)=>(parseAnyDate(a["Data"])||0)-(parseAnyDate(b["Data"])||0));
+
+  // ── Aba Anamnese: dados clínicos sensíveis, separados numa aba própria ──
+  const anamnese=(patients||[]).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"","pt-BR",{sensitivity:"base"})).map(p=>{
+    const a=p.anamnese||{};
+    return{
+      "Paciente":p.name||"","Tipo de Pele":a.skinType||"","Fitzpatrick":a.fitzpatrick||"",
+      "Histórico de Saúde":a.healthHistory||"","Medicações em Uso":a.medications||"",
+      "Fumante":a.smoking||"","Gestante":a.pregnancy||"","Procedimentos Anteriores":a.previousProcedures||"",
+      "Alergias (detalhe)":a.allergiesDetail||"","Contraindicações":a.contraindications||"",
+      "Alertas Importantes":Array.isArray(a.importantAlerts)?a.importantAlerts.join("; "):(a.importantAlerts||""),
+    };
+  });
+
+  const wb=XLSX.utils.book_new();
+  const wsPac=XLSX.utils.json_to_sheet(pacientes.length?pacientes:[{"Nome":""}]);
+  wsPac["!cols"]=[{wch:26},{wch:8},{wch:12},{wch:16},{wch:24},{wch:16},{wch:12},{wch:14},{wch:12},{wch:18},{wch:14},{wch:14},{wch:24}];
+  XLSX.utils.book_append_sheet(wb,wsPac,"Pacientes");
+
+  const wsSess=XLSX.utils.json_to_sheet(sessoes.length?sessoes:[{"Paciente":""}]);
+  wsSess["!cols"]=[{wch:24},{wch:12},{wch:24},{wch:18},{wch:14},{wch:18},{wch:16},{wch:18},{wch:30}];
+  XLSX.utils.book_append_sheet(wb,wsSess,"Sessões");
+
+  const wsAna=XLSX.utils.json_to_sheet(anamnese.length?anamnese:[{"Paciente":""}]);
+  wsAna["!cols"]=[{wch:24},{wch:14},{wch:12},{wch:30},{wch:24},{wch:12},{wch:12},{wch:24},{wch:30},{wch:24},{wch:24}];
+  XLSX.utils.book_append_sheet(wb,wsAna,"Anamnese");
+
+  const fileName=`Pacientes_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.xlsx`;
+  XLSX.writeFile(wb,fileName);
+  return{pacientesCount:pacientes.length,sessoesCount:sessoes.length,fileName};
+}
+
 
 async function generatePatientDossier(patient,{products,settings}={}){
   const jsPDFCtor=await loadJsPDF();
@@ -3729,8 +3795,16 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   const[search,setSearch]=useState("");
   const[filter,setFilter]=useState("all");
   const[showNew,setShowNew]=useState(false);
+  const[exportingExcel,setExportingExcel]=useState(false);
   const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active",origem:"nova",indicadoPor:""};
   const[form,setForm]=useState(blank);
+  async function handleExportExcel(){
+    setExportingExcel(true);
+    try{
+      await generatePacientesExcel(patients);
+    }catch(e){ alert(e.message||"Erro ao gerar o Excel. Tente novamente."); }
+    finally{ setExportingExcel(false); }
+  }
   function calcAgeFromBirth(dateStr){if(!dateStr)return"";const bd=new Date(dateStr+"T12:00");if(isNaN(bd))return"";const t=new Date();let age=t.getFullYear()-bd.getFullYear();const m=t.getMonth()-bd.getMonth();if(m<0||(m===0&&t.getDate()<bd.getDate()))age--;return age>=0?String(age):"";}
   function fvBirth(v){setForm(p=>({...p,birthDate:v,age:calcAgeFromBirth(v)}));}
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
@@ -3758,7 +3832,10 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
     setPatients(prev=>[...prev,{...np,origem:form.origem||"nova",indicadoPor:form.indicadoPor||""}]);setShowNew(false);setForm(blank);setProfPhoto(null);
   }
   return h("div",null,
-    h(SectionHeader,{title:"Pacientes",sub:`${patients.length} pacientes cadastrados`,action:h(Btn,{onClick:()=>setShowNew(true)},"＋ Novo Paciente")}),
+    h(SectionHeader,{title:"Pacientes",sub:`${patients.length} pacientes cadastrados`,action:h("div",{style:{display:"flex",gap:8}},
+      h(Btn,{variant:"ghost",onClick:handleExportExcel,disabled:exportingExcel,style:{fontSize:12,padding:"8px 16px"}},exportingExcel?"Gerando...":"📊 Exportar Excel"),
+      h(Btn,{onClick:()=>setShowNew(true)},"＋ Novo Paciente")
+    )}),
     h("div",{style:{display:"flex",gap:12,marginBottom:18,alignItems:"center",flexWrap:"wrap"}},
       h("input",{value:search,onChange:e=>setSearch(e.target.value),placeholder:"🔍 Buscar por nome, telefone, CPF...",style:{...IS,flex:1,minWidth:200,padding:"8px 14px"}}),
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},filtersBtns.map(fi=>h("button",{key:fi.k,onClick:()=>setFilter(fi.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filter===fi.k?P.rose:"transparent",border:`1px solid ${filter===fi.k?P.rose:P.border}`,color:filter===fi.k?P.accent3:P.text2}},fi.l)))
