@@ -6162,7 +6162,7 @@ function FluxoCaixaProjetado({patients=[],incomes=[],expenses=[],recurringExpens
     .map(e=>({iso:parseAnyDate(e.date).toISOString().slice(0,10),value:-Number(e.value||0),label:e.desc||"Despesa",cat:e.cat,source:"despesa_futura"}));
 
   // Monta projeção
-  const projection=React.useMemo(()=>{
+  const projection=useMemo(()=>{
     const recurrents=futureRecurring(horizon);
     const endISO=addDays(todayISO,horizon);
     const allEvents=[
