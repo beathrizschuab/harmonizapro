@@ -8119,7 +8119,6 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   function updateFaixa(i,key,val){setMaqForm(p=>({...p,taxas:p.taxas.map((f,fi)=>fi===i?{...f,[key]:val}:f)}));}
   function addFaixa(){setMaqForm(p=>({...p,taxas:[...(p.taxas||[]),{faixaLabel:"",de:2,ate:3,taxa:0}]}));}
   function delFaixa(i){setMaqForm(p=>({...p,taxas:p.taxas.filter((_,fi)=>fi!==i)}));}
-  const cats=Array.isArray(procCats)&&procCats.length>0?procCats:["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios / Lifting","Skincare Clínico","Avaliação / Consultoria","Outros"];
   function addCat(){const t=newCat.trim();if(t&&!cats.includes(t)){setProcCats([...cats,t]);setNewCat("");setNewCatIcon("🩺");}}
   function delCat(cat){
     if(procedures.map(p=>typeof p==="object"?p.categoria:"").includes(cat)){
