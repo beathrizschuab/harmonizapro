@@ -5852,6 +5852,24 @@ function parseAnyDate(s){
   if(s.includes("-")){return new Date(s+"T12:00:00");}
   return null;
 }
+// ─── VENCIMENTO / ATRASO (Contas a Pagar & Receber) ───────────────────────────
+// Calcula a situação de vencimento de uma conta (despesa, entrada extra ou sessão pendente).
+// Retorna null se não houver data de vencimento válida. Caso contrário: {dias, label, color, atrasado}
+// dias > 0 = dias de atraso · dias === 0 = vence hoje · dias < 0 = ainda vai vencer (|dias| dias restantes)
+function venceStatus(dueDateStr){
+  const due=parseAnyDate(dueDateStr);
+  if(!due)return null;
+  const today=new Date(); today.setHours(12,0,0,0);
+  due.setHours(12,0,0,0);
+  const dias=Math.round((today-due)/864e5);
+  if(dias>0)return{dias,atrasado:true,label:`Vencido há ${dias}d`,color:P.red,bg:"rgba(192,112,112,.14)"};
+  if(dias===0)return{dias,atrasado:false,label:"Vence hoje",color:P.yellow,bg:"rgba(196,169,106,.16)"};
+  const faltam=-dias;
+  if(faltam<=7)return{dias,atrasado:false,label:`Vence em ${faltam}d`,color:P.yellow,bg:"rgba(196,169,106,.1)"};
+  return{dias,atrasado:false,label:`Vence em ${faltam}d`,color:P.text3,bg:P.bg3};
+}
+// Considera "pendente" qualquer conta cujo status financeiro ainda não foi resolvido (nem Pago nem Cancelado)
+function isContaPendente(statusOrFinStatus){ return statusOrFinStatus&&statusOrFinStatus!=="Pago"&&statusOrFinStatus!=="Cancelado"; }
 // Monta a data (YYYY-MM-DD) do lançamento de uma regra recorrente num mês/ano específico,
 // respeitando o dia configurado e ajustando para o último dia do mês quando necessário (ex: dia 31 em fevereiro)
 function recurringDateFor(rule,year,month){
@@ -5899,7 +5917,8 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
   const[editInc,setEditInc]=useState(null);
   const[editRecurring,setEditRecurring]=useState(null);
   const[finTab,setFinTab]=useState("entradas");
-  const[viewTab,setViewTab]=useState("resumo"); // resumo | fluxo
+  const[viewTab,setViewTab]=useState("resumo"); // resumo | fluxo | dre | inadimplencia | recorrentes | margem | vencimentos
+  const[vencFiltro,setVencFiltro]=useState("todas"); // todas | pagar | receber
   const[exportingPdf,setExportingPdf]=useState(false);
   const[showExportExcel,setShowExportExcel]=useState(false);
   const[exportingExcel,setExportingExcel]=useState(false);
@@ -5911,8 +5930,8 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
   const[excelYear,setExcelYear]=useState(now.getFullYear());
   const[excelDateFrom,setExcelDateFrom]=useState("");
   const[excelDateTo,setExcelDateTo]=useState("");
-  const blankExp={desc:"",date:"",cat:"Outros",value:"",status:"Pago",notes:"",parcelas:"",taxaMaq:"",isRecurring:false,dayOfMonth:String(now.getDate())};
-  const blankInc={desc:"",date:"",cat:"Sessão",value:"",payMethod:"Pix",status:"Pago",notes:"",parcelas:"1",taxaMaq:"",patientName:""};
+  const blankExp={desc:"",date:"",dueDate:"",cat:"Outros",value:"",status:"Pago",notes:"",parcelas:"",taxaMaq:"",isRecurring:false,dayOfMonth:String(now.getDate())};
+  const blankInc={desc:"",date:"",dueDate:"",cat:"Sessão",value:"",payMethod:"Pix",status:"Pago",notes:"",parcelas:"1",taxaMaq:"",patientName:""};
   const[form,setForm]=useState(blankExp);
   const[incForm,setIncForm]=useState(blankInc);
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
@@ -6022,6 +6041,15 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
   const margemBruta=received-monthCostProdutos;
   const margemBrutaPct=received>0?Math.round((margemBruta/received)*100):0;
 
+  // ── Alerta global de vencidas (independe do mês selecionado) ───────────
+  const expensesVencidas=expenses.filter(e=>isContaPendente(e.status)&&venceStatus(e.dueDate||e.date)?.atrasado);
+  const receberVencidas=[
+    ...allS.filter(s=>!s.paid&&s.finStatus!=="Cancelado"),
+    ...incomes.filter(i=>!i.sessRef&&isContaPendente(i.status)),
+  ].filter(c=>venceStatus(c.dueDate||c.date)?.atrasado);
+  const totalPagarVencidoGlobal=expensesVencidas.reduce((a,e)=>a+Number(e.value||0),0);
+  const totalReceberVencidoGlobal=receberVencidas.reduce((a,c)=>a+Number(c.value||0),0);
+
   // ── Receita do mês anterior (para % de variação na meta) ──
   const prevMNum=selMonth===0?11:selMonth-1;
   const prevMYear=selMonth===0?selYear-1:selYear;
@@ -6069,6 +6097,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
 
   function toggleFinStatus(pid,sid,newSt){setPatients(prev=>prev.map(p=>p.id!==pid?p:{...p,sessions:(p.sessions||[]).map(s=>s.id!==sid?s:{...s,finStatus:newSt,paid:newSt==="Pago"})}));}
   function saveExp(){
+    const dueDate=form.dueDate||form.date;
     // Despesa marcada como recorrente: cria/atualiza a REGRA, e lança o mês corrente (se ainda não existir)
     if(form.isRecurring&&!editExp){
       const rule={
@@ -6085,9 +6114,9 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       const novas=generateRecurringExpenses([rule],expenses,new Date());
       if(novas.length>0)setExpenses(prev=>[...prev,...novas]);
     }else if(editExp){
-      setExpenses(prev=>prev.map(e=>e.id===editExp.id?{...e,...form,value:Number(form.value)||0}:e));
+      setExpenses(prev=>prev.map(e=>e.id===editExp.id?{...e,...form,dueDate,value:Number(form.value)||0}:e));
     }else{
-      setExpenses(prev=>[...prev,{...form,id:Date.now(),value:Number(form.value)||0}]);
+      setExpenses(prev=>[...prev,{...form,dueDate,id:Date.now(),value:Number(form.value)||0}]);
     }
     setShowNewExp(false);setEditExp(null);setForm(blankExp);
   }
@@ -6103,7 +6132,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     const tax=Number(incForm.taxaMaq)||0;
     const gross=Number(incForm.value)||0;
     const net=incForm.payMethod==="Cartão Crédito"?gross*(1-tax/100):gross;
-    const entry={...incForm,id:Date.now(),value:gross,netValue:net,paid:incForm.status==="Pago"};
+    const entry={...incForm,dueDate:incForm.dueDate||incForm.date,id:Date.now(),value:gross,netValue:net,paid:incForm.status==="Pago"};
     if(editInc)setIncomes(prev=>prev.map(i=>i.id===editInc.id?entry:i));
     else setIncomes(prev=>[...prev,entry]);
     setShowNewInc(false);setEditInc(null);setIncForm(blankInc);
@@ -6162,6 +6191,21 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       h(Btn,{variant:"ghost",onClick:handleExportPDF,disabled:exportingPdf,style:{fontSize:12,padding:"8px 16px"}},exportingPdf?"Gerando...":"📄 Exportar PDF")
     )}),
 
+    (totalPagarVencidoGlobal>0||totalReceberVencidoGlobal>0)&&h("div",{onClick:()=>{setViewTab("vencimentos");},style:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"12px 16px",marginBottom:18,background:"rgba(192,112,112,.08)",border:`1px solid rgba(192,112,112,.35)`,borderRadius:12,cursor:"pointer"}},
+      h("div",{style:{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}},
+        h("span",{style:{fontSize:18}},"⚠"),
+        h("div",null,
+          h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},"Contas vencidas precisam de atenção"),
+          h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},
+            totalPagarVencidoGlobal>0&&`A pagar: ${fmtCurr(totalPagarVencidoGlobal)} (${expensesVencidas.length})`,
+            totalPagarVencidoGlobal>0&&totalReceberVencidoGlobal>0&&"  ·  ",
+            totalReceberVencidoGlobal>0&&`A receber: ${fmtCurr(totalReceberVencidoGlobal)} (${receberVencidas.length})`
+          )
+        )
+      ),
+      h("span",{style:{fontSize:12,color:P.red,fontWeight:600,whiteSpace:"nowrap"}},"Ver Vencimentos →")
+    ),
+
     // ── Navegador de mês ──────────────────────────────────────────────────
     h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:20,padding:"10px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12}},
       h("button",{onClick:prevMonth,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"←"),
@@ -6201,6 +6245,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       h("button",{onClick:()=>setViewTab("fluxo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="fluxo"?P.rose:"transparent",border:`1px solid ${viewTab==="fluxo"?P.rose:P.border}`,color:viewTab==="fluxo"?P.accent3:P.text2}},"💵 Fluxo de Caixa"),
 
       h("button",{onClick:()=>setViewTab("dre"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="dre"?P.rose:"transparent",border:`1px solid ${viewTab==="dre"?P.rose:P.border}`,color:viewTab==="dre"?P.accent3:P.text2}},"📊 DRE & Pagamentos"),
+      h("button",{onClick:()=>setViewTab("vencimentos"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="vencimentos"?P.rose:"transparent",border:`1px solid ${viewTab==="vencimentos"?P.rose:P.border}`,color:viewTab==="vencimentos"?P.accent3:P.text2}},"📅 Vencimentos"),
       h("button",{onClick:()=>setViewTab("inadimplencia"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="inadimplencia"?P.rose:"transparent",border:`1px solid ${viewTab==="inadimplencia"?P.rose:P.border}`,color:viewTab==="inadimplencia"?P.accent3:P.text2}},"⚠ Inadimplência"),
       h("button",{onClick:()=>setViewTab("recorrentes"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="recorrentes"?P.rose:"transparent",border:`1px solid ${viewTab==="recorrentes"?P.rose:P.border}`,color:viewTab==="recorrentes"?P.accent3:P.text2}},`🔁 Recorrentes${recurringExpenses.length?` (${recurringExpenses.length})`:""}`),
       h("button",{onClick:()=>setViewTab("margem"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="margem"?P.rose:"transparent",border:`1px solid ${viewTab==="margem"?P.rose:P.border}`,color:viewTab==="margem"?P.accent3:P.text2}},"📐 Margem por Procedimento")
@@ -6301,8 +6346,16 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
         )),
         filteredIncomesExtra.length>0&&h("div",null,
           h("div",{style:{fontSize:11,color:P.text3,margin:"10px 0 6px"}},"＋ Entradas extras (não vinculadas a sessões):"),
-          filteredIncomesExtra.map((inc,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
-            h("div",null,h("div",{style:{fontSize:13,color:P.text}},inc.desc||inc.patientName||"Entrada"),h("div",{style:{fontSize:11,color:P.text3}},`${inc.date} · ${inc.payMethod}${inc.payMethod==="Cartão Crédito"&&inc.parcelas>1?" · "+inc.parcelas+"x":""}`)),
+          filteredIncomesExtra.map((inc,i)=>{
+            const venc=isContaPendente(inc.status)?venceStatus(inc.dueDate||inc.date):null;
+            return h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
+            h("div",null,
+              h("div",{style:{fontSize:13,color:P.text}},inc.desc||inc.patientName||"Entrada"),
+              h("div",{style:{fontSize:11,color:P.text3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
+                `${inc.date} · ${inc.payMethod}${inc.payMethod==="Cartão Crédito"&&inc.parcelas>1?" · "+inc.parcelas+"x":""}`,
+                venc&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:venc.bg,color:venc.color,fontWeight:600}},venc.label)
+              )
+            ),
             h("div",{style:{display:"flex",alignItems:"center",gap:8}},
               h("div",null,
                 h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:inc.status==="Pago"?P.green:P.yellow}},fmtCurr(inc.value)),
@@ -6312,7 +6365,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
               h("button",{onClick:()=>openEditInc(inc),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"✎"),
               h("button",{onClick:()=>delInc(inc.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
             )
-          ))
+          );})
         )
       ),
       h(Card,null,
@@ -6321,14 +6374,22 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
           h(Btn,{onClick:()=>{setEditExp(null);setForm(blankExp);setShowNewExp(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Despesa")
         ),
         filteredExpenses.length===0&&h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"10px 0"}},"Nenhuma despesa no período"),
-        filteredExpenses.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((e,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${P.border}`}},
-          h("div",null,h("div",{style:{fontSize:13,color:P.text}},e.desc),h("div",{style:{fontSize:11,color:P.text3}},`${e.date} · ${e.cat}`)),
+        filteredExpenses.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((e,i)=>{
+          const venc=isContaPendente(e.status)?venceStatus(e.dueDate||e.date):null;
+          return h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${P.border}`}},
+          h("div",null,
+            h("div",{style:{fontSize:13,color:P.text}},e.desc),
+            h("div",{style:{fontSize:11,color:P.text3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
+              `${e.date} · ${e.cat}`,
+              venc&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:venc.bg,color:venc.color,fontWeight:600}},venc.label)
+            )
+          ),
           h("div",{style:{display:"flex",alignItems:"center",gap:8}},
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.red}},`− ${fmtCurr(e.value)}`),
             h("button",{onClick:()=>openEditExp(e),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"✎"),
             h("button",{onClick:()=>delExp(e.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
           )
-        )),
+        );}),
         h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:P.text3}},"Total no período"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.red}},`− ${fmtCurr(filteredExpenses.reduce((a,e)=>a+Number(e.value||0),0))}`))
       )
     ),
@@ -6609,6 +6670,85 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       );
     })(),
 
+    viewTab==="vencimentos"&&(()=>{
+      // Unifica Contas a Pagar (despesas pendentes) e Contas a Receber (sessões + entradas extras pendentes),
+      // de TODOS os períodos (não só do mês selecionado) — o que importa aqui é a data de vencimento, não o mês de lançamento.
+      const pagar=expenses.filter(e=>isContaPendente(e.status)).map(e=>({tipo:"pagar",id:"exp_"+e.id,desc:e.desc||e.cat||"Despesa",sub:e.cat,value:Number(e.value)||0,dueDate:e.dueDate||e.date,raw:e}));
+      const receberSessoes=allS.filter(s=>!s.paid&&s.finStatus!=="Cancelado").map(s=>({tipo:"receber",id:"sess_"+s.id,desc:`${s.pname} — ${s.procedure}`,sub:s.pname,value:Number(s.value)||0,dueDate:s.dueDate||s.date,raw:s}));
+      const receberExtra=incomes.filter(i=>!i.sessRef&&isContaPendente(i.status)).map(i=>({tipo:"receber",id:"inc_"+i.id,desc:i.desc||i.patientName||"Entrada",sub:i.patientName,value:Number(i.value)||0,dueDate:i.dueDate||i.date,raw:i}));
+      let contas=[...pagar,...receberSessoes,...receberExtra].map(c=>({...c,venc:venceStatus(c.dueDate)}));
+      if(vencFiltro!=="todas")contas=contas.filter(c=>c.tipo===vencFiltro);
+      // Ordena: vencidas primeiro (mais atrasada primeiro), depois vence hoje/a vencer por proximidade, sem data por último
+      contas.sort((a,b)=>{
+        const da=a.venc?a.venc.dias:-99999, db=b.venc?b.venc.dias:-99999;
+        return db-da;
+      });
+      const totalPagarVencido=pagar.filter(c=>venceStatus(c.dueDate)?.atrasado).reduce((a,c)=>a+c.value,0);
+      const totalReceberVencido=[...receberSessoes,...receberExtra].filter(c=>venceStatus(c.dueDate)?.atrasado).reduce((a,c)=>a+c.value,0);
+      const totalPagar=pagar.reduce((a,c)=>a+c.value,0);
+      const totalReceber=[...receberSessoes,...receberExtra].reduce((a,c)=>a+c.value,0);
+      const qtdVencidas=contas.filter(c=>c.venc?.atrasado).length;
+
+      function marcarComoPago(c){
+        if(c.tipo==="pagar"){
+          setExpenses(prev=>prev.map(e=>e.id===c.raw.id?{...e,status:"Pago"}:e));
+        }else if(c.id.startsWith("sess_")){
+          toggleFinStatus(c.raw.pid,c.raw.id,"Pago");
+        }else{
+          setIncomes(prev=>prev.map(i=>i.id===c.raw.id?{...i,status:"Pago",paid:true}:i));
+        }
+      }
+
+      return h("div",null,
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:18}},
+          [
+            {l:"A Pagar (total)",v:fmtCurr(totalPagar),c:P.text},
+            {l:"A Pagar Vencido",v:fmtCurr(totalPagarVencido),c:totalPagarVencido>0?P.red:P.green},
+            {l:"A Receber (total)",v:fmtCurr(totalReceber),c:P.text},
+            {l:"A Receber Vencido",v:fmtCurr(totalReceberVencido),c:totalReceberVencido>0?P.red:P.green}
+          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:k.c}},k.v)
+          ))
+        ),
+        qtdVencidas>0&&h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(192,112,112,.1)",border:"1px solid rgba(192,112,112,.3)",borderRadius:10,marginBottom:16,fontSize:12,color:P.red}},
+          `⚠ ${qtdVencidas} conta${qtdVencidas>1?"s":""} vencida${qtdVencidas>1?"s":""} no filtro atual. Revise abaixo.`
+        ),
+        h("div",{style:{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}},
+          [{k:"todas",l:"Todas"},{k:"pagar",l:"↓ A Pagar"},{k:"receber",l:"↑ A Receber"}].map(f=>
+            h("button",{key:f.k,onClick:()=>setVencFiltro(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:vencFiltro===f.k?P.rose:"transparent",border:`1px solid ${vencFiltro===f.k?P.rose:P.border}`,color:vencFiltro===f.k?P.accent3:P.text2}},f.l)
+          )
+        ),
+        contas.length===0
+          ?h(Card,{style:{textAlign:"center",padding:40}},
+              h("div",{style:{fontSize:32,marginBottom:12}},"✓"),
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.green,marginBottom:6}},"Nenhuma conta pendente"),
+              h("div",{style:{fontSize:13,color:P.text3}},"Tudo pago e recebido neste filtro.")
+            )
+          :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+              contas.map(c=>h(Card,{key:c.id,style:{padding:"12px 16px",border:c.venc?.atrasado?`1px solid ${P.red}55`:`1px solid ${P.border}`}},
+                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}},
+                  h("div",{style:{minWidth:0,flex:1}},
+                    h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}},
+                      h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:20,background:c.tipo==="pagar"?"rgba(192,112,112,.12)":"rgba(122,173,138,.12)",color:c.tipo==="pagar"?P.red:P.green,fontWeight:600}},c.tipo==="pagar"?"↓ Pagar":"↑ Receber"),
+                      h("span",{style:{fontSize:13,color:P.text,fontWeight:500}},c.desc)
+                    ),
+                    h("div",{style:{fontSize:11,color:P.text3,marginTop:3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
+                      c.sub&&h("span",null,c.sub),
+                      h("span",null,"Venc: "+(c.dueDate?(parseAnyDate(c.dueDate)?.toLocaleDateString("pt-BR")||c.dueDate):"—")),
+                      c.venc&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:c.venc.bg,color:c.venc.color,fontWeight:600}},c.venc.label)
+                    )
+                  ),
+                  h("div",{style:{display:"flex",alignItems:"center",gap:10,flexShrink:0}},
+                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:c.tipo==="pagar"?P.red:P.green}},(c.tipo==="pagar"?"− ":"+ ")+fmtCurr(c.value)),
+                    h("button",{onClick:()=>marcarComoPago(c),style:{fontSize:11,color:P.green,background:"rgba(122,173,138,.1)",border:"1px solid rgba(122,173,138,.3)",borderRadius:7,padding:"5px 10px",cursor:"pointer",whiteSpace:"nowrap"}},"✓ Marcar pago")
+                  )
+                )
+              ))
+            )
+      );
+    })(),
+
     viewTab==="margem"&&(()=>{
       // Junta sessões realizadas/pagas do mês selecionado com o custo real de cada sessão
       // (produto injetável principal + insumos/descartáveis da ficha técnica, via sessionCost)
@@ -6707,6 +6847,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
         h(Field,{label:"Descrição"},h(Inp,{value:incForm.desc,onChange:ifv("desc"),placeholder:"Ex: Consultoria avulsa, Venda produto..."})),
         h(Field,{label:"Paciente (opcional)",half:true},h(Inp,{value:incForm.patientName,onChange:ifv("patientName"),placeholder:"Nome da paciente"})),
         h(Field,{label:"Data",half:true},h(Inp,{type:"date",value:incForm.date,onChange:ifv("date")})),
+        h(Field,{label:"Vencimento",half:true},h(Inp,{type:"date",value:incForm.dueDate||incForm.date,onChange:ifv("dueDate")})),
         h(Field,{label:"Categoria",half:true},h(Sel,{value:incForm.cat,onChange:ifv("cat"),options:["Sessão","Produto","Consultoria","Evento","Outro"]})),
         h(Field,{label:"Forma de Pagamento",half:true},h(Sel,{value:incForm.payMethod,onChange:ifv("payMethod"),options:PAY_METHODS})),
         h(Field,{label:"Valor Bruto (R$)",half:true},h(Inp,{value:incForm.value,onChange:ifv("value"),placeholder:"0,00"})),
@@ -6729,6 +6870,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Descrição"},h(Inp,{value:form.desc,onChange:fv("desc"),placeholder:"Ex: Aluguel Barra Olímpica"})),
         h(Field,{label:form.isRecurring?"A partir de":"Data",half:true},h(Inp,{type:"date",value:form.date,onChange:fv("date")})),
+        !form.isRecurring&&h(Field,{label:"Vencimento",half:true},h(Inp,{type:"date",value:form.dueDate||form.date,onChange:fv("dueDate")})),
         h(Field,{label:"Categoria",half:true},h(Sel,{value:form.cat,onChange:fv("cat"),options:EXPENSE_CATS})),
         h(Field,{label:"Valor (R$)",half:true},h(Inp,{value:form.value,onChange:fv("value"),placeholder:"0,00"})),
         !form.isRecurring&&h(Field,{label:"Status",half:true},h(Sel,{value:form.status,onChange:fv("status"),options:["Pago","Pendente","Cancelado"]})),
