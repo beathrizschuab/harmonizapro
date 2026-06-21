@@ -6086,6 +6086,258 @@ function generateRecurringExpenses(rules=[],existingExpenses=[],refDate=new Date
   return novas;
 }
 
+// ─── FLUXO DE CAIXA PROJETADO ─────────────────────────────────────────────────
+function FluxoCaixaProjetado({patients=[],incomes=[],expenses=[],recurringExpenses=[],maquininhas=[],saldoFinal=0,selMonth,selYear}){
+  const h=createElement;
+  const[horizon,setHorizon]=useState(30);
+  const[showDetail,setShowDetail]=useState(null);
+
+  const fmtCurr2=v=>"R$\u00a0"+Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtDateFull=iso=>{if(!iso)return"—";const[y,m,d]=iso.split("-");return`${d}/${m}/${y}`;};
+  const addDays=(iso,n)=>{const d=new Date(iso+"T12:00:00");d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);};
+  const today=new Date();today.setHours(12,0,0,0);
+  const todayISO=today.toISOString().slice(0,10);
+
+  const allSessions=patients.flatMap(p=>(p.sessions||[]).map(s=>({...s,pname:p.name})));
+
+  // Sazonalidade histórica
+  const seasonAvg=Array.from({length:12},(_,m)=>{
+    const sInM=allSessions.filter(s=>{const d=parseAnyDate(s.date);return d&&d.getMonth()===m&&s.paid;});
+    const yearsWithData=new Set(sInM.map(s=>parseAnyDate(s.date).getFullYear()));
+    const total=sInM.reduce((a,s)=>a+Number(s.value||0),0);
+    return{m,avg:yearsWithData.size>0?total/yearsWithData.size:0,n:yearsWithData.size};
+  });
+  const globalAvgMonthly=seasonAvg.reduce((a,s)=>a+s.avg,0)/12||1;
+  const seasonIndex=m=>globalAvgMonthly>0?seasonAvg[m].avg/globalAvgMonthly:1;
+
+  // Média dos últimos 3 meses completos
+  const last3Avg=(()=>{
+    const vals=Array.from({length:3},(_,i)=>{
+      const d=new Date(selYear,selMonth-1-i,1);
+      const mm=d.getMonth(),yy=d.getFullYear();
+      return allSessions.filter(s=>{const dt=parseAnyDate(s.date);return dt&&dt.getMonth()===mm&&dt.getFullYear()===yy&&s.paid;}).reduce((a,s)=>a+Number(s.value||0),0);
+    });
+    return vals.reduce((a,v)=>a+v,0)/3||0;
+  })();
+
+  // Parcelas maquininha futuras
+  const maqDeposits=incomes.flatMap(inc=>{
+    if(!inc.maqDeposits||!Array.isArray(inc.maqDeposits))return[];
+    return inc.maqDeposits.filter(dep=>dep.data&&dep.data>todayISO).map(dep=>({
+      iso:dep.data,value:Number(dep.liquido||dep.valor||0),
+      label:`Parcela ${dep.n||""}/${inc.parcelas||"?"} — ${inc.desc||inc.patientName||"Entrada"}`,
+      source:"maquininha",
+    }));
+  });
+
+  // Despesas recorrentes futuras
+  function futureRecurring(hz){
+    const result=[];
+    const activeRules=(recurringExpenses||[]).filter(r=>r.active!==false);
+    activeRules.forEach(rule=>{
+      for(let offset=0;offset<=3;offset++){
+        const d=new Date(today.getFullYear(),today.getMonth()+offset,1);
+        const yr=d.getFullYear(),mo=d.getMonth();
+        const lastDay=new Date(yr,mo+1,0).getDate();
+        const day=Math.min(Number(rule.dayOfMonth)||1,lastDay);
+        const iso=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+        if(iso<=todayISO)continue;
+        if(iso>addDays(todayISO,hz))continue;
+        const jaExiste=expenses.some(e=>e.recurringId===rule.id&&e.recurringMonth===mo&&e.recurringYear===yr);
+        if(jaExiste)continue;
+        result.push({iso,value:-Number(rule.value||0),label:rule.desc||"Despesa recorrente",cat:rule.cat||"Outros",source:"recorrente"});
+      }
+    });
+    return result;
+  }
+
+  // Sessões futuras já lançadas
+  const futureSessions=allSessions.filter(s=>{
+    const dt=parseAnyDate(s.date);
+    return dt&&dt>today&&(!s.finStatus||s.finStatus==="Pendente"||s.finStatus==="Aguardando");
+  }).map(s=>({iso:parseAnyDate(s.date).toISOString().slice(0,10),value:Number(s.value||0),label:`${s.pname} — ${s.procedure}`,source:"sessao_futura"}));
+
+  // Despesas futuras cadastradas
+  const futureExpenses=expenses.filter(e=>{const dt=parseAnyDate(e.date);return dt&&dt>today&&e.status!=="Cancelado";})
+    .map(e=>({iso:parseAnyDate(e.date).toISOString().slice(0,10),value:-Number(e.value||0),label:e.desc||"Despesa",cat:e.cat,source:"despesa_futura"}));
+
+  // Monta projeção
+  const projection=React.useMemo(()=>{
+    const recurrents=futureRecurring(horizon);
+    const endISO=addDays(todayISO,horizon);
+    const allEvents=[
+      ...maqDeposits.filter(d=>d.iso<=endISO),
+      ...recurrents,
+      ...futureSessions.filter(s=>s.iso<=endISO),
+      ...futureExpenses.filter(e=>e.iso<=endISO),
+    ].sort((a,b)=>a.iso.localeCompare(b.iso));
+
+    const byDay={};
+    allEvents.forEach(ev=>{if(!byDay[ev.iso])byDay[ev.iso]=[];byDay[ev.iso].push(ev);});
+
+    let running=saldoFinal;
+    const days=[];
+    for(let i=1;i<=horizon;i++){
+      const iso=addDays(todayISO,i);
+      const events=byDay[iso]||[];
+      const m=new Date(iso+"T12:00:00").getMonth();
+      const dow=new Date(iso+"T12:00:00").getDay();
+      const isWeekend=dow===0||dow===6;
+      const dailyBase=isWeekend?0:(last3Avg*seasonIndex(m))/22;
+      const hasRealSession=events.some(ev=>ev.source==="sessao_futura");
+      const sazonValue=hasRealSession?0:dailyBase;
+      const entradas=events.filter(ev=>ev.value>0).reduce((a,ev)=>a+ev.value,0)+sazonValue;
+      const saidas=events.filter(ev=>ev.value<0).reduce((a,ev)=>a+Math.abs(ev.value),0);
+      running+=entradas-saidas;
+      days.push({iso,entradas,saidas,dayNet:entradas-saidas,saldo:running,events,sazonValue,hasRealData:events.length>0});
+    }
+    return days;
+  },[horizon,saldoFinal,allSessions.length,expenses.length,incomes.length,recurringExpenses?.length]);
+
+  const totalEntradas=projection.reduce((a,d)=>a+d.entradas,0);
+  const totalSaidas=projection.reduce((a,d)=>a+d.saidas,0);
+  const saldoH30=projection[29]?.saldo??saldoFinal;
+  const saldoH60=projection[59]?.saldo??saldoFinal;
+  const saldoH90=projection[89]?.saldo??saldoFinal;
+  const saldoHorizon=projection[horizon-1]?.saldo??saldoFinal;
+  const diasNegativos=projection.filter(d=>d.saldo<0).length;
+  const minSaldo=Math.min(...projection.map(d=>d.saldo),0);
+  const maxSaldo=Math.max(...projection.map(d=>d.saldo),1);
+  const normSaldo=v=>((v-minSaldo)/(maxSaldo-minSaldo||1))*100;
+
+  const sourceLabel=src=>({maquininha:"💳 Depósito Maquininha",recorrente:"🔁 Despesa Recorrente",sessao_futura:"💉 Sessão Agendada",despesa_futura:"📋 Despesa Cadastrada"})[src]||src;
+  const sourceColor=src=>({maquininha:"#7aaed4",recorrente:P.red,sessao_futura:P.green,despesa_futura:P.red})[src]||P.text3;
+  const dowLabels=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+
+  return h("div",{style:{display:"flex",flexDirection:"column",gap:18}},
+    h(Card,null,
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}},
+        h("div",null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"🔮 Fluxo de Caixa Projetado"),
+          h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},"Saldo atual acumulado: ",h("span",{style:{color:saldoFinal>=0?P.green:P.red,fontWeight:600}},fmtCurr2(saldoFinal)))
+        ),
+        h("div",{style:{display:"flex",gap:8}},
+          [30,60,90].map(d=>h("button",{key:d,onClick:()=>setHorizon(d),style:{padding:"7px 18px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:horizon===d?P.rose:"transparent",border:`1px solid ${horizon===d?P.rose:P.border}`,color:horizon===d?P.accent3:P.text2}},d+"d"))
+        )
+      )
+    ),
+
+    diasNegativos>0&&h("div",{style:{padding:"12px 16px",borderRadius:12,background:"rgba(192,112,112,.08)",border:`1px solid rgba(192,112,112,.35)`,display:"flex",alignItems:"center",gap:12}},
+      h("span",{style:{fontSize:22}},"⚠"),
+      h("div",null,
+        h("div",{style:{fontSize:13,fontWeight:600,color:P.red}},`${diasNegativos} dia${diasNegativos>1?"s":""} com saldo negativo projetado nos próximos ${horizon} dias`),
+        h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Revise despesas recorrentes ou antecipe cobranças de sessões pendentes.")
+      )
+    ),
+
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}},
+      [{l:`Entradas projetadas (${horizon}d)`,v:fmtCurr2(totalEntradas),c:P.green},{l:`Saídas projetadas (${horizon}d)`,v:fmtCurr2(totalSaidas),c:P.red},{l:`Saldo projetado em ${horizon}d`,v:fmtCurr2(saldoHorizon),c:saldoHorizon>=0?P.green:P.red},{l:"Dias c/ saldo negativo",v:String(diasNegativos),c:diasNegativos>0?P.red:P.green}]
+        .map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:k.c}},k.v)))
+    ),
+
+    h(Card,null,
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:16}},"Evolução do Saldo Projetado"),
+      h("div",{style:{display:"flex",gap:16,marginBottom:14,flexWrap:"wrap"}},
+        [{label:"30d",val:saldoH30},{label:"60d",val:saldoH60},{label:"90d",val:saldoH90}]
+          .filter((_,i)=>i<horizon/30)
+          .map(({label,val})=>h("div",{key:label,style:{padding:"8px 14px",borderRadius:10,background:val>=0?"rgba(122,173,138,.1)":"rgba(192,112,112,.1)",border:`1px solid ${val>=0?P.green:P.red}33`}},
+            h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".06em"}},label),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:val>=0?P.green:P.red}},fmtCurr2(val))
+          ))
+      ),
+      h("div",{style:{position:"relative",height:120}},
+        h("svg",{width:"100%",height:120,viewBox:`0 0 ${horizon*8} 100`,preserveAspectRatio:"none",style:{display:"block"}},
+          minSaldo<0&&h("line",{x1:0,y1:100-normSaldo(0),x2:horizon*8,y2:100-normSaldo(0),stroke:P.border,strokeWidth:0.5,strokeDasharray:"2,2"}),
+          h("polyline",{points:projection.map((d,i)=>`${i*8+4},${100-normSaldo(d.saldo)}`).join(" "),fill:"none",stroke:P.rose,strokeWidth:1.5}),
+          projection.filter(d=>d.hasRealData).map((d,_)=>h("circle",{key:d.iso,cx:projection.indexOf(d)*8+4,cy:100-normSaldo(d.saldo),r:2,fill:d.saldo>=0?P.green:P.red})),
+        ),
+        h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:4,padding:"0 4px"}},
+          Array.from({length:Math.ceil(horizon/30)},(_,i)=>{const iso=addDays(todayISO,(i+1)*30);const d=new Date(iso+"T12:00:00");return h("span",{key:i,style:{fontSize:10,color:P.text3}},MONTH_NAMES[d.getMonth()].slice(0,3)+" "+d.getDate());})
+        )
+      )
+    ),
+
+    h(Card,null,
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:12}},"Composição da Projeção"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}},
+        [
+          {label:"Sessões futuras (prontuário)",icon:"💉",color:P.green,count:projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="sessao_futura").length,0),value:projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="sessao_futura").reduce((b,e)=>b+e.value,0),0)},
+          {label:"Depósitos maquininha agendados",icon:"💳",color:"#7aaed4",count:projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="maquininha").length,0),value:projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="maquininha").reduce((b,e)=>b+e.value,0),0)},
+          {label:"Receita estimada (sazonalidade)",icon:"📈",color:P.gold,count:projection.filter(d=>d.sazonValue>0).length,value:projection.reduce((a,d)=>a+d.sazonValue,0),note:`Base: ${fmtCurr2(last3Avg)}/mês × índice sazonal`},
+          {label:"Despesas recorrentes projetadas",icon:"🔁",color:P.red,count:projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="recorrente").length,0),value:-projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="recorrente").reduce((b,e)=>b+Math.abs(e.value),0),0)},
+          {label:"Despesas futuras cadastradas",icon:"📋",color:P.red,count:projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="despesa_futura").length,0),value:-projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="despesa_futura").reduce((b,e)=>b+Math.abs(e.value),0),0)},
+        ].map(src=>h("div",{key:src.label,style:{padding:"12px 14px",borderRadius:10,background:P.bg3,border:`1px solid ${P.border}`}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:6}},h("span",{style:{fontSize:18}},src.icon),h("span",{style:{fontSize:12.5,color:P.text,fontWeight:500}},src.label)),
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"baseline"}},
+            h("span",{style:{fontSize:11,color:P.text3}},src.count+" ocorrência"+(src.count!==1?"s":"")),
+            h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:src.value>=0?src.color:P.red}},fmtCurr2(src.value))
+          ),
+          src.note&&h("div",{style:{fontSize:10,color:P.text3,marginTop:4,fontStyle:"italic"}},src.note)
+        ))
+      )
+    ),
+
+    h(Card,null,
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:4}},"Linha do Tempo Detalhada"),
+      h("div",{style:{fontSize:11,color:P.text3,marginBottom:16}},"Clique em qualquer dia para ver o detalhe. Círculos no gráfico = dias com eventos reais."),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:3}},
+        projection.map(day=>{
+          const isOpen=showDetail===day.iso;
+          const hasAlert=day.saldo<0;
+          const dow=new Date(day.iso+"T12:00:00").getDay();
+          return h("div",{key:day.iso},
+            h("div",{onClick:()=>setShowDetail(isOpen?null:day.iso),style:{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,cursor:"pointer",background:hasAlert?"rgba(192,112,112,.06)":(day.hasRealData?P.bg3:"transparent"),border:`1px solid ${hasAlert?P.red+"44":(day.hasRealData?P.border:"transparent")}`}},
+              h("div",{style:{minWidth:72,flexShrink:0}},
+                h("div",{style:{fontSize:12.5,color:P.text,fontWeight:600}},fmtDateFull(day.iso)),
+                h("div",{style:{fontSize:10,color:P.text3}},dowLabels[dow])
+              ),
+              h("div",{style:{flex:1,display:"flex",gap:4,flexWrap:"wrap"}},
+                day.hasRealData
+                  ?[...new Set(day.events.map(e=>e.source))].map(src=>h("span",{key:src,style:{fontSize:10,padding:"2px 8px",borderRadius:10,background:sourceColor(src)+"22",color:sourceColor(src),border:`1px solid ${sourceColor(src)}44`}},sourceLabel(src).split(" ")[0]+" "+sourceLabel(src).split(" ")[1]))
+                  :h("span",{style:{fontSize:10,color:P.text3,fontStyle:"italic"}},"Estimativa sazonal")
+              ),
+              h("div",{style:{textAlign:"right",flexShrink:0}},
+                day.dayNet!==0&&h("div",{style:{fontSize:11,color:day.dayNet>=0?P.green:P.red}},(day.dayNet>=0?"+ ":"− ")+fmtCurr2(Math.abs(day.dayNet))),
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:day.saldo>=0?P.text:P.red}},fmtCurr2(day.saldo))
+              ),
+              h("span",{style:{fontSize:11,color:P.text3,flexShrink:0}},isOpen?"▲":"▼")
+            ),
+            isOpen&&h("div",{style:{padding:"10px 14px",marginBottom:2,marginTop:-2,background:P.card,border:`1px solid ${P.border}`,borderRadius:"0 0 8px 8px"}},
+              day.events.length>0&&h("div",{style:{marginBottom:8}},
+                h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6,fontWeight:600}},"Eventos"),
+                day.events.map((ev,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:`1px solid ${P.border}`}},
+                  h("div",null,h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:sourceColor(ev.source)+"22",color:sourceColor(ev.source),marginRight:6}},sourceLabel(ev.source).split(" ")[0]),h("span",{style:{color:P.text}},ev.label)),
+                  h("span",{style:{color:ev.value>=0?P.green:P.red,fontWeight:600}},(ev.value>=0?"+":"")+fmtCurr2(ev.value))
+                ))
+              ),
+              day.sazonValue>0&&h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",color:P.text3}},
+                h("span",null,"📈 Receita estimada (sazonalidade)"),h("span",{style:{color:P.gold}},"+"+fmtCurr2(day.sazonValue))
+              ),
+              h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:8,paddingTop:8,borderTop:`1px solid ${P.border}`,fontSize:12.5}},
+                h("div",{style:{display:"flex",gap:20}},h("span",{style:{color:P.green}},"↑ "+fmtCurr2(day.entradas)),h("span",{style:{color:P.red}},"↓ "+fmtCurr2(day.saidas))),
+                h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:day.saldo>=0?P.text:P.red}},"Saldo: "+fmtCurr2(day.saldo))
+              )
+            )
+          );
+        })
+      )
+    ),
+
+    h("div",{style:{padding:"12px 16px",borderRadius:10,background:P.bg3,border:`1px solid ${P.border}`,fontSize:11,color:P.text3,lineHeight:1.6}},
+      h("div",{style:{fontWeight:600,color:P.text2,marginBottom:4}},"ℹ Como a projeção é calculada"),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:2}},
+        ["Saldo inicial = acumulado real (receitas pagas − despesas não canceladas)",
+         "Sessões futuras: lançamentos no prontuário com data futura e status pendente",
+         "Parcelas maquininha: depósitos agendados gerados pelo simulador de conciliação",
+         "Despesas recorrentes: lançamentos futuros das regras ativas ainda não gerados",
+         "Sazonalidade: receita diária estimada baseada nos últimos 3 meses × índice histórico do mês",
+         "Fins de semana não recebem estimativa sazonal automaticamente"
+        ].map((t,i)=>h("div",{key:i,style:{paddingLeft:12,borderLeft:`2px solid ${P.border}`}},"· "+t))
+      )
+    )
+  );
+}
+
 function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses=[],setRecurringExpenses,incomes,setIncomes,settings,goals={},setGoals,procedures=[],proceduresFull=[],products=[],maquininhas=[],setMaquininhas}){
   const[showNewExp,setShowNewExp]=useState(false);
   const[editExp,setEditExp]=useState(null);
@@ -6467,6 +6719,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     h("div",{style:{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}},
       h("button",{onClick:()=>setViewTab("resumo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="resumo"?P.rose:"transparent",border:`1px solid ${viewTab==="resumo"?P.rose:P.border}`,color:viewTab==="resumo"?P.accent3:P.text2}},"Entradas & Despesas"),
       h("button",{onClick:()=>setViewTab("fluxo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="fluxo"?P.rose:"transparent",border:`1px solid ${viewTab==="fluxo"?P.rose:P.border}`,color:viewTab==="fluxo"?P.accent3:P.text2}},"💵 Fluxo de Caixa"),
+      h("button",{onClick:()=>setViewTab("projetado"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="projetado"?P.rose:"transparent",border:`1px solid ${viewTab==="projetado"?P.rose:P.border}`,color:viewTab==="projetado"?P.accent3:P.text2}},"🔮 Projetado 30/60/90d"),
 
       h("button",{onClick:()=>setViewTab("dre"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="dre"?P.rose:"transparent",border:`1px solid ${viewTab==="dre"?P.rose:P.border}`,color:viewTab==="dre"?P.accent3:P.text2}},"📊 DRE & Pagamentos"),
       h("button",{onClick:()=>setViewTab("vencimentos"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="vencimentos"?P.rose:"transparent",border:`1px solid ${viewTab==="vencimentos"?P.rose:P.border}`,color:viewTab==="vencimentos"?P.accent3:P.text2}},"📅 Vencimentos"),
@@ -6476,6 +6729,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       h("button",{onClick:()=>setViewTab("conciliacao"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="conciliacao"?P.rose:"transparent",border:`1px solid ${viewTab==="conciliacao"?P.rose:P.border}`,color:viewTab==="conciliacao"?P.accent3:P.text2}},"🏦 Conciliação Cartão")
     ),
 
+    viewTab==="projetado"&&h(FluxoCaixaProjetado,{patients,incomes,expenses,recurringExpenses,maquininhas,saldoFinal,selMonth,selYear}),
     viewTab==="fluxo"?h(Card,null,
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}},
         h("div",null,
