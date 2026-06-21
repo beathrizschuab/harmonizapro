@@ -4236,7 +4236,7 @@ function getPatientPhotoGallery(patient){
   });
   return list;
 }
-function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings,agenda,setAgenda}){
+function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings,agenda,setAgenda,maquininhas=[]}){
   const _vTemplates=Array.isArray(voucherTemplates)&&voucherTemplates.length?voucherTemplates:DEFAULT_VOUCHER_TEMPLATES;
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
@@ -4289,7 +4289,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const qvfv=k=>v=>setQvForm(p=>({...p,[k]:v}));
   const h=createElement;
   const today=new Date();
-  const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",finStatus:"Pendente",paid:false,notes:"",evolution:"",returnReminderDays:14,loteId:"",qtdUsada:"",skipAutoInsumos:false};
+  const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",maquininha:"",taxaMaq:"",antecipacao:"",finStatus:"Pendente",paid:false,notes:"",evolution:"",returnReminderDays:14,loteId:"",qtdUsada:"",skipAutoInsumos:false};
   const[sForm,setSForm]=useState(blankS);
   const sfv=k=>v=>setSForm(p=>({...p,[k]:v}));
   // Auto-preenche prazo de retorno e valor ao trocar procedimento
@@ -4326,9 +4326,13 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         date:sess.date,
         cat:"Sessão",
         value:Number(sess.value)||0,
-        netValue:Number(sess.value)||0,
+        netValue:sess.netValue!=null?Number(sess.netValue):Number(sess.value)||0,
         payMethod:sess.payMethod||"Pendente",
         parcelas:sess.parcelas||1,
+        maquininha:sess.maquininha||"",
+        taxaMaq:sess.taxaMaq||0,
+        maqSimulacao:sess.maqSimulacao||null,
+        maqDeposits:sess.maqDeposits||null,
         status:sess.finStatus==="Pago"?"Pago":"Pendente",
         paid:sess.finStatus==="Pago",
         notes:sess.notes||"",
@@ -4343,8 +4347,19 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     setEditPat(false);
   }
   function saveSession(){
+    if((sForm.payMethod==="Cartão Crédito"||sForm.payMethod==="Cartão Débito")&&!sForm.maquininha){
+      alert("Selecione a maquininha utilizada para este pagamento em cartão.\n\nSe ainda não cadastrou nenhuma, vá em Configurações → Maquininhas.");
+      return;
+    }
     const _loteSel=(allProducts||[]).flatMap(p=>p.lotes||[]).find(l=>String(l.id)===String(sForm.loteId));
-    const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,loteId:sForm.loteId||"",loteCodigo:_loteSel?.codigo||"",qtdUsada:sForm.qtdUsada||"",dose:sForm.dose,region:sForm.region,location:sForm.location,value:Number(sForm.value)||0,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1,notes:sForm.notes,evolution:sForm.evolution,faceMap:editSess?editSess.faceMap:null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90,stockDebit:editSess?editSess.stockDebit:null,autoStockDebits:editSess?editSess.autoStockDebits:[]};
+    const isCard=sForm.payMethod==="Cartão Crédito"||sForm.payMethod==="Cartão Débito";
+    const maqObj=isCard?((maquininhas||[]).find(m=>m.id===sForm.maquininha)||null):null;
+    const parcelasFinal=sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1;
+    const taxaFinal=isCard?(maqObj?getMaqTaxa(maqObj,sForm.payMethod,parcelasFinal):Number(sForm.taxaMaq)||0):0;
+    const grossVal=Number(sForm.value)||0;
+    const antecipacaoFinal=sForm.antecipacao===""?null:(sForm.antecipacao==="true"||sForm.antecipacao===true);
+    const sim=isCard?calcMaqSimulacao(maqObj,sForm.payMethod,parcelasFinal,grossVal,sForm.date,antecipacaoFinal):null;
+    const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,loteId:sForm.loteId||"",loteCodigo:_loteSel?.codigo||"",qtdUsada:sForm.qtdUsada||"",dose:sForm.dose,region:sForm.region,location:sForm.location,value:grossVal,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:parcelasFinal,maquininha:isCard?(sForm.maquininha||""):"",taxaMaq:taxaFinal,netValue:sim?sim.liquido:grossVal,maqSimulacao:sim?{taxa:sim.taxa,descontoTotal:sim.descontoTotal,liquido:sim.liquido}:null,maqDeposits:sim?sim.deposits:null,notes:sForm.notes,evolution:sForm.evolution,faceMap:editSess?editSess.faceMap:null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90,stockDebit:editSess?editSess.stockDebit:null,autoStockDebits:editSess?editSess.autoStockDebits:[]};
     // Ajusta o débito de estoque com base no que JÁ foi debitado para esta sessão (s.stockDebit) vs o que
     // deveria estar debitado agora (lote/produto/qtd do formulário). Cobre 3 casos sem nunca duplicar:
     // 1) sessão nova → debita 1x e grava o registro do débito na própria sessão.
@@ -5344,16 +5359,69 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Field,{label:"Região",half:true},h(Inp,{value:sForm.region,onChange:sfv("region"),placeholder:"Ex: Glabela + Testa"})),
         h(Field,{label:"Local",half:true},h(Sel,{value:sForm.location,onChange:sfv("location"),options:locations})),
         h(Field,{label:"Valor (R$)",half:true},h(Inp,{value:sForm.value,onChange:sfv("value"),placeholder:"0,00"})),
-        h(Field,{label:"Forma de Pagamento",half:true},h(Sel,{value:sForm.payMethod,onChange:sfv("payMethod"),options:PAY_METHODS})),
+        h(Field,{label:"Forma de Pagamento",half:true},h(Sel,{value:sForm.payMethod,onChange:v=>setSForm(p=>({...p,payMethod:v,maquininha:"",parcelas:"1",antecipacao:""})),options:PAY_METHODS})),
         h(Field,{label:"Status Financeiro",half:true},h(Sel,{value:sForm.finStatus,onChange:sfv("finStatus"),options:FIN_STATUS})),
-        sForm.payMethod==="Cartão Crédito"&&h(Field,{label:"Parcelas",half:true},h(Sel,{value:sForm.parcelas,onChange:sfv("parcelas"),options:["1","2","3","4","5","6","7","8","9","10","11","12"]})),
-        sForm.payMethod==="Cartão Crédito"&&Number(sForm.parcelas)>1&&Number(sForm.value)>0&&h("div",{style:{width:"100%",padding:"10px 14px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`,marginTop:-4}},
-          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"Parcelamento"),
-          h("div",{style:{display:"flex",gap:20}},
-            h("div",null,h("div",{style:{fontSize:10,color:P.text3}},"Valor por parcela"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},fmtCurr(Number(sForm.value)/Number(sForm.parcelas)))),
-            h("div",null,h("div",{style:{fontSize:10,color:P.text3}},"Total"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.accent}},fmtCurr(Number(sForm.value))))
+        // ── Campos de maquininha (obrigatório para pagamento em cartão) ──
+        (sForm.payMethod==="Cartão Crédito"||sForm.payMethod==="Cartão Débito")&&h(Fragment,null,
+          maquininhas.length===0
+            ? h("div",{style:{width:"100%",padding:"10px 14px",background:"rgba(196,169,106,.1)",border:`1px solid ${P.yellow}44`,borderRadius:8,fontSize:12,color:P.yellow}},
+                "💡 Cadastre uma operadora em Configurações → Maquininhas para poder selecionar e registrar pagamentos em cartão."
+              )
+            : h(Field,{label:"Maquininha / Operadora",half:true},
+                h("select",{value:sForm.maquininha||"",onChange:e=>{
+                  const m=maquininhas.find(x=>x.id===e.target.value)||null;
+                  setSForm(p=>({...p,maquininha:e.target.value,taxaMaq:m?String(getMaqTaxa(m,p.payMethod,p.parcelas)):"",antecipacao:m?String(m.antecipacaoPadrao):""}));
+                },style:{...IS}},
+                  h("option",{value:""},"Selecionar operadora..."),
+                  maquininhas.map(m=>h("option",{key:m.id,value:m.id},m.name))
+                )
+              ),
+          sForm.payMethod==="Cartão Crédito"&&h(Field,{label:"Parcelas",half:true},
+            h("select",{value:sForm.parcelas,onChange:e=>{
+              const n=e.target.value;
+              const m=maquininhas.find(x=>x.id===sForm.maquininha)||null;
+              setSForm(p=>({...p,parcelas:n,taxaMaq:m?String(getMaqTaxa(m,p.payMethod,n)):p.taxaMaq}));
+            },style:{...IS}},
+              Array.from({length:12},(_,i)=>h("option",{key:i+1,value:String(i+1)},`${i+1}x`))
+            )
+          ),
+          sForm.payMethod==="Cartão Crédito"&&Number(sForm.parcelas)>1&&h(Field,{label:"Recebimento parcelado",half:true},
+            h("select",{value:sForm.antecipacao||"",onChange:e=>setSForm(p=>({...p,antecipacao:e.target.value})),style:{...IS}},
+              h("option",{value:""},(()=>{const m=maquininhas.find(x=>x.id===sForm.maquininha);return m?(m.antecipacaoPadrao?"Padrão: Antecipado":"Padrão: Parcelado"):"Padrão da operadora";})()),
+              h("option",{value:"true"},"💨 Antecipar (recebe integral)"),
+              h("option",{value:"false"},"📅 Parcelado (recebe mês a mês)")
+            )
           )
         ),
+        // ── Simulação de recebimento (taxa, líquido e cronograma de depósitos) ──
+        (sForm.payMethod==="Cartão Crédito"||sForm.payMethod==="Cartão Débito")&&sForm.maquininha&&Number(sForm.value)>0&&(()=>{
+          const maqObj=maquininhas.find(m=>m.id===sForm.maquininha)||null;
+          if(!maqObj)return null;
+          const taxaFinal=getMaqTaxa(maqObj,sForm.payMethod,sForm.parcelas);
+          const gross=Number(sForm.value)||0;
+          const ant=sForm.antecipacao===""?null:(sForm.antecipacao==="true");
+          const sim=calcMaqSimulacao(maqObj,sForm.payMethod,sForm.parcelas,gross,sForm.date,ant);
+          const n=Number(sForm.parcelas)||1;
+          return h("div",{style:{width:"100%",padding:"14px 16px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
+            h("div",{style:{fontSize:11,color:P.text3,marginBottom:10,textTransform:"uppercase",letterSpacing:".08em"}},"💳 Simulação de Recebimento"),
+            h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginBottom:sim.deposits.length>1?12:0}},
+              h("div",null,h("div",{style:{fontSize:10,color:P.text3}},"Valor bruto"),h("div",{style:{fontSize:15,color:P.text,fontWeight:600}},fmtCurr(gross))),
+              taxaFinal>0&&h("div",null,h("div",{style:{fontSize:10,color:P.text3}},"Taxa"),h("div",{style:{fontSize:15,color:P.red}},`${taxaFinal.toFixed(2)}%`)),
+              taxaFinal>0&&h("div",null,h("div",{style:{fontSize:10,color:P.text3}},"Desconto"),h("div",{style:{fontSize:15,color:P.red}},`− ${fmtCurr(sim.descontoTotal)}`)),
+              h("div",null,h("div",{style:{fontSize:10,color:P.text3}},"Você recebe (líquido)"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.green}},fmtCurr(sim.liquido)))
+            ),
+            sim.deposits.length>0&&h("div",null,
+              h("div",{style:{fontSize:10,color:P.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".06em"}},sim.deposits[0].antecipado?"Depósito único (antecipado)":n===1?"Depósito previsto":"Cronograma de depósitos"),
+              h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+                sim.deposits.map((dep,i)=>h("div",{key:i,style:{padding:"6px 10px",background:P.card,borderRadius:8,border:`1px solid ${P.border}`,fontSize:11}},
+                  dep.antecipado?null:n>1&&h("span",{style:{color:P.text3}},`${dep.n}ª parcela · `),
+                  h("span",{style:{color:P.text,fontWeight:600}},fmtCurr(dep.liquido)),
+                  dep.data&&h("span",{style:{color:P.text3}},` · ${fmtDateShort(dep.data)}`)
+                ))
+              )
+            )
+          );
+        })(),
         h(Field,{label:"Retorno Automático (dias)",half:true},
           h("div",null,
             h(Inp,{value:sForm.returnReminderDays,onChange:sfv("returnReminderDays"),placeholder:"14",type:"number"}),
@@ -6865,8 +6933,9 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
 
     viewTab==="margem"&&(()=>{
       // Junta sessões realizadas/pagas do mês selecionado com o custo real de cada sessão
-      // (produto injetável principal + insumos/descartáveis da ficha técnica, via sessionCost)
-      // para calcular: Receita, Custo de Produtos, Margem (R$ e %) por procedimento.
+      // (produto injetável principal + insumos/descartáveis da ficha técnica, via sessionCost,
+      // mais a taxa da maquininha quando o pagamento foi em cartão) para calcular:
+      // Receita, Custo de Produtos, Custo de Taxa e Margem (R$ e %) por procedimento.
       const getInsumos=procName=>{
         const procObj=(proceduresFull||[]).find(p=>(typeof p==="string"?p:(p.name||p))===procName);
         return (procObj&&typeof procObj==="object"&&Array.isArray(procObj.insumos))?procObj.insumos:[];
@@ -6876,17 +6945,22 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       const porProc={};
       sessoesValidas.forEach(s=>{
         const key=s.procedure||"Sem procedimento";
-        if(!porProc[key])porProc[key]={procedure:key,qtd:0,receita:0,custoProduto:0,custoInsumos:0,semInsumoNemProduto:0,temFicha:getInsumos(key).length>0};
+        if(!porProc[key])porProc[key]={procedure:key,qtd:0,receita:0,custoProduto:0,custoInsumos:0,custoTaxa:0,semInsumoNemProduto:0,temFicha:getInsumos(key).length>0};
         const custoPrincipal=(s.product&&Number(s.qtdUsada)>0)?markerUnitCost(products,s.product)*Number(s.qtdUsada):0;
         const custoInsumos=(s.autoStockDebits||[]).reduce((a,d)=>a+(d&&d.product?markerUnitCost(products,d.product)*(Number(d.qty)||0):0),0);
+        // Taxa da maquininha: usa o desconto exato da simulação quando disponível, senão calcula pelo % gravado
+        const custoTaxa=(s.payMethod==="Cartão Crédito"||s.payMethod==="Cartão Débito")
+          ?(s.maqSimulacao&&s.maqSimulacao.descontoTotal>0?Number(s.maqSimulacao.descontoTotal||0):Number(s.value||0)*Number(s.taxaMaq||0)/100)
+          :0;
         porProc[key].qtd+=1;
         porProc[key].receita+=Number(s.value||0);
         porProc[key].custoProduto+=custoPrincipal;
         porProc[key].custoInsumos+=custoInsumos;
+        porProc[key].custoTaxa+=custoTaxa;
         if(custoPrincipal===0&&custoInsumos===0)porProc[key].semInsumoNemProduto+=1;
       });
       const ranking=Object.values(porProc).map(r=>{
-        const custoTotal=r.custoProduto+r.custoInsumos;
+        const custoTotal=r.custoProduto+r.custoInsumos+r.custoTaxa;
         return{
           ...r,custoTotal,
           margem:r.receita-custoTotal,
@@ -6896,7 +6970,8 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       const totalReceita=ranking.reduce((a,r)=>a+r.receita,0);
       const totalCustoProduto=ranking.reduce((a,r)=>a+r.custoProduto,0);
       const totalCustoInsumos=ranking.reduce((a,r)=>a+r.custoInsumos,0);
-      const totalCusto=totalCustoProduto+totalCustoInsumos;
+      const totalCustoTaxa=ranking.reduce((a,r)=>a+r.custoTaxa,0);
+      const totalCusto=totalCustoProduto+totalCustoInsumos+totalCustoTaxa;
       const totalMargem=totalReceita-totalCusto;
       const totalMargemPct=totalReceita>0?(totalMargem/totalReceita*100):0;
       // Avisa quando nenhuma sessão do procedimento teve produto OU insumo registrado — margem pode estar subestimando o custo
@@ -6905,18 +6980,19 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       function corMargem(pct){ return pct>=60?P.green:pct>=35?P.yellow:P.red; }
 
       return h("div",null,
-        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}},
+        h("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:14,marginBottom:20}},
           [
             {l:"Receita do Período",v:fmtCurr(totalReceita),c:P.text},
             {l:"Custo Produto Principal",v:fmtCurr(totalCustoProduto),c:P.red},
             {l:"Custo Insumos/Descartáveis",v:fmtCurr(totalCustoInsumos),c:P.yellow},
+            {l:"Custo Taxa Maquininha",v:fmtCurr(totalCustoTaxa),c:P.red},
             {l:"Margem Real",v:fmtCurr(totalMargem)+`  (${totalMargemPct.toFixed(0)}%)`,c:corMargem(totalMargemPct)}
           ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
             h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:k.c}},k.v)
           ))
         ),
-        h("div",{style:{fontSize:11,color:P.text3,marginBottom:16}},"Custo = produto injetável principal escolhido na sessão (Botox, ácido hialurônico etc., com lote/quantidade usada) + insumos/descartáveis debitados automaticamente pela Ficha Técnica do procedimento. Sessões sem produto nem ficha de insumos entram com custo R$0 — a margem real pode estar maior do que o registrado."),
+        h("div",{style:{fontSize:11,color:P.text3,marginBottom:16}},"Custo = produto injetável principal escolhido na sessão (Botox, ácido hialurônico etc., com lote/quantidade usada) + insumos/descartáveis debitados automaticamente pela Ficha Técnica do procedimento + taxa da maquininha quando o pagamento foi em cartão (com base na operadora selecionada na sessão). Sessões sem produto nem ficha de insumos entram com custo R$0 de material — a margem real pode estar maior do que o registrado nesse caso."),
         semNadaRegistrado.length>0&&h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:10,marginBottom:16,fontSize:12,color:P.yellow}},
           "⚠ Nenhum produto/insumo registrado nas sessões pagas deste período (margem mostrada = receita total, custo R$0): "+semNadaRegistrado.map(r=>r.procedure).join(", ")+". Vincule o produto usado na sessão e/ou cadastre a Ficha de Insumos em Configurações → Procedimentos."
         ),
@@ -6945,6 +7021,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
                     h("span",null,"Receita: ",h("strong",{style:{color:P.text}},fmtCurr(r.receita))),
                     h("span",null,"Custo produto: ",h("strong",{style:{color:P.red}},fmtCurr(r.custoProduto))),
                     h("span",null,"Custo insumos: ",h("strong",{style:{color:P.yellow}},fmtCurr(r.custoInsumos))),
+                    h("span",null,"Taxa maquininha: ",h("strong",{style:{color:P.red}},fmtCurr(r.custoTaxa))),
                     h("span",null,"Custo/sessão: ",h("strong",{style:{color:P.text}},fmtCurr(r.qtd?r.custoTotal/r.qtd:0)))
                   ),
                   h("div",{style:{height:6,borderRadius:3,background:P.bg3,overflow:"hidden"}},
@@ -9565,7 +9642,7 @@ function AppInner({ session, onLogout }) {
             page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null)}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
-            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda}),
+            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,maquininhas}),
             page==="estoque"&&h(Estoque,{products,setProducts}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products,maquininhas,setMaquininhas}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
