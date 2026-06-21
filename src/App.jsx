@@ -1122,7 +1122,7 @@ function FaceMapEditor({sessionMap,onChange,readOnly=false}){
         h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}},"Resumo"),
         Object.entries(points).filter(([,v])=>v>0).length===0
           ?h("div",{style:{fontSize:13,color:P.text3}},readOnly?"Nenhum ponto.":"Clique nos círculos.")
-          :Object.entries(points).filter(([,v])=>v>0).map(([k,v])=>h("div",{key:k,style:{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${P.border}`,fontSize:12.5}},h("span",{style:{color:P.text2}},k.replace(/_/g," ")),h("span",{style:{color:P.accent3,fontWeight:600}},`${v}${unit}`))),
+          :Object.entries(points).filter(([,v])=>v>0).map(([k,v])=>h("div",{key:k,style:{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${P.border}`,fontSize:12.5}},h("span",{style:{color:P.text2}},k.replace(/_/g," ")),h("span",{style:{color:P.rose,fontWeight:600}},`${v}${unit}`))),
         total>0&&h("div",{style:{display:"flex",justifyContent:"space-between",padding:"8px 0",marginTop:4}},h("span",{style:{fontSize:12,color:P.text3}},"Total"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.accent}},`${total}${unit}`))
       )
     )
@@ -1392,7 +1392,7 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
         h("div",{style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:10,padding:14,flexShrink:0}},
           h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}},"Resumo"),
           h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Marcadores"),h("span",{style:{color:P.text}},doneMarkers.length+" / "+markers.length+" realizados")),
-          h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Custo planejado (total)"),h("span",{style:{color:P.accent3,fontWeight:600}},fmtCurr(totalPlanned))),
+          h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Custo planejado (total)"),h("span",{style:{color:P.rose,fontWeight:600}},fmtCurr(totalPlanned))),
           h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Custo realizado"),h("span",{style:{color:P.green,fontWeight:600}},fmtCurr(totalActual))),
           h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Restante a executar"),h("span",{style:{color:P.yellow,fontWeight:600}},fmtCurr(totalPending))),
           doneMarkers.length>0&&h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0",borderTop:`1px solid ${P.border}`,marginTop:6,paddingTop:8}},
@@ -1403,7 +1403,7 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
         selected
           ? h("div",{style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:10,padding:14,display:"flex",flexDirection:"column",gap:10,flexShrink:0}},
               h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-                h("div",{style:{fontSize:13,color:P.accent3,fontWeight:600}},"Marcador "+(markers.findIndex(m=>m.id===selected.id)+1)),
+                h("div",{style:{fontSize:13,color:P.rose,fontWeight:600}},"Marcador "+(markers.findIndex(m=>m.id===selected.id)+1)),
                 h("button",{onClick:()=>removeMarker(selected.id),style:{background:"transparent",border:"1px solid rgba(192,112,112,.25)",color:P.red,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11}},"🗑 Remover")
               ),
               h("div",null,
@@ -2999,19 +2999,19 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
       onDragEnd,
       onClick:()=>openEdit(a),
       title:"Arraste para reagendar · Clique para editar",
-      style:{padding:compact?(big?"8px 11px":"3px 5px"):"6px 10px",background:`linear-gradient(135deg,${P.rose}22,${P.gold}11)`,border:`1px solid ${P.rose}55`,borderLeft:`3px solid ${sc.color}`,borderRadius:6,cursor:"grab",opacity:isDragging?.3:1,userSelect:"none",position:"relative",minHeight:compact&&big?56:"auto"}
+      style:{padding:compact?(big?"8px 11px":"3px 5px"):"6px 10px",background:sc.bg,border:`1px solid ${sc.color}66`,borderLeft:`3px solid ${sc.color}`,borderRadius:6,cursor:"grab",opacity:isDragging?.3:1,userSelect:"none",position:"relative",minHeight:compact&&big?56:"auto"}
     },
       compact
         ?(big
             ?h(Fragment,null,
-                h("div",{style:{fontSize:14,color:P.accent,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" — "+a.patientName),
+                h("div",{style:{fontSize:14,color:sc.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" — "+a.patientName),
                 h("div",{style:{fontSize:12,color:P.text2,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.procedure),
                 h("div",{style:{fontSize:10.5,color:P.text3,marginTop:1}},"📍 "+a.location)
               )
-            :h("div",{style:{fontSize:9,color:P.accent,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" "+a.patientName)
+            :h("div",{style:{fontSize:9,color:sc.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" "+a.patientName)
           )
         :h(Fragment,null,
-            h("div",{style:{fontSize:12,color:P.accent,fontWeight:700}},a.time+" — "+a.patientName),
+            h("div",{style:{fontSize:12,color:sc.color,fontWeight:700}},a.time+" — "+a.patientName),
             h("div",{style:{fontSize:11,color:P.text2}},a.procedure),
             h("div",{style:{fontSize:10,color:P.text3}},"📍 "+a.location),
             hasHistory&&h("div",{style:{fontSize:9,color:"#9b7aad",marginTop:2}},"📅 Reagendado "+((a.rescheduleHistory||[]).length)+"x")
@@ -4366,7 +4366,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
                   )
                 ),
                 h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",padding:"8px 10px",background:P.bg3,borderRadius:8}},
-                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Custo planejado"),h("div",{style:{fontSize:14,color:P.accent3}},fmtCurr(mpPlanned))),
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Custo planejado"),h("div",{style:{fontSize:14,color:P.rose}},fmtCurr(mpPlanned))),
                   h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Custo realizado"),h("div",{style:{fontSize:14,color:P.green}},fmtCurr(mpActual))),
                   h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Diferença"),h("div",{style:{fontSize:14,color:mpDiff>0?P.red:(mpDiff<0?P.green:P.text2)}},(mpDiff>0?"+":"")+fmtCurr(mpDiff)))
                 ),
@@ -4546,7 +4546,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
                 ),
                 pl.notes&&h("div",{style:{fontSize:13,color:P.text3,fontStyle:"italic"}},pl.notes),
                 mp&&h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",padding:"8px 10px",background:P.bg3,borderRadius:8}},
-                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Custo planejado"),h("div",{style:{fontSize:14,color:P.accent3}},fmtCurr(mpPlanned))),
+                  h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Custo planejado"),h("div",{style:{fontSize:14,color:P.rose}},fmtCurr(mpPlanned))),
                   h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Custo realizado"),h("div",{style:{fontSize:14,color:P.green}},fmtCurr(mpActual))),
                   h("div",null,h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},"Diferença"),h("div",{style:{fontSize:14,color:mpDiff>0?P.red:(mpDiff<0?P.green:P.text2)}},(mpDiff>0?"+":"")+fmtCurr(mpDiff)))
                 ),
@@ -5106,7 +5106,7 @@ function Estoque({products,setProducts}){
                           h("div",null,
                             h("div",{style:{display:"flex",alignItems:"center",gap:8}},
                               h("span",{style:{fontSize:12,color:P.text3,fontWeight:500}},"Lote"),
-                              h("span",{style:{fontSize:13,color:P.accent3,fontWeight:700,letterSpacing:".04em"}},lote.codigo),
+                              h("span",{style:{fontSize:13,color:P.rose,fontWeight:700,letterSpacing:".04em"}},lote.codigo),
                               lote.qtd === 0 && h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:"rgba(192,112,112,.15)",color:P.red}},"Esgotado")
                             ),
                             h("div",{style:{display:"flex",gap:12,marginTop:4,flexWrap:"wrap"}},
@@ -6049,7 +6049,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
         h("div",null,h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Procedimentos Realizados"),h("div",{style:{fontSize:13,color:P.text3,marginTop:2}},"Volume e receita por procedimento")),
         h("div",{style:{display:"flex",alignItems:"center",gap:10}},
           h("button",{onClick:prevMonth,style:{background:"transparent",border:"1px solid "+P.border,borderRadius:6,width:28,height:28,color:P.text2,cursor:"pointer",fontSize:14}},"‹"),
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.accent3,minWidth:160,textAlign:"center"}},MONTH_NAMES[selMonth]+" "+selYear),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.rose,minWidth:160,textAlign:"center"}},MONTH_NAMES[selMonth]+" "+selYear),
           h("button",{onClick:nextMonth,style:{background:"transparent",border:"1px solid "+P.border,borderRadius:6,width:28,height:28,color:P.text2,cursor:"pointer",fontSize:14}},"›")
         ),
         h("div",{style:{display:"flex",gap:6}},["receita","volume"].map(m=>h("button",{key:m,onClick:()=>setChartMode(m),style:{padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:500,cursor:"pointer",border:"1px solid "+P.border,background:chartMode===m?P.rose:"transparent",color:chartMode===m?P.accent3:P.text2}},m==="receita"?"💰 Receita":"📊 Volume")))
@@ -6076,7 +6076,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
         )
       ),
       monthSessions.length>0&&h("div",{style:{marginTop:18,padding:"12px 16px",background:P.bg3,borderRadius:10,display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}},
-        [{l:"Total Sessões",v:monthSessions.length},{l:"Pagas",v:monthSessions.filter(s=>s.paid).length},{l:"Pendentes",v:monthSessions.filter(s=>!s.paid).length},{l:"Ticket Médio",v:fmtCurr(monthRevenue/Math.max(monthSessions.filter(s=>s.paid).length,1))},{l:"Receita",v:fmtCurr(monthRevenue)}].map(k=>h("div",{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent3}},k.v)))
+        [{l:"Total Sessões",v:monthSessions.length},{l:"Pagas",v:monthSessions.filter(s=>s.paid).length},{l:"Pendentes",v:monthSessions.filter(s=>!s.paid).length},{l:"Ticket Médio",v:fmtCurr(monthRevenue/Math.max(monthSessions.filter(s=>s.paid).length,1))},{l:"Receita",v:fmtCurr(monthRevenue)}].map(k=>h("div",{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.rose}},k.v)))
       )
     ),
     h(Card,{style:{marginBottom:22}},
