@@ -6345,7 +6345,8 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
   const[editInc,setEditInc]=useState(null);
   const[editRecurring,setEditRecurring]=useState(null);
   const[finTab,setFinTab]=useState("entradas");
-  const[viewTab,setViewTab]=useState("resumo"); // resumo | fluxo | dre | inadimplencia | recorrentes | margem | vencimentos
+  const[viewTab,setViewTab]=useState("resumo"); // resumo | fluxo | dre | inadimplencia | recorrentes | margem | vencimentos | conciliacao
+  const[fluxoSubView,setFluxoSubView]=useState("diario"); // diario | projetado (sub-toggle dentro da aba Fluxo de Caixa)
   const[vencFiltro,setVencFiltro]=useState("todas"); // todas | pagar | receber
   const[exportingPdf,setExportingPdf]=useState(false);
   const[showExportExcel,setShowExportExcel]=useState(false);
@@ -6715,49 +6716,76 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       )
     ),
 
-    // ── Abas: Resumo / Fluxo / DRE / Inadimplência ──────────────────────────
-    h("div",{style:{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}},
-      h("button",{onClick:()=>setViewTab("resumo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="resumo"?P.rose:"transparent",border:`1px solid ${viewTab==="resumo"?P.rose:P.border}`,color:viewTab==="resumo"?P.accent3:P.text2}},"Entradas & Despesas"),
-      h("button",{onClick:()=>setViewTab("fluxo"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="fluxo"?P.rose:"transparent",border:`1px solid ${viewTab==="fluxo"?P.rose:P.border}`,color:viewTab==="fluxo"?P.accent3:P.text2}},"💵 Fluxo de Caixa"),
-      h("button",{onClick:()=>setViewTab("projetado"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="projetado"?P.rose:"transparent",border:`1px solid ${viewTab==="projetado"?P.rose:P.border}`,color:viewTab==="projetado"?P.accent3:P.text2}},"🔮 Projetado 30/60/90d"),
+    // ── Abas agrupadas por categoria ─────────────────────────────────────────
+    (()=>{
+      const TAB_GROUPS=[
+        {label:"Visão Geral",tabs:[
+          {k:"resumo",l:"Entradas & Despesas"},
+          {k:"fluxo",l:"💵 Fluxo de Caixa"},
+        ]},
+        {label:"Resultado",tabs:[
+          {k:"dre",l:"📊 DRE & Pagamentos"},
+          {k:"margem",l:"📐 Margem por Procedimento"},
+        ]},
+        {label:"Cobranças",tabs:[
+          {k:"vencimentos",l:"📅 Vencimentos"},
+          {k:"inadimplencia",l:"⚠ Inadimplência"},
+          {k:"recorrentes",l:`🔁 Recorrentes${recurringExpenses.length?` (${recurringExpenses.length})`:""}`},
+        ]},
+        {label:"Cartão",tabs:[
+          {k:"conciliacao",l:"🏦 Conciliação Cartão"},
+        ]},
+      ];
+      return h("div",{style:{display:"flex",gap:18,marginBottom:16,flexWrap:"wrap"}},
+        TAB_GROUPS.map(g=>h("div",{key:g.label},
+          h("div",{style:{fontSize:10,textTransform:"uppercase",letterSpacing:".04em",color:P.text3,marginBottom:6,paddingLeft:2}},g.label),
+          h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+            g.tabs.map(t=>h("button",{key:t.k,onClick:()=>setViewTab(t.k),style:{padding:"7px 14px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab===t.k?P.rose:"transparent",border:`1px solid ${viewTab===t.k?P.rose:P.border}`,color:viewTab===t.k?P.accent3:P.text2,whiteSpace:"nowrap"}},t.l))
+          )
+        ))
+      );
+    })(),
 
-      h("button",{onClick:()=>setViewTab("dre"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="dre"?P.rose:"transparent",border:`1px solid ${viewTab==="dre"?P.rose:P.border}`,color:viewTab==="dre"?P.accent3:P.text2}},"📊 DRE & Pagamentos"),
-      h("button",{onClick:()=>setViewTab("vencimentos"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="vencimentos"?P.rose:"transparent",border:`1px solid ${viewTab==="vencimentos"?P.rose:P.border}`,color:viewTab==="vencimentos"?P.accent3:P.text2}},"📅 Vencimentos"),
-      h("button",{onClick:()=>setViewTab("inadimplencia"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="inadimplencia"?P.rose:"transparent",border:`1px solid ${viewTab==="inadimplencia"?P.rose:P.border}`,color:viewTab==="inadimplencia"?P.accent3:P.text2}},"⚠ Inadimplência"),
-      h("button",{onClick:()=>setViewTab("recorrentes"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="recorrentes"?P.rose:"transparent",border:`1px solid ${viewTab==="recorrentes"?P.rose:P.border}`,color:viewTab==="recorrentes"?P.accent3:P.text2}},`🔁 Recorrentes${recurringExpenses.length?` (${recurringExpenses.length})`:""}`),
-      h("button",{onClick:()=>setViewTab("margem"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="margem"?P.rose:"transparent",border:`1px solid ${viewTab==="margem"?P.rose:P.border}`,color:viewTab==="margem"?P.accent3:P.text2}},"📐 Margem por Procedimento"),
-      h("button",{onClick:()=>setViewTab("conciliacao"),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab==="conciliacao"?P.rose:"transparent",border:`1px solid ${viewTab==="conciliacao"?P.rose:P.border}`,color:viewTab==="conciliacao"?P.accent3:P.text2}},"🏦 Conciliação Cartão")
+    // ── ABA: Fluxo de Caixa (com sub-toggle Diário / Projetado 30-60-90d) ────
+    viewTab==="fluxo"&&h(Fragment,null,
+      h("div",{style:{display:"flex",gap:8,marginBottom:14}},
+        h("button",{onClick:()=>setFluxoSubView("diario"),style:{padding:"5px 14px",borderRadius:20,fontSize:11.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:fluxoSubView==="diario"?P.accent:"transparent",border:`1px solid ${fluxoSubView==="diario"?P.accent:P.border}`,color:fluxoSubView==="diario"?P.accent3:P.text2}},"Realizado (Diário)"),
+        h("button",{onClick:()=>setFluxoSubView("projetado"),style:{padding:"5px 14px",borderRadius:20,fontSize:11.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:fluxoSubView==="projetado"?P.accent:"transparent",border:`1px solid ${fluxoSubView==="projetado"?P.accent:P.border}`,color:fluxoSubView==="projetado"?P.accent3:P.text2}},"🔮 Projetado 30/60/90d")
+      ),
+      fluxoSubView==="projetado"
+        ? h(FluxoCaixaProjetado,{patients,incomes,expenses,recurringExpenses,maquininhas,saldoFinal,selMonth,selYear})
+        : h(Card,null,
+            h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}},
+              h("div",null,
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Fluxo de Caixa Diário"),
+                h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`Saldo inicial em ${MONTH_NAMES[selMonth]}: `,h("span",{style:{color:saldoInicial>=0?P.green:P.red,fontWeight:600}},fmtCurr(saldoInicial)))
+              ),
+              h("div",{style:{textAlign:"right"}},
+                h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase"}},"Saldo Final do Mês"),
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:saldoFinal>=0?P.green:P.red}},fmtCurr(saldoFinal))
+              )
+            ),
+            dailyFlow.length===0?h("div",{style:{textAlign:"center",color:P.text3,fontSize:13,padding:30}},"Sem movimentações neste mês"):
+            h("div",{style:{maxHeight:480,overflowY:"auto"}},
+              dailyFlow.map(df=>h("div",{key:df.day,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`}},
+                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:df.events.length?6:0}},
+                  h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},`Dia ${String(df.day).padStart(2,"0")}`),
+                  h("div",{style:{display:"flex",gap:14,alignItems:"baseline"}},
+                    df.dayTotal!==0&&h("span",{style:{fontSize:12,color:df.dayTotal>=0?P.green:P.red}},(df.dayTotal>=0?"+ ":"− ")+fmtCurr(Math.abs(df.dayTotal))),
+                    h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:df.saldo>=0?P.text:P.red}},"Saldo: "+fmtCurr(df.saldo))
+                  )
+                ),
+                df.events.map((ev,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",fontSize:11.5,color:P.text3,padding:"2px 0 2px 10px"}},
+                  h("span",null,(ev.type==="entrada"?"↑ ":"↓ ")+ev.desc),
+                  h("span",{style:{color:ev.type==="entrada"?P.green:P.red}},(ev.value>=0?"+":"")+fmtCurr(ev.value))
+                ))
+              ))
+            )
+          )
     ),
 
-    viewTab==="projetado"&&h(FluxoCaixaProjetado,{patients,incomes,expenses,recurringExpenses,maquininhas,saldoFinal,selMonth,selYear}),
-    viewTab==="fluxo"?h(Card,null,
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}},
-        h("div",null,
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Fluxo de Caixa Diário"),
-          h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`Saldo inicial em ${MONTH_NAMES[selMonth]}: `,h("span",{style:{color:saldoInicial>=0?P.green:P.red,fontWeight:600}},fmtCurr(saldoInicial)))
-        ),
-        h("div",{style:{textAlign:"right"}},
-          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase"}},"Saldo Final do Mês"),
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:saldoFinal>=0?P.green:P.red}},fmtCurr(saldoFinal))
-        )
-      ),
-      dailyFlow.length===0?h("div",{style:{textAlign:"center",color:P.text3,fontSize:13,padding:30}},"Sem movimentações neste mês"):
-      h("div",{style:{maxHeight:480,overflowY:"auto"}},
-        dailyFlow.map(df=>h("div",{key:df.day,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`}},
-          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:df.events.length?6:0}},
-            h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},`Dia ${String(df.day).padStart(2,"0")}`),
-            h("div",{style:{display:"flex",gap:14,alignItems:"baseline"}},
-              df.dayTotal!==0&&h("span",{style:{fontSize:12,color:df.dayTotal>=0?P.green:P.red}},(df.dayTotal>=0?"+ ":"− ")+fmtCurr(Math.abs(df.dayTotal))),
-              h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:df.saldo>=0?P.text:P.red}},"Saldo: "+fmtCurr(df.saldo))
-            )
-          ),
-          df.events.map((ev,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",fontSize:11.5,color:P.text3,padding:"2px 0 2px 10px"}},
-            h("span",null,(ev.type==="entrada"?"↑ ":"↓ ")+ev.desc),
-            h("span",{style:{color:ev.type==="entrada"?P.green:P.red}},(ev.value>=0?"+":"")+fmtCurr(ev.value))
-          ))
-        ))
-      )
-    ):
+    // ── ABA: Entradas & Despesas (resumo) ─────────────────────────────────────
+    viewTab==="resumo"&&h(Fragment,null,
     // ── Barra de filtros ─────────────────────────────────────────────────────
     h("div",{style:{padding:"14px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12,marginBottom:16}},
       h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}},
@@ -6884,7 +6912,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
         );}),
         h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:P.text3}},"Total no período"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.red}},`− ${fmtCurr(filteredExpenses.reduce((a,e)=>a+Number(e.value||0),0))}`))
       )
-    ),
+    )),
 
     // ── ABA: DRE & Pagamentos ───────────────────────────────────────────────
     viewTab==="dre"&&(()=>{
