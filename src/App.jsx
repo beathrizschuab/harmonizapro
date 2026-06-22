@@ -1027,7 +1027,7 @@ function getAvailableLotes(products, productName) {
   return prod.lotes.filter(l => l.qtd > 0);
 }
 // Retorna o saldo total disponível de qualquer produto — com ou sem lotes.
-// Para insumos simples (sem lotes): retorna p.qty diretamente.
+// Para insumos simples (cat=Insumos/Descartáveis, sem lotes): retorna p.qty diretamente.
 // Para injetáveis com lotes: soma os lotes com qtd > 0.
 function getProductSaldo(products, productName) {
   if (!productName) return 0;
@@ -4508,16 +4508,49 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const qvfv=k=>v=>setQvForm(p=>({...p,[k]:v}));
   const h=createElement;
   const today=new Date();
-  const blankS={date:"",procedure:procedures[0]||"",product:products[0]||"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",maquininha:"",taxaMaq:"",antecipacao:"",finStatus:"Pendente",paid:false,notes:"",evolution:"",returnReminderDays:14,loteId:"",qtdUsada:"",skipAutoInsumos:false};
+  // ─── Item de procedimento dentro de uma sessão multi-procedimento ─────────────
+  // Cada item tem seu próprio procedimento, produto, lote, dose, região e preço.
+  // debitarEstoque controla se o produto principal deste item deve baixar estoque.
+  // skipAutoInsumos controla se os insumos da ficha técnica do procedimento são debitados.
+  const blankItem={procedure:procedures[0]||"",product:products[0]||"",loteId:"",qtdUsada:"",dose:"",region:"",value:"",debitarEstoque:true,skipAutoInsumos:false};
+  const blankS={date:"",procedure:"",product:"",dose:"",region:"",location:locations[0]||"",value:"",payMethod:"Pix",parcelas:"1",maquininha:"",taxaMaq:"",antecipacao:"",finStatus:"Pendente",paid:false,notes:"",evolution:"",returnReminderDays:14,loteId:"",qtdUsada:"",skipAutoInsumos:false,
+    // NOVO: lista de procedimentos/produtos desta sessão
+    items:[{...blankItem}]
+  };
   const[sForm,setSForm]=useState(blankS);
   const sfv=k=>v=>setSForm(p=>({...p,[k]:v}));
-  // Auto-preenche prazo de retorno e valor ao trocar procedimento
+  // Auto-preenche prazo de retorno e valor ao trocar procedimento do primeiro item
   const sfvProcedure=v=>{
     const rule=(returnRules||[]).find(r=>r.procedure===v);
     const procObj=Array.isArray(proceduresFull)?proceduresFull.find(p=>(typeof p==="string"?p:(p.name||p))===v):null;
     const defVal=procObj&&typeof procObj==="object"&&procObj.defaultValue?procObj.defaultValue:"";
-    setSForm(p=>({...p,procedure:v,returnReminderDays:rule?rule.revisionDays||rule.maintenanceDays:90,...(defVal?{value:String(defVal)}:{})}));
+    setSForm(p=>{
+      const items=(p.items||[]).map((it,i)=>i===0?{...it,procedure:v,...(defVal?{value:String(defVal)}:{})}:it);
+      return{...p,procedure:v,returnReminderDays:rule?rule.revisionDays||rule.maintenanceDays:90,...(defVal?{value:String(defVal)}:{}),items};
+    });
   };
+  // Helper para atualizar um campo de um item específico
+  function sItemSet(idx,key,val){
+    setSForm(p=>{
+      const items=[...(p.items||[])];
+      items[idx]={...items[idx],[key]:val};
+      // Recalcular valor total automaticamente quando um item muda de valor
+      const total=items.reduce((a,it)=>a+(Number(it.value)||0),0);
+      return{...p,items,value:total>0?String(total):p.value};
+    });
+  }
+  // Adiciona novo item ao array de procedimentos
+  function sItemAdd(){
+    setSForm(p=>({...p,items:[...(p.items||[]),{...blankItem}]}));
+  }
+  // Remove item pelo índice
+  function sItemRemove(idx){
+    setSForm(p=>{
+      const items=(p.items||[]).filter((_,i)=>i!==idx);
+      const total=items.reduce((a,it)=>a+(Number(it.value)||0),0);
+      return{...p,items,value:total>0?String(total):""};
+    });
+  }
   const[patForm,setPatForm]=useState({...patient,...patient.anamnese,complaints:(patient.complaints||[]).join(", ")});
   const pfv=k=>v=>setPatForm(p=>({...p,[k]:v}));
   const blankIc={type:"Edema",severity:"Leve",status:"Em Acompanhamento",procedure:"",product:"",region:"",procedureDate:"",date:todayISO(),notes:"",conduct:"",nextReavaliacao:"",sessId:null,_photoFiles:[]};
@@ -4540,7 +4573,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       const entry={
         id:exists?exists.id:Date.now(),
         sessRef:sessKey,
-        desc:sess.procedure,
+        desc:sess.procLabel||sess.procedure,
         patientName:patName||patient.name,
         date:sess.date,
         cat:"Sessão",
@@ -4570,56 +4603,109 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       alert("Selecione a maquininha utilizada para este pagamento em cartão.\n\nSe ainda não cadastrou nenhuma, vá em Configurações → Maquininhas.");
       return;
     }
-    const _loteSel=(allProducts||[]).flatMap(p=>p.lotes||[]).find(l=>String(l.id)===String(sForm.loteId));
+    const items=sForm.items&&sForm.items.length>0?sForm.items:[{procedure:sForm.procedure||procedures[0]||"",product:sForm.product||"",loteId:sForm.loteId||"",qtdUsada:sForm.qtdUsada||"",dose:sForm.dose||"",region:sForm.region||"",value:sForm.value||"",debitarEstoque:true,skipAutoInsumos:sForm.skipAutoInsumos||false}];
+    // procedimento principal = primeiro item (compatibilidade legada)
+    const mainItem=items[0]||{};
+    const mainProc=mainItem.procedure||sForm.procedure||"";
+    // valor total = soma dos valores de cada item
+    const totalValue=items.reduce((a,it)=>a+(Number(it.value)||0),0)||(Number(sForm.value)||0);
     const isCard=sForm.payMethod==="Cartão Crédito"||sForm.payMethod==="Cartão Débito";
     const maqObj=isCard?((maquininhas||[]).find(m=>m.id===sForm.maquininha)||null):null;
     const parcelasFinal=sForm.payMethod==="Cartão Crédito"?Number(sForm.parcelas)||1:1;
     const taxaFinal=isCard?(maqObj?getMaqTaxa(maqObj,sForm.payMethod,parcelasFinal):Number(sForm.taxaMaq)||0):0;
-    const grossVal=Number(sForm.value)||0;
     const antecipacaoFinal=sForm.antecipacao===""?null:(sForm.antecipacao==="true"||sForm.antecipacao===true);
-    const sim=isCard?calcMaqSimulacao(maqObj,sForm.payMethod,parcelasFinal,grossVal,sForm.date,antecipacaoFinal):null;
-    const s={id:editSess?editSess.id:Date.now(),date:sForm.date||new Date().toLocaleDateString("pt-BR"),procedure:sForm.procedure,doctor:"Dra. Sofia",product:sForm.product,loteId:sForm.loteId||"",loteCodigo:_loteSel?.codigo||"",qtdUsada:sForm.qtdUsada||"",dose:sForm.dose,region:sForm.region,location:sForm.location,value:grossVal,paid:sForm.finStatus==="Pago",finStatus:sForm.finStatus,payMethod:sForm.payMethod,parcelas:parcelasFinal,maquininha:isCard?(sForm.maquininha||""):"",taxaMaq:taxaFinal,netValue:sim?sim.liquido:grossVal,maqSimulacao:sim?{taxa:sim.taxa,descontoTotal:sim.descontoTotal,liquido:sim.liquido}:null,maqDeposits:sim?sim.deposits:null,notes:sForm.notes,evolution:sForm.evolution,faceMap:editSess?editSess.faceMap:null,photos:editSess?editSess.photos:[],docs:editSess?editSess.docs:[],intercorrencias:editSess?editSess.intercorrencias:[],returnReminderDays:Number(sForm.returnReminderDays)||90,stockDebit:editSess?editSess.stockDebit:null,autoStockDebits:editSess?editSess.autoStockDebits:[]};
-    // Ajusta o débito de estoque com base no que JÁ foi debitado para esta sessão (s.stockDebit) vs o que
-    // deveria estar debitado agora (lote/produto/qtd do formulário). Cobre 3 casos sem nunca duplicar:
-    // 1) sessão nova → debita 1x e grava o registro do débito na própria sessão.
-    // 2) edição mudando lote/qtd → estorna o valor antigo e debita o novo (estoque sempre correto).
-    // 3) clique duplicado no salvar → nada muda entre as duas chamadas, então ajustarDebitoLote não mexe no estoque de novo.
-    const nextDebit=(sForm.loteId&&Number(sForm.qtdUsada)>0)?{product:sForm.product,loteId:sForm.loteId,qty:Number(sForm.qtdUsada)}:null;
-    s.stockDebit=ajustarDebitoLote(setProducts,s.stockDebit,nextDebit,`Sessão ${s.procedure} · ${patient.name}`);
-    // ── Funil de Orçamentos: vincula automaticamente a sessão a um orçamento aberto compatível ──
-    // Se o paciente tem um orçamento (não recusado/expirado) que inclui este procedimento e ainda
-    // não foi marcado como realizado, esta sessão "fecha" esse item automaticamente — sem precisar
-    // clicar em "Converter em Tratamento".
-    const orcMatch=(patient.orcamentos||[]).find(o=>o.status!=="recusado"&&o.status!=="expirado"&&(o.items||[]).includes(s.procedure)&&!(o.linkedProcs||[]).includes(s.procedure));
-    s.fromOrcId=orcMatch?orcMatch.id:(editSess?editSess.fromOrcId:null)||null;
-    // ── Débito automático de insumos via Ficha Técnica do procedimento (estoque mais completo) ──
-    // Cada vez que o procedimento da sessão é definido/alterado, estorna os insumos da ficha antiga (se houver)
-    // e debita os da ficha atual, escolhendo lote automaticamente por vencimento (FEFO). Não depende de
-    // escolha manual de produto — roda em paralelo ao débito manual acima (que cobre o "produto principal").
-    if(!sForm.skipAutoInsumos){
-      const procObj=(proceduresFull||[]).find(p=>(typeof p==="string"?p:(p.name||p))===s.procedure);
+    const sim=isCard?calcMaqSimulacao(maqObj,sForm.payMethod,parcelasFinal,totalValue,sForm.date,antecipacaoFinal):null;
+    // Monta descritivo do procedimento (múltiplos = "Proc A + Proc B")
+    const procLabel=items.map(it=>it.procedure).filter(Boolean).join(" + ")||mainProc;
+    const s={
+      id:editSess?editSess.id:Date.now(),
+      date:sForm.date||new Date().toLocaleDateString("pt-BR"),
+      // legado (campo único) = proc principal
+      procedure:mainProc,
+      // NOVO: array de todos os procedimentos desta sessão
+      items:items.map(it=>({...it,value:Number(it.value)||0})),
+      procLabel,
+      doctor:"Dra. Sofia",
+      // legado: produto/lote/dose/região do item principal
+      product:mainItem.product||sForm.product||"",
+      loteId:mainItem.loteId||sForm.loteId||"",
+      loteCodigo:"",
+      qtdUsada:mainItem.qtdUsada||sForm.qtdUsada||"",
+      dose:mainItem.dose||sForm.dose||"",
+      region:mainItem.region||sForm.region||"",
+      location:sForm.location,
+      value:totalValue,
+      paid:sForm.finStatus==="Pago",
+      finStatus:sForm.finStatus,
+      payMethod:sForm.payMethod,
+      parcelas:parcelasFinal,
+      maquininha:isCard?(sForm.maquininha||""):"",
+      taxaMaq:taxaFinal,
+      netValue:sim?sim.liquido:totalValue,
+      maqSimulacao:sim?{taxa:sim.taxa,descontoTotal:sim.descontoTotal,liquido:sim.liquido}:null,
+      maqDeposits:sim?sim.deposits:null,
+      notes:sForm.notes,
+      evolution:sForm.evolution,
+      faceMap:editSess?editSess.faceMap:null,
+      photos:editSess?editSess.photos:[],
+      docs:editSess?editSess.docs:[],
+      intercorrencias:editSess?editSess.intercorrencias:[],
+      returnReminderDays:Number(sForm.returnReminderDays)||90,
+      // stockDebit legado (item principal com debitarEstoque=true)
+      stockDebit:editSess?editSess.stockDebit:null,
+      // débitos automáticos de insumos (ficha técnica) — um por item
+      autoStockDebits:editSess?editSess.autoStockDebits:[],
+      // NOVO: débitos manuais de estoque por item (array paralelo a items[])
+      itemStockDebits:editSess?editSess.itemStockDebits:[],
+    };
+    // ── Lote do item principal (legado stockDebit) ──────────────────────────────
+    const nextDebit=(mainItem.debitarEstoque!==false&&mainItem.loteId&&Number(mainItem.qtdUsada)>0)?{product:mainItem.product,loteId:mainItem.loteId,qty:Number(mainItem.qtdUsada)}:null;
+    s.stockDebit=ajustarDebitoLote(setProducts,s.stockDebit,nextDebit,`Sessão ${mainProc} · ${patient.name}`);
+    // ── Débitos manuais dos itens extras (idx >= 1) ─────────────────────────────
+    const prevItemDebits=(editSess?.itemStockDebits)||[];
+    const newItemDebits=[];
+    items.forEach((it,idx)=>{
+      const prev=prevItemDebits[idx]||null;
+      const next=(it.debitarEstoque!==false&&it.loteId&&Number(it.qtdUsada)>0)?{product:it.product,loteId:it.loteId,qty:Number(it.qtdUsada)}:null;
+      const debit=ajustarDebitoLote(setProducts,prev,next,`Sessão ${it.procedure||mainProc} · item ${idx+1} · ${patient.name}`);
+      newItemDebits.push(debit);
+    });
+    s.itemStockDebits=newItemDebits;
+    // ── Débito automático de insumos (ficha técnica) para CADA item ─────────────
+    // Estorna tudo que havia e debita do zero para garantir idempotência
+    let allAutoDebits=s.autoStockDebits||[];
+    const novoAutoDebits=[];
+    items.forEach((it,idx)=>{
+      if(it.skipAutoInsumos)return;
+      const procObj=(proceduresFull||[]).find(p=>(typeof p==="string"?p:(p.name||p))===it.procedure);
       const fichaInsumos=(procObj&&typeof procObj==="object"&&Array.isArray(procObj.insumos))?procObj.insumos:[];
       const insumosQty=fichaInsumos.map(i=>({product:i.product,qty:Number(i.qty)||0})).filter(i=>i.product&&i.qty>0);
-      const{debits,faltantes}=ajustarDebitoInsumosAuto(setProducts,allProducts||[],s.autoStockDebits||[],insumosQty,`Sessão ${s.procedure} · ${patient.name} (ficha técnica)`);
-      s.autoStockDebits=debits;
+      if(insumosQty.length===0)return;
+      // pega débitos antigos deste item (identificados por itemIdx)
+      const prevDebitsForItem=(allAutoDebits||[]).filter(d=>d.itemIdx===idx);
+      const{debits,faltantes}=ajustarDebitoInsumosAuto(setProducts,allProducts||[],prevDebitsForItem,insumosQty,`Sessão ${it.procedure} · item ${idx+1} · ${patient.name} (ficha técnica)`);
+      debits.forEach(d=>novoAutoDebits.push({...d,itemIdx:idx}));
       if(faltantes&&faltantes.length>0){
-        setTimeout(()=>alert("⚠ Estoque insuficiente para: "+faltantes.map(f=>`${f.product} (faltam ${f.faltam})`).join(", ")+".\n\nA sessão foi salva normalmente, mas verifique o estoque."),50);
+        setTimeout(()=>alert(`⚠ Estoque insuficiente para ${it.procedure}: `+faltantes.map(f=>`${f.product} (faltam ${f.faltam})`).join(", ")+".\n\nA sessão foi salva, mas verifique o estoque."),50);
       }
-    }
+    });
+    s.autoStockDebits=novoAutoDebits;
+    // ── Funil de Orçamentos ─────────────────────────────────────────────────────
+    const orcMatch=(patient.orcamentos||[]).find(o=>o.status!=="recusado"&&o.status!=="expirado"&&(o.items||[]).includes(mainProc)&&!(o.linkedProcs||[]).includes(mainProc));
+    s.fromOrcId=orcMatch?orcMatch.id:(editSess?editSess.fromOrcId:null)||null;
     upd(p=>{
       const sessions=editSess?(p.sessions||[]).map(x=>x.id===s.id?s:x):[s,...(p.sessions||[])];
       let orcamentos=p.orcamentos||[];
       if(orcMatch){
         orcamentos=orcamentos.map(o=>{
           if(o.id!==orcMatch.id)return o;
-          const linkedProcs=[...new Set([...(o.linkedProcs||[]),s.procedure])];
+          const linkedProcs=[...new Set([...(o.linkedProcs||[]),mainProc])];
           const isFull=(o.items||[]).length>0&&(o.items||[]).every(it=>linkedProcs.includes(it));
           return{...o,linkedProcs,status:o.status==="espera"?"aprovado":o.status,convertedAt:o.convertedAt||s.date,fullyConvertedAt:isFull?(o.fullyConvertedAt||s.date):(o.fullyConvertedAt||null)};
         });
       }
       return{...p,sessions,lastVisit:s.date,orcamentos};
     });
-    // Sincronizar com Financeiro automaticamente
     const patName=patient.name;
     if(s.finStatus!=="Cancelado"){
       setTimeout(()=>syncIncome(s,patName),0);
@@ -4637,6 +4723,12 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     const sess=(patient.sessions||[]).find(s=>s.id===id);
     if(sess?.stockDebit&&Number(sess.stockDebit.qty)>0){
       estornarLote(setProducts,sess.stockDebit.product,sess.stockDebit.loteId,sess.stockDebit.qty,`Estorno · sessão excluída (${patient.name})`);
+    }
+    // Estorna débitos dos itens extras
+    if(sess?.itemStockDebits&&sess.itemStockDebits.length>0){
+      sess.itemStockDebits.forEach(d=>{
+        if(d&&Number(d.qty)>0)estornarLote(setProducts,d.product,d.loteId,d.qty,`Estorno item · sessão excluída (${patient.name})`);
+      });
     }
     if(sess?.autoStockDebits&&sess.autoStockDebits.length>0){
       estornarInsumosAuto(setProducts,sess.autoStockDebits,`Estorno · sessão excluída (${patient.name})`);
@@ -5038,15 +5130,27 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
               h("div",{style:{fontSize:13,fontWeight:700,color:P.accent3,background:"rgba(157,119,97,.12)",border:"1px solid rgba(157,119,97,.25)",borderRadius:8,padding:"3px 10px"}},"📅 "+s.date),
               s.location&&h("div",{style:{fontSize:12,color:P.text3}},"📍 "+s.location)
             ),
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},s.procedure),
-            h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`${s.doctor} · ${s.product}${s.dose?" · "+s.dose:""}${s.loteCodigo?" · Lote "+s.loteCodigo:""}${s.qtdUsada?" · Usado: "+s.qtdUsada:""}`)
+            // Múltiplos procedimentos: exibe cada um individualmente
+            s.items&&s.items.length>1
+              ? h("div",{style:{display:"flex",flexDirection:"column",gap:4}},
+                  s.items.map((it,idx)=>h("div",{key:idx,style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}},
+                    h("div",{style:{width:20,height:20,borderRadius:"50%",background:P.rose,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:P.accent3,flexShrink:0}},idx+1),
+                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},it.procedure),
+                    it.value>0&&h("div",{style:{fontSize:12,color:P.accent,fontWeight:600}},fmtCurr(it.value)),
+                    h("div",{style:{fontSize:11,color:P.text3}},`${it.product||""}${it.dose?" · "+it.dose:""}${it.region?" · "+it.region:""}`)
+                  ))
+                )
+              : h(Fragment,null,
+                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},s.procLabel||s.procedure),
+                  h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`${s.doctor} · ${s.product}${s.dose?" · "+s.dose:""}${s.loteCodigo?" · Lote "+s.loteCodigo:""}${s.qtdUsada?" · Usado: "+s.qtdUsada:""}`)
+                )
           ),
           h("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:s.finStatus==="Pago"?P.green:s.finStatus==="Pendente"?P.yellow:P.red}},fmtCurr(s.value)),
             s.payMethod==="Cartão Crédito"&&s.parcelas>1&&h("div",{style:{fontSize:11,color:P.accent,background:"rgba(157,119,97,.1)",borderRadius:8,padding:"2px 8px",fontWeight:600}},`${s.parcelas}x ${fmtCurr(s.value/s.parcelas)}`),
             h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.id,e.target.value),style:{fontSize:11,padding:"3px 8px",borderRadius:12,color:s.finStatus==="Pago"?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st))),
             h("button",{onClick:()=>openMapForSession(s),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},mapPlanBySession[s.id]?"🗺 Editar Mapa":"🗺 Mapa"),
-            h("button",{onClick:()=>{setEditSess(s);setSForm({...s,value:String(s.value),finStatus:s.finStatus||"Pendente"});setShowNewS(true);},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"✎"),
+            h("button",{onClick:()=>{setEditSess(s);setSForm({...s,value:String(s.value),finStatus:s.finStatus||"Pendente",items:s.items&&s.items.length>0?s.items.map(it=>({...it,value:String(it.value||"")})):[{procedure:s.procedure||"",product:s.product||"",loteId:s.loteId||"",qtdUsada:s.qtdUsada||"",dose:s.dose||"",region:s.region||"",value:String(s.value||""),debitarEstoque:true,skipAutoInsumos:false}]});setShowNewS(true);},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"✎"),
             h("button",{onClick:()=>delSession(s.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"🗑")
           )
         ),
@@ -5536,71 +5640,115 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       );
     })(),
         // ─── MODALS
-    h(Modal,{open:showNewS,onClose:()=>{setShowNewS(false);setEditSess(null);},title:editSess?"✎ Editar Sessão":"✦ Nova Sessão",width:620},
+    h(Modal,{open:showNewS,onClose:()=>{setShowNewS(false);setEditSess(null);},title:editSess?"✎ Editar Sessão":"✦ Nova Sessão",width:680},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         h(Field,{label:"Data",half:true},h(Inp,{type:"date",value:sForm.date,onChange:sfv("date")})),
-        h(Field,{label:"Procedimento",half:true},h(Sel,{value:sForm.procedure,onChange:sfvProcedure,options:procedures})),
-        h(Field,{label:"Produto"},
-          h("div",null,
-            h(Sel,{value:sForm.product,onChange:v=>{setSForm(p=>({...p,product:v,loteId:"",qtdUsada:""}));},options:products}),
-            getAvailableLotes(allProducts||[],sForm.product).length>0&&h("div",{style:{marginTop:5,display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}},
-              h("span",{style:{fontSize:10,color:P.text3}},"Lotes disponíveis:"),
-              getAvailableLotes(allProducts||[],sForm.product).map(l=>h("span",{key:l.id,style:{fontSize:10,padding:"1px 8px",borderRadius:10,background:"rgba(122,173,138,.1)",color:P.green,border:"1px solid rgba(122,173,138,.25)"}},l.codigo+": "+l.qtd+(l.validade?" (val "+l.validade+")":"")))
-            )
-          )
-        ),
-        (()=>{const _lts=getAvailableLotes(allProducts||[],sForm.product);return _lts.length>0?h("div",{style:{display:"flex",gap:12,flexWrap:"wrap",width:"100%"}},
-          h(Field,{label:"Lote Utilizado",half:true},
-            h("select",{value:sForm.loteId||"",onChange:e=>sfv("loteId")(e.target.value),style:{width:"100%",background:P.bg3,border:"1px solid "+P.border,borderRadius:8,padding:"9px 12px",color:P.text,fontSize:13.5,fontFamily:"'DM Sans',sans-serif",outline:"none",boxSizing:"border-box"}},
-              h("option",{value:""},"Selecionar lote..."),
-              _lts.map(l=>h("option",{key:l.id,value:String(l.id)},l.codigo+" — "+l.qtd+" disponível"+(l.validade?" · val "+l.validade:"")))
-            )
-          ),
-          h(Field,{label:"Qtd. Usada",half:true},
-            h("div",null,
-              h(Inp,{type:"number",value:sForm.qtdUsada||"",onChange:sfv("qtdUsada"),placeholder:"Ex: 40"}),
-              sForm.loteId&&sForm.qtdUsada&&(()=>{
-                const _l=_lts.find(l=>String(l.id)===String(sForm.loteId));
-                if(!_l)return null;
-                const _saldo=_l.qtd-Number(sForm.qtdUsada||0);
-                return h("div",{style:{fontSize:11,marginTop:5,padding:"5px 10px",borderRadius:7,background:_saldo>=0?"rgba(122,173,138,.1)":"rgba(192,112,112,.1)",color:_saldo>=0?P.green:P.red,fontWeight:600,border:"1px solid "+(_saldo>=0?"rgba(122,173,138,.25)":"rgba(192,112,112,.25)")}},_saldo>=0?"✓ Saldo após uso: "+_saldo:"⚠ Excede o disponível ("+_l.qtd+")");
-              })()
-            )
-          )
-        ):null;})(),
-        // ── Ficha de Insumos do procedimento: debitada automaticamente do estoque ao salvar ──
-        (()=>{
-          const procObj=(proceduresFull||[]).find(p=>(typeof p==="string"?p:(p.name||p))===sForm.procedure);
-          const fichaInsumos=(procObj&&typeof procObj==="object"&&Array.isArray(procObj.insumos))?procObj.insumos:[];
-          if(fichaInsumos.length===0)return null;
-          return h("div",{style:{width:"100%",padding:"10px 14px",background:P.card2,borderRadius:8,border:`1px solid ${P.border}`}},
-            h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
-              h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},"🧪 Insumos debitados automaticamente"),
-              h("label",{style:{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:10.5,color:P.text3}},
-                h("input",{type:"checkbox",checked:!!sForm.skipAutoInsumos,onChange:e=>sfv("skipAutoInsumos")(e.target.checked),style:{accentColor:P.rose,cursor:"pointer"}}),
-                "não debitar"
-              )
-            ),
-            !sForm.skipAutoInsumos&&h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
-              fichaInsumos.map((ins,i)=>{
-                const info=(allProducts||[]).find(p=>(typeof p==="string"?p:(p.name||p))===ins.product);
-                const disponivel=info?getProductSaldo(allProducts||[],ins.product):0;
-                const ok=disponivel>=Number(ins.qty);
-                return h("span",{key:i,style:{fontSize:11,padding:"2px 9px",borderRadius:12,background:ok?"rgba(122,173,138,.1)":"rgba(192,112,112,.12)",color:ok?P.green:P.red,border:`1px solid ${ok?"rgba(122,173,138,.25)":"rgba(192,112,112,.3)"}`}},
-                  `${ins.product} · ${ins.qty}${info?.unit||""}`+(ok?"":` (saldo: ${disponivel})`)
-                );
-              })
-            ),
-            sForm.skipAutoInsumos&&h("div",{style:{fontSize:11,color:P.text3}},"Estoque não será movimentado para este procedimento.")
-          );
-        })(),
-        h(Field,{label:"Dose",half:true},h(Inp,{value:sForm.dose,onChange:sfv("dose"),placeholder:"Ex: 40U, 1ml"})),
-        h(Field,{label:"Região",half:true},h(Inp,{value:sForm.region,onChange:sfv("region"),placeholder:"Ex: Glabela + Testa"})),
         h(Field,{label:"Local",half:true},h(Sel,{value:sForm.location,onChange:sfv("location"),options:locations})),
-        h(Field,{label:"Valor (R$)",half:true},h(Inp,{value:sForm.value,onChange:sfv("value"),placeholder:"0,00"})),
+      ),
+      // ── BLOCO DE PROCEDIMENTOS / PRODUTOS ────────────────────────────────────
+      h("div",{style:{width:"100%",marginTop:4}},
+        h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}},
+          h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",fontWeight:600}},"💉 Procedimentos & Produtos"),
+          h("button",{onClick:sItemAdd,style:{fontSize:12,padding:"5px 12px",borderRadius:8,background:P.rose,border:"none",color:P.accent3,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontWeight:500}},"＋ Adicionar Procedimento")
+        ),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:14}},
+          (sForm.items||[]).map((item,idx)=>{
+            const isOnly=(sForm.items||[]).length===1;
+            const _lts=getAvailableLotes(allProducts||[],item.product);
+            const _loteInfo=_lts.find(l=>String(l.id)===String(item.loteId));
+            const _saldo=_loteInfo?(item.qtdUsada?_loteInfo.qtd-Number(item.qtdUsada):_loteInfo.qtd):null;
+            const procObj=(proceduresFull||[]).find(p=>(typeof p==="string"?p:(p.name||p))===item.procedure);
+            const fichaInsumos=(procObj&&typeof procObj==="object"&&Array.isArray(procObj.insumos))?procObj.insumos:[];
+            const rule=(returnRules||[]).find(r=>r.procedure===item.procedure);
+            return h("div",{key:idx,style:{padding:"14px 16px",background:P.bg3,borderRadius:12,border:`1px solid ${P.border}`,position:"relative"}},
+              // Cabeçalho do item
+              h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}},
+                h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+                  h("div",{style:{width:24,height:24,borderRadius:"50%",background:P.rose,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:P.accent3,flexShrink:0}},idx+1),
+                  h("div",{style:{fontSize:12.5,color:P.text,fontWeight:600}},item.procedure||"Procedimento "+(idx+1))
+                ),
+                !isOnly&&h("button",{onClick:()=>sItemRemove(idx),title:"Remover este procedimento",style:{background:"none",border:"1px solid rgba(192,112,112,.3)",borderRadius:6,color:P.red,cursor:"pointer",fontSize:13,padding:"2px 7px",lineHeight:1}},"×")
+              ),
+              // Linha 1: procedimento + produto
+              h("div",{style:{display:"flex",flexWrap:"wrap",gap:10,marginBottom:8}},
+                h(Field,{label:"Procedimento",half:true},
+                  h("select",{value:item.procedure,onChange:e=>{
+                    const v=e.target.value;
+                    const r=(returnRules||[]).find(r=>r.procedure===v);
+                    const po=Array.isArray(proceduresFull)?proceduresFull.find(p=>(typeof p==="string"?p:(p.name||p))===v):null;
+                    const dv=po&&typeof po==="object"&&po.defaultValue?String(po.defaultValue):"";
+                    // aplica retorno padrão ao primeiro item
+                    if(idx===0&&r)setSForm(p=>({...p,returnReminderDays:r.revisionDays||r.maintenanceDays||90}));
+                    sItemSet(idx,"procedure",v);
+                    if(dv)sItemSet(idx,"value",dv);
+                  },style:{...IS}},procedures.map(p=>h("option",{key:p,value:p},p)))
+                ),
+                h(Field,{label:"Produto",half:true},
+                  h("div",null,
+                    h("select",{value:item.product,onChange:e=>sItemSet(idx,"product",e.target.value)&&sItemSet(idx,"loteId","")&&sItemSet(idx,"qtdUsada",""),style:{...IS}},products.map(p=>typeof p==="string"?h("option",{key:p,value:p},p):h("option",{key:p.name||p,value:p.name||p},p.name||p))),
+                    _lts.length>0&&h("div",{style:{marginTop:4,display:"flex",gap:4,flexWrap:"wrap"}},
+                      _lts.map(l=>h("span",{key:l.id,style:{fontSize:9.5,padding:"1px 7px",borderRadius:8,background:"rgba(122,173,138,.1)",color:P.green,border:"1px solid rgba(122,173,138,.2)"}},l.codigo+": "+l.qtd+(l.validade?" · val "+l.validade:"")))
+                    )
+                  )
+                )
+              ),
+              // Linha 2: lote + qtd (se houver lotes disponíveis)
+              _lts.length>0&&h("div",{style:{display:"flex",gap:10,marginBottom:8,flexWrap:"wrap"}},
+                h(Field,{label:"Lote Utilizado",half:true},
+                  h("select",{value:item.loteId||"",onChange:e=>sItemSet(idx,"loteId",e.target.value),style:{...IS}},
+                    h("option",{value:""},"Selecionar lote..."),
+                    _lts.map(l=>h("option",{key:l.id,value:String(l.id)},l.codigo+" — "+l.qtd+" disp."+(l.validade?" · val "+l.validade:"")))
+                  )
+                ),
+                h(Field,{label:"Qtd. Usada",half:true},
+                  h("div",null,
+                    h(Inp,{type:"number",value:item.qtdUsada||"",onChange:v=>sItemSet(idx,"qtdUsada",v),placeholder:"Ex: 40"}),
+                    _saldo!==null&&item.qtdUsada&&h("div",{style:{fontSize:11,marginTop:4,padding:"4px 9px",borderRadius:7,background:_saldo>=0?"rgba(122,173,138,.1)":"rgba(192,112,112,.1)",color:_saldo>=0?P.green:P.red,fontWeight:600}},_saldo>=0?"✓ Saldo após: "+_saldo:"⚠ Excede disponível")
+                  )
+                )
+              ),
+              // Linha 3: dose + região + valor
+              h("div",{style:{display:"flex",flexWrap:"wrap",gap:10,marginBottom:8}},
+                h(Field,{label:"Dose",third:true},h(Inp,{value:item.dose||"",onChange:v=>sItemSet(idx,"dose",v),placeholder:"Ex: 40U, 1ml"})),
+                h(Field,{label:"Região",third:true},h(Inp,{value:item.region||"",onChange:v=>sItemSet(idx,"region",v),placeholder:"Ex: Glabela"})),
+                h(Field,{label:"Valor (R$)",third:true},h(Inp,{value:item.value||"",onChange:v=>sItemSet(idx,"value",v),placeholder:"0,00",type:"number",step:"0.01"}))
+              ),
+              // Opções de estoque deste item
+              h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginTop:4,paddingTop:10,borderTop:`1px solid ${P.border}`}},
+                h("label",{style:{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:11.5,color:P.text2}},
+                  h("input",{type:"checkbox",checked:item.debitarEstoque!==false,onChange:e=>sItemSet(idx,"debitarEstoque",e.target.checked),style:{accentColor:P.rose,cursor:"pointer",width:14,height:14}}),
+                  "Debitar produto do estoque"
+                ),
+                fichaInsumos.length>0&&h("label",{style:{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:11.5,color:P.text2}},
+                  h("input",{type:"checkbox",checked:!!item.skipAutoInsumos,onChange:e=>sItemSet(idx,"skipAutoInsumos",e.target.checked),style:{accentColor:P.rose,cursor:"pointer",width:14,height:14}}),
+                  "Não debitar insumos automáticos"
+                )
+              ),
+              // Ficha de insumos do procedimento
+              fichaInsumos.length>0&&!item.skipAutoInsumos&&h("div",{style:{marginTop:8,padding:"8px 12px",background:P.card2,borderRadius:8,border:`1px solid ${P.border}`}},
+                h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}},"🧪 Insumos automáticos desta ficha técnica"),
+                h("div",{style:{display:"flex",flexWrap:"wrap",gap:5}},
+                  fichaInsumos.map((ins,i)=>{
+                    const info=(allProducts||[]).find(p=>(typeof p==="string"?p:(p.name||p))===ins.product);
+                    const disp=info?getProductSaldo(allProducts||[],ins.product):0;
+                    const ok=disp>=Number(ins.qty);
+                    return h("span",{key:i,style:{fontSize:10.5,padding:"2px 9px",borderRadius:12,background:ok?"rgba(122,173,138,.1)":"rgba(192,112,112,.12)",color:ok?P.green:P.red,border:`1px solid ${ok?"rgba(122,173,138,.25)":"rgba(192,112,112,.3)"}`}},`${ins.product} · ${ins.qty}${info?.unit||""}`+(ok?"":" ⚠ saldo:"+disp));
+                  })
+                )
+              )
+            );
+          })
+        ),
+        // Resumo do valor total quando há mais de 1 item
+        (sForm.items||[]).length>1&&h("div",{style:{marginTop:12,padding:"12px 16px",background:"rgba(92,31,50,.06)",borderRadius:10,border:`1px solid rgba(92,31,50,.2)`,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+          h("div",{style:{fontSize:12,color:P.accent,textTransform:"uppercase",letterSpacing:".08em",fontWeight:600}},`💰 Total da Sessão (${(sForm.items||[]).length} procedimentos)`),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:P.rose}},fmtCurr((sForm.items||[]).reduce((a,it)=>a+(Number(it.value)||0),0)))
+        )
+      ),
+      // ── Campos de pagamento ───────────────────────────────────────────────────
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:12,marginTop:8}},
         h(Field,{label:"Forma de Pagamento",half:true},h(Sel,{value:sForm.payMethod,onChange:v=>setSForm(p=>({...p,payMethod:v,maquininha:"",parcelas:"1",antecipacao:""})),options:PAY_METHODS})),
         h(Field,{label:"Status Financeiro",half:true},h(Sel,{value:sForm.finStatus,onChange:sfv("finStatus"),options:FIN_STATUS})),
-        // ── Campos de maquininha (obrigatório para pagamento em cartão) ──
         (sForm.payMethod==="Cartão Crédito"||sForm.payMethod==="Cartão Débito")&&h(Fragment,null,
           maquininhas.length===0
             ? h("div",{style:{width:"100%",padding:"10px 14px",background:"rgba(196,169,106,.1)",border:`1px solid ${P.yellow}44`,borderRadius:8,fontSize:12,color:P.yellow}},
@@ -5632,19 +5780,20 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             )
           )
         ),
-        // ── Simulação de recebimento (taxa, líquido e cronograma de depósitos) ──
-        (sForm.payMethod==="Cartão Crédito"||sForm.payMethod==="Cartão Débito")&&sForm.maquininha&&Number(sForm.value)>0&&(()=>{
+        // Simulação de recebimento
+        (sForm.payMethod==="Cartão Crédito"||sForm.payMethod==="Cartão Débito")&&sForm.maquininha&&(()=>{
+          const totalVal=(sForm.items||[]).reduce((a,it)=>a+(Number(it.value)||0),0)||(Number(sForm.value)||0);
+          if(!totalVal)return null;
           const maqObj=maquininhas.find(m=>m.id===sForm.maquininha)||null;
           if(!maqObj)return null;
           const taxaFinal=getMaqTaxa(maqObj,sForm.payMethod,sForm.parcelas);
-          const gross=Number(sForm.value)||0;
           const ant=sForm.antecipacao===""?null:(sForm.antecipacao==="true");
-          const sim=calcMaqSimulacao(maqObj,sForm.payMethod,sForm.parcelas,gross,sForm.date,ant);
+          const sim=calcMaqSimulacao(maqObj,sForm.payMethod,sForm.parcelas,totalVal,sForm.date,ant);
           const n=Number(sForm.parcelas)||1;
           return h("div",{style:{width:"100%",padding:"14px 16px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
             h("div",{style:{fontSize:11,color:P.text3,marginBottom:10,textTransform:"uppercase",letterSpacing:".08em"}},"💳 Simulação de Recebimento"),
             h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginBottom:sim.deposits.length>1?12:0}},
-              h("div",null,h("div",{style:{fontSize:10,color:P.text3}},"Valor bruto"),h("div",{style:{fontSize:15,color:P.text,fontWeight:600}},fmtCurr(gross))),
+              h("div",null,h("div",{style:{fontSize:10,color:P.text3}},"Valor bruto"),h("div",{style:{fontSize:15,color:P.text,fontWeight:600}},fmtCurr(totalVal))),
               taxaFinal>0&&h("div",null,h("div",{style:{fontSize:10,color:P.text3}},"Taxa"),h("div",{style:{fontSize:15,color:P.red}},`${taxaFinal.toFixed(2)}%`)),
               taxaFinal>0&&h("div",null,h("div",{style:{fontSize:10,color:P.text3}},"Desconto"),h("div",{style:{fontSize:15,color:P.red}},`− ${fmtCurr(sim.descontoTotal)}`)),
               h("div",null,h("div",{style:{fontSize:10,color:P.text3}},"Você recebe (líquido)"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.green}},fmtCurr(sim.liquido)))
@@ -5664,7 +5813,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Field,{label:"Retorno Automático (dias)",half:true},
           h("div",null,
             h(Inp,{value:sForm.returnReminderDays,onChange:sfv("returnReminderDays"),placeholder:"14",type:"number"}),
-            (()=>{const rule=(returnRules||[]).find(r=>r.procedure===sForm.procedure);return rule?h("div",{style:{marginTop:6,display:"flex",gap:6,flexWrap:"wrap"}},
+            (()=>{const rule=(returnRules||[]).find(r=>r.procedure===(sForm.items?.[0]?.procedure||sForm.procedure));return rule?h("div",{style:{marginTop:6,display:"flex",gap:6,flexWrap:"wrap"}},
               rule.revisionDays>0&&h("button",{onClick:()=>sfv("returnReminderDays")(String(rule.revisionDays)),style:{fontSize:10,padding:"3px 8px",borderRadius:12,background:Number(sForm.returnReminderDays)===rule.revisionDays?"rgba(92,31,50,.25)":"transparent",border:`1px solid ${Number(sForm.returnReminderDays)===rule.revisionDays?P.rose:P.border}`,color:Number(sForm.returnReminderDays)===rule.revisionDays?P.accent3:P.text3,cursor:"pointer"}},"✏ Revisão "+rule.revisionDays+"d"),
               rule.maintenanceDays>0&&h("button",{onClick:()=>sfv("returnReminderDays")(String(rule.maintenanceDays)),style:{fontSize:10,padding:"3px 8px",borderRadius:12,background:Number(sForm.returnReminderDays)===rule.maintenanceDays?"rgba(92,31,50,.25)":"transparent",border:`1px solid ${Number(sForm.returnReminderDays)===rule.maintenanceDays?P.rose:P.border}`,color:Number(sForm.returnReminderDays)===rule.maintenanceDays?P.accent3:P.text3,cursor:"pointer"}},"🔄 Manutenção "+rule.maintenanceDays+"d"),
               h("button",{onClick:()=>sfv("returnReminderDays")("0"),style:{fontSize:10,padding:"3px 8px",borderRadius:12,background:Number(sForm.returnReminderDays)===0?"rgba(192,112,112,.15)":"transparent",border:`1px solid ${Number(sForm.returnReminderDays)===0?"rgba(192,112,112,.4)":P.border}`,color:Number(sForm.returnReminderDays)===0?P.red:P.text3,cursor:"pointer"}},"✕ Sem retorno")
@@ -5677,7 +5826,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           h("div",{style:{fontSize:12,color:P.text3,padding:"10px 12px",background:P.bg3,borderRadius:8}},"O mapa facial (com foto da paciente) é registrado separadamente. Feche este formulário e clique em \"🗺 Mapa\" no card da sessão para preencher ou editar.")
         )
       ),
-      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},h(Btn,{variant:"ghost",onClick:()=>{setShowNewS(false);setEditSess(null);}},"Cancelar"),!editSess&&h("button",{onClick:()=>{saveSession();setTimeout(()=>{setPkgForm(p=>({...p,procedure:sForm.procedure}));setShowNewPkg(true);setTab("pacotes");},100);},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:"1px solid "+P.gold,color:P.gold}},"📦 Salvar e Criar Pacote"),h(Btn,{onClick:saveSession},editSess?"Salvar":"Salvar Sessão"))
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},h(Btn,{variant:"ghost",onClick:()=>{setShowNewS(false);setEditSess(null);}},"Cancelar"),!editSess&&h("button",{onClick:()=>{saveSession();setTimeout(()=>{setPkgForm(p=>({...p,procedure:sForm.items?.[0]?.procedure||sForm.procedure}));setShowNewPkg(true);setTab("pacotes");},100);},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:"1px solid "+P.gold,color:P.gold}},"📦 Salvar e Criar Pacote"),h(Btn,{onClick:saveSession},editSess?"Salvar":"Salvar Sessão"))
     ),
     showIntercorr&&h(Modal,{open:true,onClose:()=>{setShowIntercorr(null);setIcForm(blankIc);},title:"⚠ Registrar Intercorrência",width:560},
       showIntercorr==="global"&&(patient.sessions||[]).length>0&&h(Field,{label:"Vincular a um Procedimento Realizado (opcional)"},
