@@ -30,7 +30,7 @@ const icConductsOf=ic=>(ic.conducts&&ic.conducts.length)?ic.conducts:(ic.conduct
 const icEvolutionsOf=ic=>ic.evolutions||[];
 const EXPENSE_CATS=["Aluguel","Marketing","Fornecedores","Produtos","Impostos","Equipamentos","Funcionários","Outros"];
 // Sub-canais de origem quando a paciente veio de Campanha (origem==="campanha")
-const CAMPAIGN_CHANNELS=["Instagram","Facebook/Meta Ads","Google Ads","WhatsApp","Indicação Direta (boca a boca)","Influencer/Parceria","Evento","Outro"];
+const CAMPAIGN_CHANNELS=["Instagram","TikTok","Facebook/Meta Ads","Google Ads","Site","WhatsApp","Indicação Direta (boca a boca)","Influencer/Parceria","Evento","Outro"];
 // Paleta vibrante para cards de KPI com fundo colorido (vouchers, pacotes, estoque, aniversariantes, retornos, dashboard)
 const KPI={
   purple:"#8B5CF6", blue:"#3B82F6", green:"#22C55E", red:"#EF4444", yellow:"#EAB308",
@@ -4242,6 +4242,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
             ),
             h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:3}},
               h("span",{style:{fontSize:11.5,color:P.text2}},(p.sessions||[]).length+" sessão"+((p.sessions||[]).length!==1?"ões":"")),
+              (p.sessions||[]).length>=2&&h("span",{style:{fontSize:10.5,padding:"1px 7px",borderRadius:8,background:"rgba(122,174,212,.12)",color:"#7aaed4",border:"1px solid rgba(122,174,212,.22)"}},p.origem==="recorrente"?"🔄 Recorrente":"🔁 "+((p.sessions||[]).length)+"ª visita"),
               lastSess&&h("span",{style:{fontSize:11.5,color:P.text3}},"· "+lastSess.procedure),
               p.anamnese?.skinType&&h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"1px 6px",borderRadius:8}},p.anamnese.skinType)
             ),
@@ -4615,7 +4616,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       return{...p,items,value:total>0?String(total):""};
     });
   }
-  const[patForm,setPatForm]=useState({...patient,...patient.anamnese,complaints:(patient.complaints||[]).join(", ")});
+  const[patForm,setPatForm]=useState({...patient,...patient.anamnese,complaints:(patient.complaints||[]).join(", "),origem:patient.origem||"nova",indicadoPor:patient.indicadoPor||"",canalCampanha:patient.canalCampanha||""});
   const pfv=k=>v=>setPatForm(p=>({...p,[k]:v}));
   const blankIc={type:"Edema",severity:"Leve",status:"Em Acompanhamento",procedure:"",product:"",region:"",procedureDate:"",date:todayISO(),notes:"",conduct:"",nextReavaliacao:"",sessId:null,_photoFiles:[]};
   const[icForm,setIcForm]=useState(blankIc);
@@ -4658,7 +4659,11 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     });
   }
   function savePat(){
-    upd(p=>({...p,...patForm,age:Number(patForm.age),complaints:patForm.complaints.split(",").map(s=>s.trim()).filter(Boolean),
+    upd(p=>({...p,...patForm,age:Number(patForm.age),
+      origem:patForm.origem||p.origem||"nova",
+      indicadoPor:patForm.origem==="indicacao"?(patForm.indicadoPor||""):(patForm.indicadoPor||""),
+      canalCampanha:patForm.origem==="campanha"?(patForm.canalCampanha||""):"",
+      complaints:patForm.complaints.split(",").map(s=>s.trim()).filter(Boolean),
       anamnese:{...p.anamnese,healthHistory:patForm.healthHistory,medications:patForm.medications,smoking:patForm.smoking,pregnancy:patForm.pregnancy,previousProcedures:patForm.previousProcedures,skinType:patForm.skinType,fitzpatrick:patForm.fitzpatrick,allergiesDetail:patForm.allergiesDetail,contraindications:patForm.contraindications,musicStyle:patForm.musicStyle,importantAlerts:patForm.allergies&&patForm.allergies!=="Nenhuma"?[patForm.allergies]:[]}}));
     setEditPat(false);
   }
@@ -4952,6 +4957,8 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             patient.email&&h("span",{style:{fontSize:12,color:P.text3}},"✉ "+patient.email),
             patient.cpf&&h("span",{style:{fontSize:12,color:P.text3}},"CPF "+patient.cpf),
             patient.origem&&h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(157,119,97,.12)",color:P.accent,border:"1px solid rgba(157,119,97,.2)"}},(()=>({nova:"🌟 Nova",indicacao:"🤝 Indicação",campanha:"📣 Campanha"+(patient.canalCampanha?" — "+patient.canalCampanha:""),recorrente:"🔄 Recorrente"})[patient.origem]||patient.origem)()),
+            // Badge automático de recorrente: ≥ 2 sessões realizadas e origem ainda não marcada como recorrente
+            (patient.sessions||[]).length>=2&&patient.origem!=="recorrente"&&h("span",{title:"Esta paciente já realizou "+(patient.sessions||[]).length+" sessões — considere marcá-la como Recorrente ao editar.",style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(122,174,212,.12)",color:"#7aaed4",border:"1px solid rgba(122,174,212,.25)",cursor:"default"}},"🔁 "+((patient.sessions||[]).length)+"ª visita"),
             patient.indicadoPor&&h("span",{style:{fontSize:12,color:P.text3}},"Ind. por: "+patient.indicadoPor)
           ),
           patient.anamnese?.musicStyle&&h("div",{style:{fontSize:12,color:P.text3,marginBottom:6}},`🎵 ${patient.anamnese.musicStyle}`),
@@ -6021,7 +6028,16 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Field,{label:"Fumante",third:true},h(Sel,{value:patForm.smoking||"Não",onChange:pfv("smoking"),options:["Não","Sim","Ex-fumante"]})),
         h(Field,{label:"Gestante",third:true},h(Sel,{value:patForm.pregnancy||"Não",onChange:pfv("pregnancy"),options:["Não","Gestante","Lactante"]})),
         h(Field,{label:"🎵 Estilo Musical",third:true},h(Sel,{value:patForm.musicStyle||"Pop",onChange:pfv("musicStyle"),options:MUSIC_STYLES})),
-        h(Field,{label:"Próx. Retorno"},h(Inp,{value:patForm.nextReturn||"",onChange:pfv("nextReturn"),placeholder:"DD/MM/AAAA"}))
+        h(Field,{label:"Próx. Retorno"},h(Inp,{value:patForm.nextReturn||"",onChange:pfv("nextReturn"),placeholder:"DD/MM/AAAA"})),
+        h(Field,{label:"Origem da Paciente"},
+          h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+            [{k:"nova",l:"🌟 Nova"},{k:"indicacao",l:"🤝 Indicação"},{k:"campanha",l:"📣 Campanha"},{k:"recorrente",l:"🔄 Recorrente"}].map(o=>
+              h("button",{key:o.k,onClick:()=>pfv("origem")(o.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:(patForm.origem||"nova")===o.k?P.rose:"transparent",border:`1px solid ${(patForm.origem||"nova")===o.k?P.rose:P.border}`,color:(patForm.origem||"nova")===o.k?P.accent3:P.text2}},o.l)
+            )
+          )
+        ),
+        patForm.origem==="indicacao"&&h(Field,{label:"Indicado(a) por"},h(Inp,{value:patForm.indicadoPor||"",onChange:pfv("indicadoPor"),placeholder:"Nome de quem indicou"})),
+        patForm.origem==="campanha"&&h(Field,{label:"Canal da Campanha"},h(Sel,{value:patForm.canalCampanha||"",onChange:pfv("canalCampanha"),options:["",...CAMPAIGN_CHANNELS]}))
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},h(Btn,{variant:"ghost",onClick:()=>setEditPat(false)},"Cancelar"),h(Btn,{onClick:savePat},"Salvar Alterações"))
     ),
