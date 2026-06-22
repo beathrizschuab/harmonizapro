@@ -8642,132 +8642,151 @@ function DonutChart({catList,totalCat}){
 function OrigemFaturamento({patients,selMonth,selYear,parseDMY2}){
   const h=createElement;
   const safePats=Array.isArray(patients)?patients.filter(Boolean):[];
-  const allS=safePats.flatMap(p=>(Array.isArray(p.sessions)?p.sessions:[]).filter(Boolean).map(s=>({...s,value:Number(s.value)||0,
-    origem:p.origem||"nova",
-    canalAquisicao:p.canalAquisicao||"",
-    indicadoPor:p.indicadoPor||"",
-    canalCampanha:p.canalCampanha||"",
-    pname:p.name,pid:p.id,
-    sessCount:(p.sessions||[]).length,
-  })));
-  const monthS=allS.filter(s=>{try{const d=parseDMY2(s.date);return d&&d.getMonth()===selMonth&&d.getFullYear()===selYear&&s.paid;}catch{return false;}});
-  const total=monthS.reduce((a,s)=>a+s.value,0)||1;
 
-  // ── Agrupamento por Canal de Aquisição ──────────────────────────────────────
-  const canalMap={};
-  const campMap={};   // faturamento de sessões de pacientes vindas de campanha paga
-  let totalRecorrente=0;
+  // ── Para cada paciente, qual foi a data da PRIMEIRA sessão paga? ──────────────
+  // "Recorrente neste mês" = paciente que já tinha pelo menos 1 sessão paga ANTES deste mês.
+  // "Nova neste mês"       = paciente cuja primeira sessão paga acontece neste mês.
+  // O CANAL DE AQUISIÇÃO aparece para TODAS, sejam novas ou recorrentes.
+  const refDate=new Date(selYear,selMonth,1); // primeiro dia do mês selecionado
 
-  // Para saber se paciente é recorrente no contexto geral (>1 sessão paga em qualquer momento)
-  const patAllPaidSessions={};
-  allS.filter(s=>s.paid).forEach(s=>{patAllPaidSessions[s.pid]=(patAllPaidSessions[s.pid]||0)+1;});
-
-  monthS.forEach(s=>{
-    const isRecorrente=patAllPaidSessions[s.pid]>1;
-    if(isRecorrente){
-      totalRecorrente+=s.value;
-      return; // recorrente tem categoria própria, independente do canal de aquisição
-    }
-    const canal=s.canalAquisicao||"outro";
-    canalMap[canal]=(canalMap[canal]||0)+s.value;
-    if(s.origem==="campanha"){
-      const ch=s.canalAquisicao||s.canalCampanha||"outro";
-      campMap[ch]=(campMap[ch]||0)+s.value;
-    }
+  const patFirstPaidDate={};
+  safePats.forEach(p=>{
+    const paid=(p.sessions||[]).filter(s=>s.paid);
+    if(!paid.length)return;
+    const dates=paid.map(s=>parseDMY2(s.date)).filter(Boolean).sort((a,b)=>a-b);
+    patFirstPaidDate[p.id]=dates[0];
   });
 
-  const totalCampanha=Object.values(campMap).reduce((a,v)=>a+v,0);
-  const totalNovo=Object.values(canalMap).reduce((a,v)=>a+v,0);
+  // Constrói sessões do mês com contexto de cada paciente
+  const allS=safePats.flatMap(p=>(Array.isArray(p.sessions)?p.sessions:[]).filter(Boolean).map(s=>({
+    ...s,value:Number(s.value)||0,
+    canal:p.canalAquisicao||"",        // como ela chegou
+    campanha:p.origem==="campanha",     // veio de anúncio pago?
+    indicadoPor:p.indicadoPor||"",
+    pname:p.name,pid:p.id,
+  })));
 
-  const summaryCards=[
-    {k:"recorrente", l:"Recorrentes",       icon:"🔄", color:P.green,    bg:"rgba(122,173,138,.12)", val:totalRecorrente},
-    {k:"novo",       l:"Novas Pacientes",    icon:"🌟", color:"#9b7aad",  bg:"rgba(155,122,173,.12)", val:totalNovo},
-    {k:"campanha",   l:"Via Campanha Paga",  icon:"📣", color:P.yellow,   bg:"rgba(196,169,106,.12)", val:totalCampanha},
-  ];
-
-  // Ordena canais por valor
-  const canalList=CANAIS_AQUISICAO
-    .map(c=>({...c,val:canalMap[c.k]||0}))
-    .filter(c=>c.val>0)
-    .sort((a,b)=>b.val-a.val);
-
-  const campList=Object.entries(campMap).sort((a,b)=>b[1]-a[1]);
-  const totalCamp=campList.reduce((a,[,v])=>a+v,0)||1;
-
-  const indicacoes=safePats.filter(p=>p.canalAquisicao==="indicacao"&&p.indicadoPor);
+  const monthS=allS.filter(s=>{
+    try{const d=parseDMY2(s.date);return d&&d.getMonth()===selMonth&&d.getFullYear()===selYear&&s.paid;}
+    catch{return false;}
+  });
 
   if(monthS.length===0)return null;
+
+  const totalGeral=monthS.reduce((a,s)=>a+s.value,0)||1;
+
+  // ── Nova vs Recorrente (automático, baseado no histórico) ─────────────────────
+  // Nova    = primeira sessão paga DESTA paciente está neste mês
+  // Recorrente = ela já tinha sessão paga antes deste mês
+  let totalNovas=0, totalRecorrentes=0;
+  monthS.forEach(s=>{
+    const first=patFirstPaidDate[s.pid];
+    const isRecorrente=first&&first<refDate;
+    if(isRecorrente)totalRecorrentes+=s.value;
+    else totalNovas+=s.value;
+  });
+
+  // ── Canal de aquisição: mostra para TODAS as sessões do mês ──────────────────
+  // Agrupa pelo canal cadastrado na paciente. Sessões sem canal = "Não informado"
+  const canalValMap={};    // canal → valor total no mês
+  const canalCampMap={};   // canal → valor de campanha paga
+  const canalNovMap={};    // canal → valor de novas
+  const canalRecMap={};    // canal → valor de recorrentes
+
+  monthS.forEach(s=>{
+    const ck=s.canal||"__sem_canal__";
+    const first=patFirstPaidDate[s.pid];
+    const isRecorrente=first&&first<refDate;
+    canalValMap[ck]=(canalValMap[ck]||0)+s.value;
+    if(s.campanha) canalCampMap[ck]=(canalCampMap[ck]||0)+s.value;
+    if(isRecorrente) canalRecMap[ck]=(canalRecMap[ck]||0)+s.value;
+    else canalNovMap[ck]=(canalNovMap[ck]||0)+s.value;
+  });
+
+  // Monta lista de canais com label amigável
+  const canalEntries=Object.entries(canalValMap).map(([ck,val])=>{
+    const def=CANAIS_AQUISICAO.find(c=>c.k===ck);
+    return{
+      k:ck,
+      label:def?(def.icon+" "+def.l):"❓ Não informado",
+      val,
+      novVal:canalNovMap[ck]||0,
+      recVal:canalRecMap[ck]||0,
+      campVal:canalCampMap[ck]||0,
+    };
+  }).sort((a,b)=>b.val-a.val);
+
+  // Indicações com nome de quem indicou
+  const indicacoes=safePats.filter(p=>p.canalAquisicao==="indicacao"&&p.indicadoPor&&
+    monthS.some(s=>s.pid===p.id));
+
   return h(Card,{style:{marginBottom:22,border:"1px solid rgba(157,119,97,.3)"}},
-    h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:18}},
+    h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:16}},
       h("span",{style:{fontSize:20}},"📊"),
       h("div",null,
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Origem do Faturamento"),
-        h("div",{style:{fontSize:12,color:P.text3,marginTop:1}},"Canal de aquisição das pacientes · novas vs recorrentes")
+        h("div",{style:{fontSize:12,color:P.text3,marginTop:1}},
+          MONTH_NAMES[selMonth]+" "+selYear+" · identificação automática"
+        )
       )
     ),
-    // Cards de resumo (recorrentes / novas / campanha)
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:18}},
-      summaryCards.map(cat=>h("div",{key:cat.k,style:{padding:"12px",borderRadius:10,background:cat.bg,border:"1px solid "+cat.color+"33"}},
-        h("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:6}},
-          h("span",{style:{fontSize:16}},cat.icon),
-          h("span",{style:{fontSize:11,color:P.text2,fontWeight:500}},cat.l)
-        ),
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:cat.color,lineHeight:1}},
-          "R$"+(cat.val).toLocaleString("pt-BR")
-        ),
-        h("div",{style:{fontSize:11,color:P.text3,marginTop:3}},
-          Math.round((cat.val/total)*100)+"% do faturamento"
-        ),
-        h("div",{style:{height:3,borderRadius:2,background:"rgba(255,255,255,.08)",overflow:"hidden",marginTop:8}},
-          h("div",{style:{height:"100%",width:Math.round((cat.val/total)*100)+"%",background:cat.color,borderRadius:2,transition:"width .4s"}})
-        )
-      ))
+
+    // ── 2 cards: Novas vs Recorrentes ─────────────────────────────────────────
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}},
+      h("div",{style:{padding:"14px",borderRadius:10,background:"rgba(155,122,173,.1)",border:"1px solid rgba(155,122,173,.3)"}},
+        h("div",{style:{fontSize:12,color:"#9b7aad",fontWeight:600,marginBottom:6}},"🌟 Novas Pacientes"),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:"#9b7aad"}},fmtCurr(totalNovas)),
+        h("div",{style:{fontSize:11,color:P.text3,marginTop:3}},Math.round(totalNovas/totalGeral*100)+"% do faturamento"),
+        h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},"1ª sessão paga neste mês")
+      ),
+      h("div",{style:{padding:"14px",borderRadius:10,background:"rgba(122,173,138,.1)",border:"1px solid rgba(122,173,138,.3)"}},
+        h("div",{style:{fontSize:12,color:P.green,fontWeight:600,marginBottom:6}},"🔄 Recorrentes"),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:P.green}},fmtCurr(totalRecorrentes)),
+        h("div",{style:{fontSize:11,color:P.text3,marginTop:3}},Math.round(totalRecorrentes/totalGeral*100)+"% do faturamento"),
+        h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},"Já eram pacientes antes deste mês")
+      )
     ),
-    // Breakdown por canal de aquisição (apenas novas)
-    canalList.length>0&&h("div",{style:{marginBottom:16}},
-      h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10,fontWeight:600}},"📡 Faturamento por Canal de Aquisição (novas pacientes)"),
-      h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-        canalList.map(c=>{
-          const pct=Math.round((c.val/totalNovo||1)*100);
-          const isCamp=!!(campMap[c.k]);
-          return h("div",{key:c.k},
-            h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text2,marginBottom:4}},
-              h("span",null,c.icon," ",c.l,isCamp&&h("span",{style:{fontSize:10,marginLeft:6,padding:"1px 6px",borderRadius:8,background:"rgba(196,169,106,.15)",color:P.yellow}},"📣 incl. anúncio")),
-              h("span",{style:{color:P.accent,fontWeight:600}},fmtCurr(c.val)+" · "+pct+"%")
+
+    // ── Canal de aquisição (todas as sessões) ─────────────────────────────────
+    canalEntries.length>0&&h("div",{style:{marginBottom:16}},
+      h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10,fontWeight:600}},"📡 Por Canal de Aquisição"),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+        canalEntries.map(c=>{
+          const pct=Math.round((c.val/totalGeral)*100);
+          const novPct=c.val>0?Math.round(c.novVal/c.val*100):0;
+          const recPct=100-novPct;
+          return h("div",{key:c.k,style:{padding:"10px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`}},
+            // Cabeçalho do canal
+            h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
+              h("span",{style:{fontSize:13,color:P.text,fontWeight:500}},c.label,
+                c.campVal>0&&h("span",{style:{fontSize:10,marginLeft:6,padding:"1px 6px",borderRadius:8,background:"rgba(196,169,106,.15)",color:P.yellow}},"📣 campanha")
+              ),
+              h("div",{style:{textAlign:"right"}},
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.accent}},fmtCurr(c.val)),
+                h("div",{style:{fontSize:10,color:P.text3}},pct+"% do total")
+              )
             ),
-            h("div",{style:{height:4,borderRadius:2,background:P.bg3,overflow:"hidden"}},
-              h("div",{style:{height:"100%",width:pct+"%",background:P.accent,borderRadius:2}})
+            // Barra total
+            h("div",{style:{height:6,borderRadius:3,background:P.bg,overflow:"hidden",marginBottom:6}},
+              h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:3}})
+            ),
+            // Nova vs Recorrente breakdown dentro do canal
+            (c.novVal>0||c.recVal>0)&&h("div",{style:{display:"flex",gap:10,fontSize:10,color:P.text3}},
+              c.novVal>0&&h("span",{style:{color:"#9b7aad"}},`🌟 Nova: ${fmtCurr(c.novVal)} (${novPct}%)`),
+              c.recVal>0&&h("span",{style:{color:P.green}},`🔄 Recorrente: ${fmtCurr(c.recVal)} (${recPct}%)`)
             )
           );
         })
       )
     ),
-    // Indicações
-    indicacoes.length>0&&h("div",{style:{marginBottom:14}},
-      h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,fontWeight:600}},"🤝 Pacientes por Indicação"),
+
+    // ── Indicações com nome ───────────────────────────────────────────────────
+    indicacoes.length>0&&h("div",null,
+      h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,fontWeight:600}},"🤝 Quem indicou este mês"),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
         indicacoes.map(p=>h("div",{key:p.id,style:{fontSize:12,padding:"4px 10px",borderRadius:20,background:"rgba(122,174,212,.1)",border:"1px solid rgba(122,174,212,.2)",color:"#7aaed4"}},
-          p.name.split(" ")[0]+" → ind. por "+p.indicadoPor
+          p.name.split(" ")[0]+" ← indicada por "+p.indicadoPor
         ))
-      )
-    ),
-    // Detalhe de campanha paga por canal
-    campList.length>0&&h("div",null,
-      h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,fontWeight:600}},"📣 Campanhas Pagas por Canal"),
-      h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-        campList.map(([ch,val])=>{
-          const c=CANAIS_AQUISICAO.find(x=>x.k===ch);
-          const pct=Math.round((val/totalCamp)*100);
-          return h("div",{key:ch},
-            h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text2,marginBottom:4}},
-              h("span",null,(c?.icon||"📌")," ",(c?.l||ch)),
-              h("span",{style:{color:P.yellow,fontWeight:600}},fmtCurr(val)+" · "+pct+"%")
-            ),
-            h("div",{style:{height:4,borderRadius:2,background:P.bg3,overflow:"hidden"}},
-              h("div",{style:{height:"100%",width:pct+"%",background:P.yellow,borderRadius:2}})
-            )
-          );
-        })
       )
     )
   );
