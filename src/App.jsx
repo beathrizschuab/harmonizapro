@@ -6,7 +6,11 @@ const SUPA_URL = "https://syxapyqgqrkqkensbbqj.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5eGFweXFncXJrcWtlbnNiYnFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzNDAxMzEsImV4cCI6MjA5NTkxNjEzMX0.3ZBSQS1fvWZn-uXCgDkvn7xRgpEWJiAIb_gH7cmO34s";
 const supabase = createClient(SUPA_URL, SUPA_KEY);
 // ─── CONSTANTS & PALETTE ─────────────────────────────────────────────────────
-const P={bg:"#FAF6F4",bg2:"#FFFFFF",bg3:"#F2EAE6",card:"#FFFFFF",card2:"#FBF0EC",border:"#E8DDD9",accent:"#9D6F56",accent2:"#8C6F61",accent3:"#FBF3EF",rose:"#7A2840",rose2:"#9F415C",text:"#2B1A1C",text2:"#6B5450",text3:"#9C8682",green:"#4F9C68",red:"#C2555F",yellow:"#D9A441",gold:"#B98B6A"};
+const P_LIGHT={bg:"#FAF6F4",bg2:"#FFFFFF",bg3:"#F2EAE6",card:"#FFFFFF",card2:"#FBF0EC",border:"#E8DDD9",accent:"#9D6F56",accent2:"#8C6F61",accent3:"#FBF3EF",rose:"#7A2840",rose2:"#9F415C",text:"#2B1A1C",text2:"#6B5450",text3:"#9C8682",green:"#4F9C68",red:"#C2555F",yellow:"#D9A441",gold:"#B98B6A"};
+const P_DARK={bg:"#16100F",bg2:"#1F1614",bg3:"#2A1D1A",card:"#231918",card2:"#2C1F1C",border:"#3D2A27",accent:"#C49070",accent2:"#B08070",accent3:"#F5E8DF",rose:"#C46080",rose2:"#D47090",text:"#F0E4DF",text2:"#C4A89E",text3:"#8A706A",green:"#5DBF7A",red:"#E06070",yellow:"#E0B050",gold:"#D4A070"};
+// P é um objeto mutável — setTheme() copia as cores certas nele sem quebrar as referências existentes
+const P={...P_LIGHT};
+function setTheme(dark){const src=dark?P_DARK:P_LIGHT;Object.keys(src).forEach(k=>{P[k]=src[k];});}
 const MONTH_NAMES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const APPT_STATUS=["Confirmado","Aguardando","Realizado","Cancelado","Faltou","Reagendado"];
 const APPT_STATUS_CFG={Confirmado:{color:"#7aaed4",bg:"rgba(122,174,212,.14)"},Aguardando:{color:"#c4a96a",bg:"rgba(196,169,106,.14)"},Realizado:{color:"#7aad8a",bg:"rgba(122,173,138,.14)"},Cancelado:{color:"#c07070",bg:"rgba(192,112,112,.14)"},Faltou:{color:"#b07070",bg:"rgba(176,112,112,.12)"},Reagendado:{color:"#9b7aad",bg:"rgba(155,122,173,.13)"}};
@@ -9849,6 +9853,29 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
       h(Field,{label:"Nome da Profissional"},h(Inp,{value:settings.doctorName||"",onChange:v=>setSettings(s=>({...s,doctorName:v})),placeholder:"Dra. Sofia"})),
       h(Field,{label:"Título / Profissão"},h(Inp,{value:settings.doctorTitle||"",onChange:v=>setSettings(s=>({...s,doctorTitle:v})),placeholder:"Médica Responsável"})),
       h(Field,{label:"Nome da Clínica"},h(Inp,{value:settings.clinicName||"",onChange:v=>setSettings(s=>({...s,clinicName:v})),placeholder:"HarmonizaPro"})),
+      h("div",{style:{marginTop:20,paddingTop:16,borderTop:`1px solid ${P.border}`}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:12}},"🎨 Aparência"),
+        h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",borderRadius:10,background:P.bg3,border:`1px solid ${P.border}`}},
+          h("div",null,
+            h("div",{style:{fontSize:13.5,fontWeight:500,color:P.text}},"Modo Escuro"),
+            h("div",{style:{fontSize:11.5,color:P.text3,marginTop:2}},"Ativa o tema dark em todo o sistema")
+          ),
+          h("button",{
+            onClick:()=>setSettings(s=>({...s,darkMode:!s.darkMode})),
+            style:{
+              position:"relative",width:46,height:26,borderRadius:13,border:"none",cursor:"pointer",
+              background:settings.darkMode?P.rose:"#ccc",
+              transition:"background .2s",flexShrink:0,padding:0
+            }
+          },
+            h("span",{style:{
+              position:"absolute",top:3,left:settings.darkMode?23:3,
+              width:20,height:20,borderRadius:"50%",background:"#fff",
+              transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"
+            }})
+          )
+        )
+      ),
       h("div",{style:{fontSize:12,color:P.green,marginTop:12}},"✓ Salvo automaticamente")
     )
   );
@@ -10736,7 +10763,14 @@ function AppInner({ session, onLogout }) {
     {id:"p11",name:"Álcool 70% (frasco)",cat:"Insumos/Descartáveis",qty:12,min:4,unit:"un",expiry:"",cost:12,emoji:"🧪",status:"ok"},
     {id:"p12",name:"Micropore",cat:"Insumos/Descartáveis",qty:20,min:8,unit:"rolo",expiry:"",cost:4.5,emoji:"🩹",status:"ok"},
   ]);
-  const[settingsData,setSettings,loadingSettings]=useSettings({doctorName:"Dra. Sofia",doctorTitle:"Médica Responsável",clinicName:"HarmonizaPro"});
+  const[settingsData,setSettings,loadingSettings]=useSettings({doctorName:"Dra. Sofia",doctorTitle:"Médica Responsável",clinicName:"HarmonizaPro",darkMode:false});
+  const[,forceRender]=useState(0);
+  useEffect(()=>{
+    const dark=!!(settingsData&&settingsData.darkMode);
+    setTheme(dark);
+    document.documentElement.setAttribute("data-theme",dark?"dark":"light");
+    forceRender(n=>n+1);
+  },[settingsData&&settingsData.darkMode]);
   const[goalsData,setGoals]=useGoals();
   const[maquininhasRaw,setMaquininhas]=useSupaTable("maquininhas",[]);
   const[proceduresRaw,setProcedures,loadingProcedures]=useSupaTable("procedures",INIT_PROCEDURES.map((name,i)=>({id:"proc_"+i,name})));
@@ -10978,12 +11012,13 @@ function AppInner({ session, onLogout }) {
     h("style",null,`
       @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
       *{box-sizing:border-box;margin:0;padding:0;}
-      body{background:${P.bg};color:${P.text};font-family:'DM Sans',sans-serif;}
+      body{background:${P.bg};color:${P.text};font-family:'DM Sans',sans-serif;transition:background .25s,color .25s;}
       ::-webkit-scrollbar{width:4px;height:4px;}
       ::-webkit-scrollbar-track{background:transparent;}
       ::-webkit-scrollbar-thumb{background:${P.border};border-radius:2px;}
-      input,select,textarea{font-family:'DM Sans',sans-serif;color:${P.text};}
-      select option{background:${P.bg2};}
+      input,select,textarea{font-family:'DM Sans',sans-serif;color:${P.text};background:${P.bg2};transition:background .25s,color .25s;}
+      select option{background:${P.bg2};color:${P.text};}
+      *{transition:background-color .18s,border-color .18s,color .18s;}
       @media(max-width:639px){
         .resp-grid-4{grid-template-columns:repeat(2,1fr)!important;}
         .resp-grid-2{grid-template-columns:1fr!important;}
