@@ -6892,6 +6892,8 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
   const[editInc,setEditInc]=useState(null);
   const[editRecurring,setEditRecurring]=useState(null);
   const[finTab,setFinTab]=useState("entradas");
+  const[showRecebidas,setShowRecebidas]=useState(true); // colapsa/expande a lista de entradas já recebidas
+  const[showPagas,setShowPagas]=useState(true); // colapsa/expande a lista de despesas já pagas
   const[viewTab,setViewTab]=useState("resumo"); // resumo | fluxo | dre | inadimplencia | recorrentes | margem | vencimentos | conciliacao
   const[fluxoSubView,setFluxoSubView]=useState("diario"); // diario | projetado (sub-toggle dentro da aba Fluxo de Caixa)
   const[vencFiltro,setVencFiltro]=useState("todas"); // todas | pagar | receber
@@ -7001,6 +7003,34 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     filterStatus?1:0,
   ].reduce((a,b)=>a+b,0);
 
+  // ── Entradas: separa o que JÁ ENTROU (recebido) do que AINDA FALTA (a receber) ──
+  // Sessões e entradas extras são tratadas como uma única lista de "entradas",
+  // só diferenciando o tipo (session/extra) na hora de desenhar a linha.
+  const entradasTodas=[
+    ...filteredSessions.map(s=>({type:"session",ref:s})),
+    ...filteredIncomesExtra.map(inc=>({type:"extra",ref:inc})),
+  ];
+  const entradasRecebidas=entradasTodas
+    .filter(x=>x.type==="session"?x.ref.paid:x.ref.status==="Pago")
+    .sort((a,b)=>(parseAnyDate(b.ref.date)||0)-(parseAnyDate(a.ref.date)||0));
+  const entradasPendentes=entradasTodas
+    .filter(x=>x.type==="session"?!x.ref.paid:x.ref.status!=="Pago")
+    .sort((a,b)=>(parseAnyDate(a.ref.dueDate||a.ref.date)||0)-(parseAnyDate(b.ref.dueDate||b.ref.date)||0)); // mais urgente (vencimento mais próximo/antigo) primeiro
+  const totalEntradasRecebidas=entradasRecebidas.reduce((a,x)=>a+Number(x.ref.value||0),0);
+  const totalEntradasPendentes=entradasPendentes.reduce((a,x)=>a+Number(x.ref.value||0),0);
+  const entradasPendentesVencidas=entradasPendentes.filter(x=>venceStatus(x.ref.dueDate||x.ref.date)?.atrasado).length;
+
+  // ── Despesas: separa o que JÁ FOI PAGO do que AINDA FALTA PAGAR ──
+  const despesasCanceladas=filteredExpenses.filter(e=>e.status==="Cancelado");
+  const despesasPagasList=filteredExpenses
+    .filter(e=>e.status==="Pago")
+    .sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0));
+  const despesasPendentesList=filteredExpenses
+    .filter(e=>e.status!=="Pago"&&e.status!=="Cancelado")
+    .sort((a,b)=>(parseAnyDate(a.dueDate||a.date)||0)-(parseAnyDate(b.dueDate||b.date)||0)); // mais urgente primeiro
+  const totalDespesasPagas=despesasPagasList.reduce((a,e)=>a+Number(e.value||0),0);
+  const totalDespesasPendentes=despesasPendentesList.reduce((a,e)=>a+Number(e.value||0),0);
+  const despesasPendentesVencidas=despesasPendentesList.filter(e=>venceStatus(e.dueDate||e.date)?.atrasado).length;
 
   const sessionsRec=monthSessions.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0);
   const incomesRec=monthIncomesExtra.filter(i=>i.status==="Pago").reduce((a,i)=>a+Number(i.value||0),0);
@@ -7310,6 +7340,173 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     finally{ setExportingExcel(false); }
   }
 
+  // ── Renderiza uma linha de SESSÃO (entrada vinda do prontuário) ──────────
+  function renderSessaoRow(s,i){
+    const pm=s.payMethod||"";
+    const isCredito=pm==="Cartão Crédito";
+    const isDebito=pm==="Cartão Débito";
+    const isCard=isCredito||isDebito;
+    const nParc=isCredito?Math.max(1,Number(s.parcelas)||1):1;
+    const valorParc=nParc>1?Number(s.value||0)/nParc:0;
+
+    // Resolve cronograma: usa maqDeposits se existir, senão estima (D+30 por parcela)
+    let deposits=s.maqDeposits&&s.maqDeposits.length>0?s.maqDeposits:null;
+    if(!deposits&&isCard&&nParc>=1){
+      const baseISO=(()=>{
+        const d=parseAnyDate(s.date);
+        return d?d.toISOString().slice(0,10):null;
+      })();
+      if(baseISO){
+        deposits=Array.from({length:nParc},(_,idx)=>({
+          n:idx+1,
+          valor:Number(s.value||0)/nParc,
+          liquido:Number(s.netValue&&s.netValue>0?s.netValue:s.value||0)/nParc,
+          data:addMonthsISO(baseISO,idx),
+          estimado:true,
+        }));
+      }
+    }
+
+    const isAntec=deposits&&deposits[0]?.antecipado;
+    const showSchedule=isCard&&deposits&&deposits.length>1&&!isAntec;
+
+    // Depósitos que caem no mês selecionado
+    const depositsMes=(deposits||[]).filter(dep=>{
+      if(!dep.data)return false;
+      const dt=new Date(dep.data+"T12:00:00");
+      return dt.getMonth()===selMonth&&dt.getFullYear()===selYear;
+    });
+    const depositsFuturos=(deposits||[]).filter(dep=>{
+      if(!dep.data)return false;
+      const dt=new Date(dep.data+"T12:00:00");
+      return dt>new Date();
+    });
+
+    // Valor que efetivamente entra na conta neste mês
+    let valorCaixaMes=0;
+    if(isCard&&deposits){
+      valorCaixaMes=depositsMes.reduce((a,dep)=>a+Number(dep.liquido||dep.valor||0),0);
+    } else if(s.paid){
+      const dt=parseAnyDate(s.date);
+      if(dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear){
+        valorCaixaMes=Number(s.netValue&&s.netValue>0?s.netValue:s.value||0);
+      }
+    }
+    const venc=!s.paid?venceStatus(s.dueDate||s.date):null;
+
+    return h("div",{key:"s"+i,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}},
+        // ── Lado esquerdo: info da sessão
+        h("div",{style:{flex:1,minWidth:0}},
+          h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},`${s.pname} — ${s.procLabel||s.procedure}`),
+          h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginTop:3,alignItems:"center"}},
+            h("span",{style:{fontSize:11,color:P.text3}},s.date),
+            h("span",{style:{fontSize:11,color:P.text2}},"· "+pm),
+            isCredito&&nParc>1&&h("span",{style:{fontSize:11,padding:"1px 8px",borderRadius:20,background:"rgba(122,174,212,.15)",color:"#7aaed4",fontWeight:600}},`${nParc}x de ${fmtCurr(valorParc)}`),
+            isAntec&&h("span",{style:{fontSize:11,color:P.green,fontWeight:600}},"💨 Antecipado"),
+            // Badge: depósito(s) neste mês
+            isCard&&depositsMes.length>0&&h("span",{style:{fontSize:10,padding:"1px 8px",borderRadius:20,background:"rgba(122,173,138,.18)",color:P.green,fontWeight:700,border:`1px solid ${P.green}33`}},
+              depositsMes.length===1
+                ?`💳 dep. ${fmtDateShort(depositsMes[0].data)}`
+                :`💳 ${depositsMes.length} dep. neste mês`
+            ),
+            isCard&&deposits&&depositsMes.length===0&&s.paid&&h("span",{style:{fontSize:10,color:P.text3}},"sem dep. neste mês"),
+            venc&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:venc.bg,color:venc.color,fontWeight:600}},venc.label),
+          )
+        ),
+        // ── Lado direito: valores e status
+        h("div",{style:{display:"flex",alignItems:"center",gap:8,flexShrink:0}},
+          h("div",{style:{textAlign:"right"}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:s.paid?P.green:P.yellow}},fmtCurr(s.value)),
+            // O que entra na conta este mês
+            isCard&&deposits&&h("div",{style:{fontSize:10,color:valorCaixaMes>0?P.green:P.text3,fontWeight:valorCaixaMes>0?700:400}},
+              valorCaixaMes>0?`↓ ${fmtCurr(valorCaixaMes)} este mês`:"↓ R$0 este mês"
+            ),
+            // Parcelas futuras
+            depositsFuturos.length>0&&h("div",{style:{fontSize:10,color:P.yellow}},
+              `⏳ ${depositsFuturos.length}x a receber`
+            )
+          ),
+          h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.pid,s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
+        )
+      ),
+      // ── Cronograma de depósitos (bolinhas com ★)
+      showSchedule&&h("div",{style:{display:"flex",gap:4,marginTop:6,flexWrap:"wrap"}},
+        deposits.map((dep,di)=>{
+          const dt=dep.data?new Date(dep.data+"T12:00:00"):null;
+          const isMes=dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear;
+          const isFeito=dt&&dt<=new Date()&&!isMes;
+          return h("span",{key:di,
+            title:`Parcela ${dep.n||di+1}: ${fmtDateShort(dep.data)} — ${fmtCurr(dep.liquido||dep.valor||0)}${dep.estimado?" (estimado)":" "}`,
+            style:{
+              fontSize:10,padding:"2px 8px",borderRadius:20,cursor:"default",whiteSpace:"nowrap",
+              background:isMes?"rgba(122,173,138,.22)":isFeito?"rgba(122,173,138,.1)":"rgba(200,200,200,.08)",
+              color:isMes?P.green:isFeito?"#7aad8a":P.text3,
+              border:`1px solid ${isMes?P.green+"55":isFeito?P.green+"22":P.border}`,
+              fontWeight:isMes?700:400,
+            }},
+            isMes?"★ "+fmtDateShort(dep.data):fmtDateShort(dep.data)
+          );
+        }),
+        deposits.some(d=>d.estimado)&&h("span",{style:{fontSize:9,color:P.text3,alignSelf:"center"}},"(datas estimadas — sem maquininha)")
+      )
+    );
+  }
+
+  // ── Renderiza uma linha de ENTRADA EXTRA (não vinculada a sessão) ───────
+  function renderIncomeExtraRow(inc,i){
+    const venc=isContaPendente(inc.status)?venceStatus(inc.dueDate||inc.date):null;
+    return h("div",{key:"e"+i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
+      h("div",null,
+        h("div",{style:{fontSize:13,color:P.text,display:"flex",alignItems:"center",gap:6}},
+          inc.desc||inc.patientName||"Entrada",
+          h("span",{style:{fontSize:9,padding:"1px 6px",borderRadius:10,background:P.bg3,color:P.text3,fontWeight:600}},"EXTRA")
+        ),
+        h("div",{style:{fontSize:11,color:P.text3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
+          `${inc.date} · ${inc.payMethod}${inc.payMethod==="Cartão Crédito"&&inc.parcelas>1?" · "+inc.parcelas+"x":""}`,
+          inc.maqDeposits&&inc.maqDeposits[0]?.antecipado&&h("span",{style:{color:P.green,fontWeight:600}},"💨 Antecipado"),
+          inc.maqDeposits&&inc.maqDeposits.length>1&&!inc.maqDeposits[0]?.antecipado&&h("span",{style:{color:P.yellow,fontWeight:600}},`📅 ${inc.maqDeposits.length} depósitos`),
+          inc.maqDeposits&&inc.maqDeposits[0]?.data&&h("span",{style:{color:P.text3}},`· dep. ${fmtDateShort(inc.maqDeposits[0].data)}`),
+          venc&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:venc.bg,color:venc.color,fontWeight:600}},venc.label)
+        )
+      ),
+      h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+        h("div",null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:inc.status==="Pago"?P.green:P.yellow}},fmtCurr(inc.value)),
+          inc.netValue&&inc.netValue!==inc.value&&h("div",{style:{fontSize:10,color:P.text3}},`Líq: ${fmtCurr(inc.netValue)}`)
+        ),
+        h("select",{value:inc.status,onChange:e=>setIncomes(prev=>prev.map(x=>x.id===inc.id?{...x,status:e.target.value,paid:e.target.value==="Pago"}:x)),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:inc.status==="Pago"?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st))),
+        h("button",{onClick:()=>openEditInc(inc),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"✎"),
+        h("button",{onClick:()=>delInc(inc.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
+      )
+    );
+  }
+
+  // ── Dispatcher: desenha a linha certa de acordo com o tipo do item ──────
+  function renderEntradaItem(item,i){
+    return item.type==="session"?renderSessaoRow(item.ref,i):renderIncomeExtraRow(item.ref,i);
+  }
+
+  // ── Renderiza uma linha de DESPESA ───────────────────────────────────────
+  function renderExpenseRow(e,i){
+    const venc=isContaPendente(e.status)?venceStatus(e.dueDate||e.date):null;
+    return h("div",{key:"x"+i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${P.border}`}},
+      h("div",null,
+        h("div",{style:{fontSize:13,color:P.text}},e.desc),
+        h("div",{style:{fontSize:11,color:P.text3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
+          `${e.date} · ${e.cat}`,
+          e.groupId&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:"rgba(155,122,173,.14)",color:"#9b7aad",fontWeight:600}},`💳 ${e.parcelaNum}/${e.parcelaTotal}`),
+          venc&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:venc.bg,color:venc.color,fontWeight:600}},venc.label)
+        )
+      ),
+      h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.red}},`− ${fmtCurr(e.value)}`),
+        h("button",{onClick:()=>openEditExp(e),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"✎"),
+        h("button",{onClick:()=>delExp(e),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
+      )
+    );
+  }
+
   return h("div",null,
     h(SectionHeader,{title:"Fluxo de Caixa",sub:"Resumo financeiro completo",action:h("div",{style:{display:"flex",gap:8}},
       h(Btn,{variant:"ghost",onClick:()=>setShowExportExcel(true),style:{fontSize:12,padding:"8px 16px"}},"📊 Exportar Excel"),
@@ -7538,142 +7735,35 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Entradas"),
           h(Btn,{onClick:()=>{setEditInc(null);setIncForm(blankInc);setShowNewInc(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Entrada Extra")
         ),
-        h("div",{style:{marginBottom:10}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},h("div",null,h("div",{style:{fontSize:11,color:P.text3}},"🔄 Sessões auto-sincronizadas do prontuário"),h("div",{style:{fontSize:10,color:P.text3,marginTop:1}},filteredSessions.length+" resultado(s)")),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green}},fmtCurr(filteredSessions.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0))))),
-        filteredSessions.length===0&&h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"10px 0"}},"Nenhuma sessão no período"),
-        filteredSessions.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((s,i)=>{
-          const pm=s.payMethod||"";
-          const isCredito=pm==="Cartão Crédito";
-          const isDebito=pm==="Cartão Débito";
-          const isCard=isCredito||isDebito;
-          const nParc=isCredito?Math.max(1,Number(s.parcelas)||1):1;
-          const valorParc=nParc>1?Number(s.value||0)/nParc:0;
-
-          // Resolve cronograma: usa maqDeposits se existir, senão estima (D+30 por parcela)
-          let deposits=s.maqDeposits&&s.maqDeposits.length>0?s.maqDeposits:null;
-          if(!deposits&&isCard&&nParc>=1){
-            const baseISO=(()=>{
-              const d=parseAnyDate(s.date);
-              return d?d.toISOString().slice(0,10):null;
-            })();
-            if(baseISO){
-              deposits=Array.from({length:nParc},(_,idx)=>({
-                n:idx+1,
-                valor:Number(s.value||0)/nParc,
-                liquido:Number(s.netValue&&s.netValue>0?s.netValue:s.value||0)/nParc,
-                data:addMonthsISO(baseISO,idx),
-                estimado:true,
-              }));
-            }
-          }
-
-          const isAntec=deposits&&deposits[0]?.antecipado;
-          const showSchedule=isCard&&deposits&&deposits.length>1&&!isAntec;
-
-          // Depósitos que caem no mês selecionado
-          const depositsMes=(deposits||[]).filter(dep=>{
-            if(!dep.data)return false;
-            const dt=new Date(dep.data+"T12:00:00");
-            return dt.getMonth()===selMonth&&dt.getFullYear()===selYear;
-          });
-          const depositsFuturos=(deposits||[]).filter(dep=>{
-            if(!dep.data)return false;
-            const dt=new Date(dep.data+"T12:00:00");
-            return dt>new Date();
-          });
-
-          // Valor que efetivamente entra na conta neste mês
-          let valorCaixaMes=0;
-          if(isCard&&deposits){
-            valorCaixaMes=depositsMes.reduce((a,dep)=>a+Number(dep.liquido||dep.valor||0),0);
-          } else if(s.paid){
-            const dt=parseAnyDate(s.date);
-            if(dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear){
-              valorCaixaMes=Number(s.netValue&&s.netValue>0?s.netValue:s.value||0);
-            }
-          }
-
-          return h("div",{key:i,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`}},
-            h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}},
-              // ── Lado esquerdo: info da sessão
-              h("div",{style:{flex:1,minWidth:0}},
-                h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},`${s.pname} — ${s.procLabel||s.procedure}`),
-                h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginTop:3,alignItems:"center"}},
-                  h("span",{style:{fontSize:11,color:P.text3}},s.date),
-                  h("span",{style:{fontSize:11,color:P.text2}},"· "+pm),
-                  isCredito&&nParc>1&&h("span",{style:{fontSize:11,padding:"1px 8px",borderRadius:20,background:"rgba(122,174,212,.15)",color:"#7aaed4",fontWeight:600}},`${nParc}x de ${fmtCurr(valorParc)}`),
-                  isAntec&&h("span",{style:{fontSize:11,color:P.green,fontWeight:600}},"💨 Antecipado"),
-                  // Badge: depósito(s) neste mês
-                  isCard&&depositsMes.length>0&&h("span",{style:{fontSize:10,padding:"1px 8px",borderRadius:20,background:"rgba(122,173,138,.18)",color:P.green,fontWeight:700,border:`1px solid ${P.green}33`}},
-                    depositsMes.length===1
-                      ?`💳 dep. ${fmtDateShort(depositsMes[0].data)}`
-                      :`💳 ${depositsMes.length} dep. neste mês`
-                  ),
-                  isCard&&deposits&&depositsMes.length===0&&s.paid&&h("span",{style:{fontSize:10,color:P.text3}},"sem dep. neste mês"),
-                )
-              ),
-              // ── Lado direito: valores e status
-              h("div",{style:{display:"flex",alignItems:"center",gap:8,flexShrink:0}},
-                h("div",{style:{textAlign:"right"}},
-                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:s.paid?P.green:P.yellow}},fmtCurr(s.value)),
-                  // O que entra na conta este mês
-                  isCard&&deposits&&h("div",{style:{fontSize:10,color:valorCaixaMes>0?P.green:P.text3,fontWeight:valorCaixaMes>0?700:400}},
-                    valorCaixaMes>0?`↓ ${fmtCurr(valorCaixaMes)} este mês`:"↓ R$0 este mês"
-                  ),
-                  // Parcelas futuras
-                  depositsFuturos.length>0&&h("div",{style:{fontSize:10,color:P.yellow}},
-                    `⏳ ${depositsFuturos.length}x a receber`
-                  )
-                ),
-                h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.pid,s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
-              )
-            ),
-            // ── Cronograma de depósitos (bolinhas com ★)
-            showSchedule&&h("div",{style:{display:"flex",gap:4,marginTop:6,flexWrap:"wrap"}},
-              deposits.map((dep,di)=>{
-                const dt=dep.data?new Date(dep.data+"T12:00:00"):null;
-                const isMes=dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear;
-                const isFeito=dt&&dt<=new Date()&&!isMes;
-                return h("span",{key:di,
-                  title:`Parcela ${dep.n||di+1}: ${fmtDateShort(dep.data)} — ${fmtCurr(dep.liquido||dep.valor||0)}${dep.estimado?" (estimado)":" "}`,
-                  style:{
-                    fontSize:10,padding:"2px 8px",borderRadius:20,cursor:"default",whiteSpace:"nowrap",
-                    background:isMes?"rgba(122,173,138,.22)":isFeito?"rgba(122,173,138,.1)":"rgba(200,200,200,.08)",
-                    color:isMes?P.green:isFeito?"#7aad8a":P.text3,
-                    border:`1px solid ${isMes?P.green+"55":isFeito?P.green+"22":P.border}`,
-                    fontWeight:isMes?700:400,
-                  }},
-                  isMes?"★ "+fmtDateShort(dep.data):fmtDateShort(dep.data)
-                );
-              }),
-              deposits.some(d=>d.estimado)&&h("span",{style:{fontSize:9,color:P.text3,alignSelf:"center"}},"(datas estimadas — sem maquininha)")
+        // ── Resumo: Recebido vs A Receber — clique no card "Recebido" pra colapsar a lista ──
+        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}},
+          h("div",{onClick:()=>setShowRecebidas(v=>!v),title:"Clique para mostrar/ocultar a lista de recebidos",style:{cursor:"pointer",textAlign:"center",padding:"10px 8px",borderRadius:10,background:"rgba(122,173,138,.1)",border:`1px solid ${P.green}33`}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}},`✓ Recebido ${showRecebidas?"▾":"▸"}`),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.green}},fmtCurr(totalEntradasRecebidas)),
+            h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},entradasRecebidas.length+" lançamento(s)")
+          ),
+          h("div",{style:{textAlign:"center",padding:"10px 8px",borderRadius:10,background:entradasPendentesVencidas>0?"rgba(192,112,112,.1)":"rgba(196,169,106,.1)",border:`1px solid ${entradasPendentesVencidas>0?P.red:P.yellow}44`}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}},"⏳ A Receber"),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:entradasPendentesVencidas>0?P.red:P.yellow}},fmtCurr(totalEntradasPendentes)),
+            h("div",{style:{fontSize:10,color:entradasPendentesVencidas>0?P.red:P.text3,marginTop:2,fontWeight:entradasPendentesVencidas>0?600:400}},
+              entradasPendentesVencidas>0?`${entradasPendentes.length} lanç. · ${entradasPendentesVencidas} vencido(s)`:entradasPendentes.length+" lançamento(s)"
             )
-          );
-        }),
-        filteredIncomesExtra.length>0&&h("div",null,
-          h("div",{style:{fontSize:11,color:P.text3,margin:"10px 0 6px"}},"＋ Entradas extras (não vinculadas a sessões):"),
-          filteredIncomesExtra.map((inc,i)=>{
-            const venc=isContaPendente(inc.status)?venceStatus(inc.dueDate||inc.date):null;
-            return h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
-            h("div",null,
-              h("div",{style:{fontSize:13,color:P.text}},inc.desc||inc.patientName||"Entrada"),
-              h("div",{style:{fontSize:11,color:P.text3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
-                `${inc.date} · ${inc.payMethod}${inc.payMethod==="Cartão Crédito"&&inc.parcelas>1?" · "+inc.parcelas+"x":""}`,
-                inc.maqDeposits&&inc.maqDeposits[0]?.antecipado&&h("span",{style:{color:P.green,fontWeight:600}},"💨 Antecipado"),
-                inc.maqDeposits&&inc.maqDeposits.length>1&&!inc.maqDeposits[0]?.antecipado&&h("span",{style:{color:P.yellow,fontWeight:600}},`📅 ${inc.maqDeposits.length} depósitos`),
-                inc.maqDeposits&&inc.maqDeposits[0]?.data&&h("span",{style:{color:P.text3}},`· dep. ${fmtDateShort(inc.maqDeposits[0].data)}`),
-                venc&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:venc.bg,color:venc.color,fontWeight:600}},venc.label)
-              )
-            ),
-            h("div",{style:{display:"flex",alignItems:"center",gap:8}},
-              h("div",null,
-                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:inc.status==="Pago"?P.green:P.yellow}},fmtCurr(inc.value)),
-                inc.netValue&&inc.netValue!==inc.value&&h("div",{style:{fontSize:10,color:P.text3}},`Líq: ${fmtCurr(inc.netValue)}`)
-              ),
-              h("select",{value:inc.status,onChange:e=>setIncomes(prev=>prev.map(x=>x.id===inc.id?{...x,status:e.target.value,paid:e.target.value==="Pago"}:x)),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:inc.status==="Pago"?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st))),
-              h("button",{onClick:()=>openEditInc(inc),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"✎"),
-              h("button",{onClick:()=>delInc(inc.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
+          )
+        ),
+        // ── Lista "A Receber": sempre visível, ordenada pela mais urgente ──────
+        entradasPendentes.length>0
+          ? h("div",null,
+              h("div",{style:{fontSize:11,color:P.text3,fontWeight:600,marginBottom:4,textTransform:"uppercase",letterSpacing:".05em"}},"⏳ A Receber"),
+              entradasPendentes.map((item,i)=>renderEntradaItem(item,i))
             )
-          );})
+          : h("div",{style:{textAlign:"center",color:P.green,fontSize:12,padding:"10px 0",fontWeight:600}},"🎉 Tudo recebido neste período"),
+        // ── Lista "Recebido": colapsável, pra não poluir a tela ────────────────
+        entradasRecebidas.length>0&&h("div",{style:{marginTop:14}},
+          h("div",{onClick:()=>setShowRecebidas(v=>!v),style:{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",marginBottom:showRecebidas?4:0}},
+            h("span",{style:{fontSize:11,color:P.text3,fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}},`✓ Recebido (${entradasRecebidas.length})`),
+            h("span",{style:{fontSize:11,color:P.accent}},showRecebidas?"ocultar ▾":"mostrar ▸")
+          ),
+          showRecebidas&&entradasRecebidas.map((item,i)=>renderEntradaItem(item,i))
         )
       ),
       h(Card,null,
@@ -7681,25 +7771,38 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Despesas"),
           h(Btn,{onClick:()=>{setEditExp(null);setForm(blankExp);setShowNewExp(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Despesa")
         ),
-        filteredExpenses.length===0&&h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"10px 0"}},"Nenhuma despesa no período"),
-        filteredExpenses.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((e,i)=>{
-          const venc=isContaPendente(e.status)?venceStatus(e.dueDate||e.date):null;
-          return h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${P.border}`}},
-          h("div",null,
-            h("div",{style:{fontSize:13,color:P.text}},e.desc),
-            h("div",{style:{fontSize:11,color:P.text3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
-              `${e.date} · ${e.cat}`,
-              e.groupId&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:"rgba(155,122,173,.14)",color:"#9b7aad",fontWeight:600}},`💳 ${e.parcelaNum}/${e.parcelaTotal}`),
-              venc&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:venc.bg,color:venc.color,fontWeight:600}},venc.label)
-            )
+        // ── Resumo: Pago vs A Pagar — clique no card "Pago" pra colapsar a lista ──
+        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}},
+          h("div",{onClick:()=>setShowPagas(v=>!v),title:"Clique para mostrar/ocultar a lista de pagas",style:{cursor:"pointer",textAlign:"center",padding:"10px 8px",borderRadius:10,background:P.bg3,border:`1px solid ${P.border}`}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}},`✓ Pago ${showPagas?"▾":"▸"}`),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text2}},fmtCurr(totalDespesasPagas)),
+            h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},despesasPagasList.length+" lançamento(s)")
           ),
-          h("div",{style:{display:"flex",alignItems:"center",gap:8}},
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.red}},`− ${fmtCurr(e.value)}`),
-            h("button",{onClick:()=>openEditExp(e),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"✎"),
-            h("button",{onClick:()=>delExp(e),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
+          h("div",{style:{textAlign:"center",padding:"10px 8px",borderRadius:10,background:despesasPendentesVencidas>0?"rgba(192,112,112,.14)":"rgba(196,169,106,.1)",border:`1px solid ${despesasPendentesVencidas>0?P.red:P.yellow}44`}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}},"⏳ A Pagar"),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:despesasPendentesVencidas>0?P.red:P.yellow}},fmtCurr(totalDespesasPendentes)),
+            h("div",{style:{fontSize:10,color:despesasPendentesVencidas>0?P.red:P.text3,marginTop:2,fontWeight:despesasPendentesVencidas>0?600:400}},
+              despesasPendentesVencidas>0?`${despesasPendentesList.length} lanç. · ${despesasPendentesVencidas} vencido(s)`:despesasPendentesList.length+" lançamento(s)"
+            )
           )
-        );}),
-        h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:P.text3}},"Total no período"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.red}},`− ${fmtCurr(filteredExpenses.reduce((a,e)=>a+Number(e.value||0),0))}`))
+        ),
+        // ── Lista "A Pagar": sempre visível, ordenada pela mais urgente ────────
+        despesasPendentesList.length>0
+          ? h("div",null,
+              h("div",{style:{fontSize:11,color:P.text3,fontWeight:600,marginBottom:4,textTransform:"uppercase",letterSpacing:".05em"}},"⏳ A Pagar"),
+              despesasPendentesList.map((e,i)=>renderExpenseRow(e,i))
+            )
+          : h("div",{style:{textAlign:"center",color:P.green,fontSize:12,padding:"10px 0",fontWeight:600}},"🎉 Nada pendente neste período"),
+        // ── Lista "Pago": colapsável, pra não poluir a tela ────────────────────
+        despesasPagasList.length>0&&h("div",{style:{marginTop:14}},
+          h("div",{onClick:()=>setShowPagas(v=>!v),style:{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",marginBottom:showPagas?4:0}},
+            h("span",{style:{fontSize:11,color:P.text3,fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}},`✓ Pago (${despesasPagasList.length})`),
+            h("span",{style:{fontSize:11,color:P.accent}},showPagas?"ocultar ▾":"mostrar ▸")
+          ),
+          showPagas&&despesasPagasList.map((e,i)=>renderExpenseRow(e,i))
+        ),
+        despesasCanceladas.length>0&&h("div",{style:{fontSize:10,color:P.text3,marginTop:10,textAlign:"center"}},`+ ${despesasCanceladas.length} cancelada(s) (ocultas deste resumo)`),
+        h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:12,paddingTop:10,borderTop:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:P.text3}},"Total no período"),h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.red}},`− ${fmtCurr(filteredExpenses.reduce((a,e)=>a+Number(e.value||0),0))}`))
       )
     )),
 
