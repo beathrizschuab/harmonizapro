@@ -1471,7 +1471,7 @@ function Field({label,children,half,third}){
 }
 function TabBar({tabs,active,onChange}){
   const h=createElement;
-  return h("div",{style:{display:"flex",gap:2,marginBottom:20,background:P.bg2,padding:4,borderRadius:10,border:`1px solid ${P.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch"}},
+  return h("div",{className:"hide-scroll",style:{display:"flex",gap:2,marginBottom:20,background:P.bg2,padding:4,borderRadius:10,border:`1px solid ${P.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch",flexWrap:"nowrap",scrollbarWidth:"none",msOverflowStyle:"none"}},
     tabs.map(t=>h("button",{key:t.k,onClick:()=>onChange(t.k),style:{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:7,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:"none",transition:"all .15s",background:active===t.k?P.rose:"transparent",color:active===t.k?P.accent3:P.text3,whiteSpace:"nowrap",flexShrink:0}},
       t.icon&&h(TabIcon,{name:t.icon,size:15}),
       t.l
@@ -4926,21 +4926,21 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:P.text}},patient.name),
             h(StatusBadge,{status:patient.status})
           ),
-          h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginBottom:6}},
-            h("span",{style:{fontSize:13,color:P.text3}},(()=>{const bd=patient.birthDate?new Date(patient.birthDate+"T12:00"):null;let age=patient.age;if(bd&&!isNaN(bd)){let a=new Date().getFullYear()-bd.getFullYear();const m=new Date().getMonth()-bd.getMonth();if(m<0||(m===0&&new Date().getDate()<bd.getDate()))a--;age=a;}return age+" anos";})()),
-            h("span",{style:{fontSize:13,color:P.text3}},"Tipo "+patient.bloodType),
-            h("span",{style:{fontSize:13,color:P.text3}},"Fitzpatrick "+patient.anamnese?.fitzpatrick),
-            patient.birthDate&&h("span",{style:{fontSize:13,color:P.text3}},"🎂 "+(()=>{const bd=new Date(patient.birthDate+"T12:00");return String(bd.getDate()).padStart(2,"0")+"/"+String(bd.getMonth()+1).padStart(2,"0")+"/"+bd.getFullYear();})()),
-            patient.since&&h("span",{style:{fontSize:13,color:P.text3}},"Desde "+patient.since)
+          h("div",{className:"hide-scroll",style:{display:"flex",gap:12,flexWrap:"nowrap",overflowX:"auto",scrollbarWidth:"none",msOverflowStyle:"none",marginBottom:6,alignItems:"center"}},
+            h("span",{style:{fontSize:13,color:P.text3,whiteSpace:"nowrap"}},(()=>{const bd=patient.birthDate?new Date(patient.birthDate+"T12:00"):null;let age=patient.age;if(bd&&!isNaN(bd)){let a=new Date().getFullYear()-bd.getFullYear();const m=new Date().getMonth()-bd.getMonth();if(m<0||(m===0&&new Date().getDate()<bd.getDate()))a--;age=a;}return age+" anos";})()),
+            patient.bloodType&&h("span",{style:{fontSize:13,color:P.text3,whiteSpace:"nowrap"}},"Tipo "+patient.bloodType),
+            patient.anamnese?.fitzpatrick&&h("span",{style:{fontSize:13,color:P.text3,whiteSpace:"nowrap"}},"Fitzpatrick "+patient.anamnese?.fitzpatrick),
+            patient.anamnese?.musicStyle&&h("span",{style:{fontSize:13,color:P.text3,whiteSpace:"nowrap"}},"🎵 "+patient.anamnese.musicStyle),
+            patient.birthDate&&h("span",{style:{fontSize:13,color:P.text3,whiteSpace:"nowrap"}},"🎂 "+(()=>{const bd=new Date(patient.birthDate+"T12:00");return String(bd.getDate()).padStart(2,"0")+"/"+String(bd.getMonth()+1).padStart(2,"0")+"/"+bd.getFullYear();})()),
+            patient.since&&h("span",{style:{fontSize:13,color:P.text3,whiteSpace:"nowrap"}},"Desde "+patient.since)
           ),
-          h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginBottom:6}},
-            patient.phone&&h("span",{style:{fontSize:12,color:P.text3}},"📞 "+patient.phone),
-            patient.email&&h("span",{style:{fontSize:12,color:P.text3}},"✉ "+patient.email),
-            patient.cpf&&h("span",{style:{fontSize:12,color:P.text3}},"CPF "+patient.cpf),
-            patient.origem&&h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(157,119,97,.12)",color:P.accent,border:"1px solid rgba(157,119,97,.2)"}},(()=>({nova:"🌟 Nova",indicacao:"🤝 Indicação",campanha:"📣 Campanha"+(patient.canalCampanha?" — "+patient.canalCampanha:""),recorrente:"🔄 Recorrente"})[patient.origem]||patient.origem)()),
-            patient.indicadoPor&&h("span",{style:{fontSize:12,color:P.text3}},"Ind. por: "+patient.indicadoPor)
+          h("div",{className:"hide-scroll",style:{display:"flex",gap:12,flexWrap:"nowrap",overflowX:"auto",scrollbarWidth:"none",msOverflowStyle:"none",marginBottom:6,alignItems:"center"}},
+            patient.phone&&h("span",{style:{fontSize:12,color:P.text3,whiteSpace:"nowrap"}},"📞 "+patient.phone),
+            patient.email&&h("span",{style:{fontSize:12,color:P.text3,whiteSpace:"nowrap"}},"✉ "+patient.email),
+            patient.cpf&&h("span",{style:{fontSize:12,color:P.text3,whiteSpace:"nowrap"}},"CPF "+patient.cpf),
+            patient.origem&&h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(157,119,97,.12)",color:P.accent,border:"1px solid rgba(157,119,97,.2)",whiteSpace:"nowrap"}},(()=>({nova:"🌟 Nova",indicacao:"🤝 Indicação",campanha:"📣 Campanha"+(patient.canalCampanha?" — "+patient.canalCampanha:""),recorrente:"🔄 Recorrente"})[patient.origem]||patient.origem)()),
+            patient.indicadoPor&&h("span",{style:{fontSize:12,color:P.text3,whiteSpace:"nowrap"}},"Ind. por: "+patient.indicadoPor)
           ),
-          patient.anamnese?.musicStyle&&h("div",{style:{fontSize:12,color:P.text3,marginBottom:6}},`🎵 ${patient.anamnese.musicStyle}`),
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},(patient.complaints||[]).map(c=>h("span",{key:c,style:{fontSize:11,padding:"3px 9px",borderRadius:20,background:`rgba(92,31,50,.12)`,color:P.accent,border:`1px solid rgba(92,31,50,.25)`}},c)))
         ),
         h("div",{style:{display:"flex",gap:12,flexWrap:"wrap"}},
@@ -10974,6 +10974,7 @@ function AppInner({ session, onLogout }) {
       ::-webkit-scrollbar{width:4px;height:4px;}
       ::-webkit-scrollbar-track{background:transparent;}
       ::-webkit-scrollbar-thumb{background:${P.border};border-radius:2px;}
+      .hide-scroll::-webkit-scrollbar{display:none!important;}
       input,select,textarea{font-family:'DM Sans',sans-serif;color:${P.text};}
       select option{background:${P.bg2};}
       @media(max-width:639px){
