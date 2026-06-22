@@ -9539,6 +9539,8 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
   const[editingProc,setEditingProc]=useState(null); // proc object being edited
   const[showNewProc,setShowNewProc]=useState(false);
   const[newProcForm,setNewProcForm]=useState({name:"",categoria:"Outros",descricao:"",revisionDays:"",maintenanceDays:"",sessoesPadrao:"1",defaultValue:""});
+  const[collapsedCats,setCollapsedCats]=useState({});
+  function toggleCat(cat){setCollapsedCats(prev=>({...prev,[cat]:!prev[cat]}));}
 
   const getName=x=>typeof x==="string"?x:(x&&x.name)||"";
   const getProc=x=>typeof x==="string"?{id:"p_"+x,name:x,categoria:"Outros",descricao:"",revisionDays:0,maintenanceDays:0,sessoesPadrao:1,defaultValue:0,duration:"1 hora",insumos:[]}:{id:x.id||"",name:x.name||"",categoria:x.categoria||"Outros",descricao:x.descricao||"",revisionDays:x.revisionDays||0,maintenanceDays:x.maintenanceDays||0,sessoesPadrao:x.sessoesPadrao||1,defaultValue:x.defaultValue||0,duration:x.duration||"1 hora",insumos:x.insumos||[]};
@@ -9608,13 +9610,20 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
       cats.map(cat=>{
         const catProcs=procedures.map(getProc).filter(p=>( p.categoria||"Outros")===cat);
         if(catProcs.length===0)return null;
+        const isCollapsed=!!collapsedCats[cat];
         return h("div",{key:cat,style:{marginBottom:20}},
-          h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:10}},
+          h("button",{
+            onClick:()=>toggleCat(cat),
+            style:{display:"flex",alignItems:"center",gap:8,marginBottom:isCollapsed?0:10,background:"none",border:"none",cursor:"pointer",padding:"6px 10px",borderRadius:10,width:"100%",textAlign:"left",transition:"background .15s"},
+            onMouseEnter:e=>{e.currentTarget.style.background=P.bg3;},
+            onMouseLeave:e=>{e.currentTarget.style.background="none";}
+          },
             h("span",{style:{fontSize:18}},(PROC_MAP_ICONS[cat]||"🩺")),
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:PROC_CAT_COLORS[cat]||P.text}},cat),
-            h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},catProcs.length)
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:PROC_CAT_COLORS[cat]||P.text,flex:1}},cat),
+            h("span",{style:{fontSize:11,color:P.text3,background:P.bg3,padding:"2px 8px",borderRadius:20,border:`1px solid ${P.border}`}},catProcs.length),
+            h("span",{style:{fontSize:13,color:P.text3,marginLeft:4,transition:"transform .2s",display:"inline-block",transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)"}},"▾")
           ),
-          h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+          !isCollapsed&&h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
             catProcs.map(proc=>{
               const rule=(returnRules||[]).find(r=>r.procedure===proc.name);
               const rev=proc.revisionDays||rule?.revisionDays||0;
