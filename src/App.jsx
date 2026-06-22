@@ -6938,6 +6938,46 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     + monthIncomesExtra.filter(i=>i.status!=="Pago").reduce((a,i)=>a+Number(i.value||0),0);
   const totalExp=monthExpenses.reduce((a,e)=>a+Number(e.value||0),0);
 
+  // ── CAIXA REAL: o que de fato entra/sai na conta bancária no mês ─────────
+  // Receitas: depósitos do maqDeposits que caem neste mês + entradas à vista (sem parcelas)
+  const METODOS_AVISTA=["Pix","Dinheiro","Transferência"];
+  function calcCaixaRealEntradas(items,mm,yy){
+    return items.reduce((acc,s)=>{
+      if(!s.paid&&s.status!=="Pago")return acc;
+      const pm=s.payMethod||"";
+      // Cartão: usa o cronograma de depósitos (maqDeposits)
+      if((pm==="Cartão Crédito"||pm==="Cartão Débito")&&s.maqDeposits&&s.maqDeposits.length>0){
+        const depositsMes=s.maqDeposits.filter(dep=>{
+          if(!dep.data)return false;
+          const dt=new Date(dep.data+"T12:00:00");
+          return dt.getMonth()===mm&&dt.getFullYear()===yy;
+        });
+        return acc+depositsMes.reduce((a,dep)=>a+Number(dep.liquido||dep.valor||0),0);
+      }
+      // À vista (Pix, Dinheiro, etc.): a data da sessão/entrada define quando entrou
+      const dt=parseAnyDate(s.date);
+      if(dt&&dt.getMonth()===mm&&dt.getFullYear()===yy){
+        // Desconta taxa de cartão débito se houver
+        const liq=s.netValue&&s.netValue>0?s.netValue:Number(s.value||0);
+        return acc+liq;
+      }
+      return acc;
+    },0);
+  }
+  const caixaRealEntradas=calcCaixaRealEntradas(
+    [...allS,...incomes.filter(i=>!i.sessRef)],selMonth,selYear
+  );
+  // Despesas reais: parcelas que vencem neste mês (já filtradas por monthExpenses)
+  // Separamos parceladas das normais para exibição
+  const despesasParceladas=monthExpenses.filter(e=>e.isInstallment&&e.status!=="Cancelado");
+  const despesasNormais=monthExpenses.filter(e=>!e.isInstallment&&e.status!=="Cancelado");
+  const totalExpParceladas=despesasParceladas.reduce((a,e)=>a+Number(e.value||0),0);
+  const totalExpNormais=despesasNormais.reduce((a,e)=>a+Number(e.value||0),0);
+  const caixaRealSaidas=totalExp; // despesas do mês = parcelas que vencem agora
+  const caixaRealLiquido=caixaRealEntradas-caixaRealSaidas;
+  // Entradas de competência que ainda não depositaram neste mês (cartão parcelado de vendas deste mês)
+  const vendaMesAindaNaoDeposita=received-caixaRealEntradas;
+
   // ── Custo de produtos/insumos e Margem Bruta do mês ─────────────────────
   // Custo = produto principal (s.product/qtdUsada) + insumos auto-debitados pela ficha técnica,
   // calculado a partir do custo unitário cadastrado no Estoque. Só considera sessões pagas
@@ -7173,7 +7213,58 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     setGoals&&h(MetaPorProcedimento,{procedures,patients,selMonth,selYear,goals:goals||{},setGoals}),
 
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:14}},
-      [{l:"Receita do Mês",v:fmtCurr(received),c:P.accent},{l:"Despesas do Mês",v:fmtCurr(totalExp),c:P.red},{l:"Lucro Líquido",v:fmtCurr(received-totalExp),c:P.green},{l:"A Receber",v:fmtCurr(pending),c:P.yellow}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)))
+      [{l:"Receita do Mês",v:fmtCurr(received),c:P.accent,tip:"Total faturado no mês (competência) — inclui parcelamentos futuros"},{l:"Despesas do Mês",v:fmtCurr(totalExp),c:P.red,tip:"Parcelas e despesas que vencem neste mês"},{l:"Lucro Líquido",v:fmtCurr(received-totalExp),c:P.green,tip:"Receita de competência menos despesas do mês"},{l:"A Receber",v:fmtCurr(pending),c:P.yellow,tip:"Sessões ainda não pagas/confirmadas"}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"},title:k.tip},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)))
+    ),
+    // ── Painel: Caixa Real vs. Competência ──────────────────────────────────
+    h(Card,{style:{marginBottom:14,background:P.bg3,border:`1px solid ${P.border}`}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:8}},
+        h("div",null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"💳 Caixa Real — O que de fato entra na conta"),
+          h("div",{style:{fontSize:11,color:P.text3,marginTop:3}},"Depósitos efetivos: parcelas do cartão que caem neste mês + recebimentos à vista (Pix, Dinheiro, Débito)")
+        ),
+        h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+          h("span",{style:{fontSize:10,padding:"3px 10px",borderRadius:20,background:"rgba(122,174,212,.14)",color:"#7aaed4",border:"1px solid rgba(122,174,212,.3)"}},
+            "ℹ Competência ≠ Caixa"
+          )
+        )
+      ),
+      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:14}},
+        h("div",{style:{textAlign:"center",padding:"14px 10px",borderRadius:10,background:caixaRealEntradas>=received?"rgba(122,173,138,.12)":"rgba(196,169,106,.1)",border:`1px solid ${caixaRealEntradas>=received?P.green:P.yellow}33`}},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}},"Entrou na Conta"),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:caixaRealEntradas>=0?P.green:P.red}},fmtCurr(caixaRealEntradas)),
+          h("div",{style:{fontSize:10,color:P.text3,marginTop:4}},"depósitos efetivos do mês")
+        ),
+        h("div",{style:{textAlign:"center",padding:"14px 10px",borderRadius:10,background:"rgba(192,112,112,.08)",border:`1px solid ${P.red}22`}},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}},"Saiu da Conta"),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:P.red}},fmtCurr(caixaRealSaidas)),
+          h("div",{style:{fontSize:10,color:P.text3,marginTop:4}},
+            totalExpParceladas>0?`incl. ${fmtCurr(totalExpParceladas)} em parcelas`:"despesas do mês"
+          )
+        ),
+        h("div",{style:{textAlign:"center",padding:"14px 10px",borderRadius:10,background:caixaRealLiquido>=0?"rgba(122,173,138,.12)":"rgba(192,112,112,.1)",border:`1px solid ${caixaRealLiquido>=0?P.green:P.red}44`}},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}},"Saldo de Caixa Real"),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:caixaRealLiquido>=0?P.green:P.red}},fmtCurr(caixaRealLiquido)),
+          h("div",{style:{fontSize:10,color:caixaRealLiquido>=0?P.green:P.red,fontWeight:600,marginTop:4}},caixaRealLiquido>=0?"positivo este mês":"atenção: déficit de caixa")
+        )
+      ),
+      // Linha de reconciliação
+      (Math.abs(vendaMesAindaNaoDeposita)>0.5)&&h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",borderRadius:8,background:P.bg2,border:`1px solid ${P.border}`,flexWrap:"wrap",gap:8}},
+        h("div",null,
+          h("div",{style:{fontSize:12,color:P.text,fontWeight:600}},"📅 Vendas deste mês ainda a depositar"),
+          h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Parcelamentos no cartão que caem em meses futuros")
+        ),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.yellow}},
+          fmtCurr(Math.max(0,vendaMesAindaNaoDeposita))
+        )
+      ),
+      // Breakdown de despesas parceladas
+      despesasParceladas.length>0&&h("div",{style:{marginTop:12,padding:"10px 14px",borderRadius:8,background:P.bg2,border:`1px solid ${P.border}`}},
+        h("div",{style:{fontSize:11,color:P.text3,fontWeight:600,marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}},"💳 Parcelas de despesas vencendo este mês"),
+        despesasParceladas.map(e=>h("div",{key:e.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",fontSize:12,color:P.text2}},
+          h("span",null,`${e.desc} · parcela ${e.parcelaNum}/${e.parcelaTotal}`),
+          h("span",{style:{color:P.red,fontWeight:600}},`− ${fmtCurr(e.value)}`)
+        ))
+      )
     ),
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14,marginBottom:22}},
       [{l:"Custo de Produtos/Insumos",v:fmtCurr(monthCostProdutos),c:P.red},{l:"Margem Bruta",v:fmtCurr(margemBruta)+`  (${margemBrutaPct}%)`,c:margemBrutaPct>=60?P.green:margemBrutaPct>=35?P.yellow:P.red}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:k.c}},k.v)))
@@ -7317,25 +7408,64 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
         ),
         h("div",{style:{marginBottom:10}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},h("div",null,h("div",{style:{fontSize:11,color:P.text3}},"🔄 Sessões auto-sincronizadas do prontuário"),h("div",{style:{fontSize:10,color:P.text3,marginTop:1}},filteredSessions.length+" resultado(s)")),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green}},fmtCurr(filteredSessions.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0))))),
         filteredSessions.length===0&&h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"10px 0"}},"Nenhuma sessão no período"),
-        filteredSessions.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((s,i)=>h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
-          h("div",null,
-            h("div",{style:{fontSize:13,color:P.text}},`${s.pname} — ${s.procedure}`),
-            h("div",{style:{fontSize:11,color:P.text3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
-              `${s.date} · ${s.payMethod}`,
-              s.payMethod==="Cartão Crédito"&&s.parcelas>1&&h("span",null,`· ${s.parcelas}x`),
-              s.maqDeposits&&s.maqDeposits.length>1&&!s.maqDeposits[0]?.antecipado&&h("span",{style:{color:P.yellow,fontWeight:600}},`📅 ${s.maqDeposits.length} depósitos`),
-              s.maqDeposits&&s.maqDeposits[0]?.antecipado&&h("span",{style:{color:P.green,fontWeight:600}},"💨 Antecipado"),
-              s.maqDeposits&&s.maqDeposits[0]?.data&&h("span",{style:{color:P.text3}},`· dep. ${fmtDateShort(s.maqDeposits[0].data)}`)
-            )
-          ),
-          h("div",{style:{display:"flex",alignItems:"center",gap:8}},
-            h("div",{style:{textAlign:"right"}},
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:s.paid?P.green:P.yellow}},fmtCurr(s.value)),
-              s.payMethod==="Cartão Crédito"&&s.parcelas>1&&h("div",{style:{fontSize:10,color:P.accent,fontWeight:600}},`${s.parcelas}x ${fmtCurr(s.value/s.parcelas)}`)
+        filteredSessions.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((s,i)=>{
+          // Calcula o que de fato cai na conta no mês selecionado para esta sessão
+          const pm=s.payMethod||"";
+          const isCard=pm==="Cartão Crédito"||pm==="Cartão Débito";
+          const depositsMes=(isCard&&s.maqDeposits)?s.maqDeposits.filter(dep=>{
+            if(!dep.data)return false;
+            const dt=new Date(dep.data+"T12:00:00");
+            return dt.getMonth()===selMonth&&dt.getFullYear()===selYear;
+          }):[];
+          const valorCaixaMes=isCard&&s.maqDeposits&&s.maqDeposits.length>0
+            ?depositsMes.reduce((a,dep)=>a+Number(dep.liquido||dep.valor||0),0)
+            :(s.paid?Number(s.value||0):0);
+          const hasDepositThisMes=isCard&&depositsMes.length>0;
+          const hasDepositFuture=isCard&&s.maqDeposits&&s.maqDeposits.some(dep=>{
+            if(!dep.data)return false;
+            const dt=new Date(dep.data+"T12:00:00");
+            return dt.getMonth()!==selMonth||dt.getFullYear()!==selYear;
+          });
+          return h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
+            h("div",{style:{flex:1,minWidth:0}},
+              h("div",{style:{fontSize:13,color:P.text}},`${s.pname} — ${s.procedure}`),
+              h("div",{style:{fontSize:11,color:P.text3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}},
+                `${s.date} · ${s.payMethod}`,
+                s.payMethod==="Cartão Crédito"&&s.parcelas>1&&h("span",null,`· ${s.parcelas}x`),
+                s.maqDeposits&&s.maqDeposits[0]?.antecipado&&h("span",{style:{color:P.green,fontWeight:600}},"💨 Antecipado"),
+                // Mostra quais parcelas caem neste mês
+                hasDepositThisMes&&depositsMes.length>0&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:"rgba(122,173,138,.15)",color:P.green,fontWeight:600}},
+                  depositsMes.length===1
+                    ?`💳 dep. ${fmtDateShort(depositsMes[0].data)}`
+                    :`💳 ${depositsMes.length} dep. neste mês`
+                ),
+                hasDepositFuture&&h("span",{style:{fontSize:10,color:P.text3}},
+                  `· ${(s.maqDeposits||[]).filter(dep=>{if(!dep.data)return false;const dt=new Date(dep.data+"T12:00:00");return!(dt.getMonth()===selMonth&&dt.getFullYear()===selYear);}).length} dep. em meses futuros`
+                )
+              ),
+              // Mini-cronograma dos depósitos quando parcelado em cartão
+              isCard&&s.maqDeposits&&s.maqDeposits.length>1&&!s.maqDeposits[0]?.antecipado&&h("div",{style:{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}},
+                s.maqDeposits.map((dep,di)=>{
+                  const dt=dep.data?new Date(dep.data+"T12:00:00"):null;
+                  const isMes=dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear;
+                  return h("span",{key:di,title:`Depósito ${dep.n}: ${fmtDateShort(dep.data)} — ${fmtCurr(dep.liquido||dep.valor||0)}`,style:{fontSize:9,padding:"1px 6px",borderRadius:8,background:isMes?"rgba(122,173,138,.2)":"rgba(200,200,200,.1)",color:isMes?P.green:P.text3,border:`1px solid ${isMes?P.green+"44":P.border}`,fontWeight:isMes?700:400,cursor:"default"}},
+                    isMes?"★ "+fmtDateShort(dep.data):fmtDateShort(dep.data)
+                  );
+                })
+              )
             ),
-            h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.pid,s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
-          )
-        )),
+            h("div",{style:{display:"flex",alignItems:"center",gap:8,flexShrink:0}},
+              h("div",{style:{textAlign:"right"}},
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:s.paid?P.green:P.yellow}},fmtCurr(s.value)),
+                isCard&&s.parcelas>1&&h("div",{style:{fontSize:10,color:P.accent,fontWeight:600}},`${s.parcelas}x ${fmtCurr(s.value/s.parcelas)}`),
+                // Destaque do que entra na conta NESTE mês
+                isCard&&s.maqDeposits&&s.maqDeposits.length>0&&valorCaixaMes>0&&h("div",{style:{fontSize:10,color:P.green,fontWeight:700}},`↓ ${fmtCurr(valorCaixaMes)} este mês`),
+                isCard&&s.maqDeposits&&s.maqDeposits.length>0&&valorCaixaMes===0&&s.paid&&h("div",{style:{fontSize:10,color:P.text3}},`↓ R$0 este mês`)
+              ),
+              h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.pid,s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
+            )
+          );
+        }),
         filteredIncomesExtra.length>0&&h("div",null,
           h("div",{style:{fontSize:11,color:P.text3,margin:"10px 0 6px"}},"＋ Entradas extras (não vinculadas a sessões):"),
           filteredIncomesExtra.map((inc,i)=>{
@@ -7472,6 +7602,35 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
           h(DRERow,{label:"(=) EBITDA / Resultado Operacional",value:ebitda,bold:true,divider:true,color:ebitda>=0?P.green:P.red}),
           h("div",{style:{display:"flex",justifyContent:"flex-end",marginTop:2}},
             h("span",{style:{fontSize:11,color:P.text3}},`Margem EBITDA: `,h("span",{style:{color:margemEbitda>=30?P.green:margemEbitda>=10?P.yellow:P.red,fontWeight:600}},margemEbitda+"%"))
+          ),
+          // ── Bloco: Caixa Real dentro da DRE ──
+          h("div",{style:{marginTop:20,padding:"14px 16px",borderRadius:10,background:P.bg3,border:`2px solid ${P.border}`}},
+            h("div",{style:{fontSize:12,color:P.text2,fontWeight:600,marginBottom:12,textTransform:"uppercase",letterSpacing:".06em"}},"💳 Visão de Caixa (Depósitos Efetivos)"),
+            h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                h("span",{style:{fontSize:12,color:P.text2}},"Entradas efetivas na conta"),
+                h("span",{style:{fontSize:15,fontFamily:"'Cormorant Garamond',serif",color:P.green}},fmtCurr(caixaRealEntradas))
+              ),
+              Math.abs(vendaMesAindaNaoDeposita)>0.5&&h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                h("span",{style:{fontSize:11,color:P.text3}},"  ↳ Parcelas de cartão a receber em meses futuros"),
+                h("span",{style:{fontSize:13,color:P.yellow}},fmtCurr(Math.max(0,vendaMesAindaNaoDeposita)))
+              ),
+              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                h("span",{style:{fontSize:12,color:P.text2}},"Saídas efetivas (despesas do mês)"),
+                h("span",{style:{fontSize:15,fontFamily:"'Cormorant Garamond',serif",color:P.red}},`− ${fmtCurr(caixaRealSaidas)}`)
+              ),
+              totalExpParceladas>0&&h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                h("span",{style:{fontSize:11,color:P.text3}},"  ↳ Parcelas de despesas vencendo este mês"),
+                h("span",{style:{fontSize:13,color:P.red}},`− ${fmtCurr(totalExpParceladas)}`)
+              ),
+              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:8,borderTop:`1px solid ${P.border}`,marginTop:4}},
+                h("span",{style:{fontSize:12,color:P.text,fontWeight:600}},"Saldo de Caixa Real"),
+                h("span",{style:{fontSize:18,fontFamily:"'Cormorant Garamond',serif",color:caixaRealLiquido>=0?P.green:P.red,fontWeight:600}},fmtCurr(caixaRealLiquido))
+              )
+            ),
+            h("div",{style:{fontSize:10,color:P.text3,marginTop:10,lineHeight:1.5}},
+              "Competência registra a receita no momento da venda; Caixa mostra quando o dinheiro efetivamente chega na conta. A diferença são parcelamentos no cartão que chegam nos meses seguintes."
+            )
           ),
           pendencias>0&&h("div",{style:{marginTop:16,padding:"12px 14px",borderRadius:10,background:"rgba(196,169,106,.08)",border:`1px solid ${P.yellow}44`}},
             h("div",{style:{fontSize:11,color:P.yellow,fontWeight:600,marginBottom:2}},"⏳ Receita pendente de recebimento"),
