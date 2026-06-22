@@ -3673,6 +3673,122 @@ function HistEventRow({ev}){
 //     para bloqueios de horário, { rescheduleHistory: [{from, to, at}] } (legado) e
 //     { history: [{id, at, type, label, from, to}] } para o histórico completo.
 
+const AGENDA_HOURS=[7,8,9,10,11,12,13,14,15,16,17,18,19,20];
+// ─── CARD DE AGENDAMENTO (drag) — fora do Agenda para manter identidade estável entre renders ───
+function AgendaApptCardBase({a,compact=false,big=false,fitHeight=false,dragId,onCardDragStart,onCardDragEnd,onCardClick}){
+  const h=createElement;
+  const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
+  const isDragging=dragId===a.id;
+  if(a.blocked){
+    return h("div",{style:{padding:compact?"3px 6px":"6px 10px",background:"rgba(192,112,112,.08)",border:`1px dashed rgba(192,112,112,.4)`,borderRadius:6,opacity:isDragging?.4:1,height:fitHeight?"100%":"auto",overflow:"hidden",boxSizing:"border-box"}},
+      h("div",{style:{fontSize:compact?9:11,color:P.red,fontWeight:600}},"🔒 "+(a.blockReason||"Bloqueado")),
+      !compact&&h("div",{style:{fontSize:10,color:P.text3}},a.time+(a.endTime?" – "+a.endTime:""))
+    );
+  }
+  const histCount=unifiedApptHistory(a).length;
+  // Duração curta (<45min): card fica baixo, escondemos linhas menos essenciais
+  const durMin=durationToMin(a.duration);
+  const isShort=fitHeight&&durMin<45;
+  const isTiny=fitHeight&&durMin<25;
+  return h("div",{
+    draggable:true,
+    onDragStart:e=>onCardDragStart(e,a.id),
+    onDragEnd:onCardDragEnd,
+    onClick:()=>onCardClick(a),
+    title:"Arraste para reagendar · Clique para editar",
+    style:{padding:compact?(big?"8px 11px":"3px 5px"):"6px 10px",background:sc.bg,border:`1px solid ${sc.color}66`,borderLeft:`3px solid ${sc.color}`,borderRadius:6,cursor:"grab",opacity:isDragging?.3:1,userSelect:"none",position:"relative",minHeight:fitHeight?"auto":(compact&&big?56:"auto"),height:fitHeight?"100%":"auto",overflow:"hidden",boxSizing:"border-box"}
+  },
+    compact
+      ?(big
+          ?h(Fragment,null,
+              h("div",{style:{fontSize:isTiny?11:14,color:sc.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" — "+a.patientName),
+              !isTiny&&h("div",{style:{fontSize:12,color:P.text2,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.procedure),
+              !isShort&&h("div",{style:{fontSize:10.5,color:P.text3,marginTop:1}},(a.duration?`🕐 ${a.time}–${apptEndTime(a)} · `:"")+"📍 "+a.location)
+            )
+          :h("div",{style:{fontSize:9,color:sc.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" "+a.patientName)
+        )
+      :h(Fragment,null,
+          h("div",{style:{fontSize:12,color:sc.color,fontWeight:700}},(a.duration?`${a.time}–${apptEndTime(a)}`:a.time)+" — "+a.patientName),
+          h("div",{style:{fontSize:11,color:P.text2}},a.procedure),
+          h("div",{style:{fontSize:10,color:P.text3}},"📍 "+a.location),
+          histCount>0&&h("div",{style:{fontSize:9,color:"#9b7aad",marginTop:2}},"🕓 "+histCount+" alteraçõe"+(histCount===1?"":"s"))
+        )
+  );
+}
+// ─── COLUNA DE HORAS (semana: step=30min · dia: step=5min) — fora do Agenda ───
+// Hoisted para não ser desmontada/remontada a cada render durante o drag (era a causa
+// do drag&drop não funcionar nas views Semana/Dia: ApptCard/HourSlots eram recriados
+// como novos componentes a cada setDragOver, fazendo o React remontar toda a grade
+// no meio do gesto de arrastar, derrubando a sessão nativa de drag&drop do navegador).
+function AgendaHourSlotsBase({date,appts,step,dragOver,setDragOver,dragIdRef,onClickEmptySlotMin,onDblClickSlotMin,onDropSlotMin,dragId,onCardDragStart,onCardDragEnd,onCardClick}){
+  const h=createElement;
+  const STEPS_PH=60/step, STEP_PX=64/STEPS_PH;
+  function calcMinFromEvent(e){
+    const rect=e.currentTarget.getBoundingClientRect();
+    const offsetY=e.clientY-rect.top;
+    const rawMin=Math.round(offsetY/STEP_PX)*step;
+    return Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
+  }
+  return h("div",{
+    style:{position:"relative"},
+    // onDragOver e onDrop no container pai, para garantir que o drop funcione
+    // mesmo quando o cursor passa sobre o card absoluto
+    onDragOver:e=>{
+      e.preventDefault();
+      const totalMin=calcMinFromEvent(e);
+      setDragOver(prev=>(prev&&prev.date===date&&prev.minute===totalMin)?prev:{date,minute:totalMin});
+    },
+    onDrop:e=>{
+      e.preventDefault();
+      onDropSlotMin(e,date,calcMinFromEvent(e));
+    }
+  },
+    AGENDA_HOURS.map(hr=>
+      Array.from({length:STEPS_PH},(_,i)=>{
+        const totalMin=hr*60+i*step;
+        const isOver=dragOver&&dragOver.date===date&&dragOver.minute===totalMin;
+        const isHourLine=i===0;
+        return h("div",{
+          key:hr+"_"+i,
+          style:{
+            height:STEP_PX,
+            borderBottom:isHourLine?`1px solid rgba(71,35,37,.2)`:`1px solid rgba(71,35,37,.08)`,
+            cursor:"pointer",
+            transition:"background .12s",
+            background:isOver?"rgba(157,119,97,.18)":"transparent"
+          },
+          onClick:()=>{ if(!dragIdRef.current) onClickEmptySlotMin(date,totalMin); },
+          onDoubleClick:()=>onDblClickSlotMin(date,totalMin),
+        });
+      })
+    ),
+    (()=>{
+      const byTime={};
+      appts.forEach(a=>{ const t=a.time||"09:00"; (byTime[t]=byTime[t]||[]).push(a); });
+      return appts.map(a=>{
+        const t=a.time||"09:00";
+        const group=byTime[t];
+        const idx=group.indexOf(a);
+        const n=group.length;
+        const widthPct=100/n;
+        const leftPct=idx*widthPct;
+        const [hh,mm]=t.split(":").map(Number);
+        const top=(hh-7)*64+(mm/60)*64;
+        // Altura proporcional à duração real (início → fim), 64px = 1 hora
+        const durMin=a.blocked
+          ?(()=>{ if(!a.endTime)return 60; const[eh,em]=a.endTime.split(":").map(Number); return Math.max(15,(eh*60+em)-(hh*60+mm)); })()
+          :durationToMin(a.duration);
+        const height=Math.max(20,(durMin/60)*64);
+        return h("div",{key:a.id,style:{position:"absolute",left:`calc(${leftPct}% + 2px)`,width:`calc(${widthPct}% - 4px)`,top,height,zIndex:2,pointerEvents:"none"}},
+          h("div",{style:{pointerEvents:"auto",height:"100%"}},
+            h(AgendaApptCardBase,{a,compact:true,big:n===1,fitHeight:true,dragId,onCardDragStart,onCardDragEnd,onCardClick})
+          )
+        );
+      });
+    })()
+  );
+}
+
 function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,proceduresFull,locations,prefill,onConsumePrefill}){
   const[selDate,setSelDate]=useState(todayISO());
   const[viewMonth,setViewMonth]=useState(()=>{const t=new Date();return{y:t.getFullYear(),m:t.getMonth()};});
@@ -3863,185 +3979,17 @@ function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,pro
   // ─── Estilos reutilizáveis ───
   const blockBtnStyle={padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid rgba(192,112,112,.35)`,color:P.red};
 
-  // ─── CARD DE AGENDAMENTO (drag) ───
+  // ApptCard/HourSlots/HourSlotsDay agora vivem fora do Agenda (ver AgendaApptCardBase
+  // e AgendaHourSlotsBase acima) — aqui só repassamos as closures locais como props,
+  // para que o React reaproveite o DOM em vez de remontá-lo a cada render durante o drag.
   function ApptCard({a,compact=false,big=false,fitHeight=false}){
-    const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
-    const isDragging=dragId===a.id;
-    if(a.blocked){
-      return h("div",{style:{padding:compact?"3px 6px":"6px 10px",background:"rgba(192,112,112,.08)",border:`1px dashed rgba(192,112,112,.4)`,borderRadius:6,opacity:isDragging?.4:1,height:fitHeight?"100%":"auto",overflow:"hidden",boxSizing:"border-box"}},
-        h("div",{style:{fontSize:compact?9:11,color:P.red,fontWeight:600}},"🔒 "+(a.blockReason||"Bloqueado")),
-        !compact&&h("div",{style:{fontSize:10,color:P.text3}},a.time+(a.endTime?" – "+a.endTime:""))
-      );
-    }
-    const histCount=unifiedApptHistory(a).length;
-    // Duração curta (<45min): card fica baixo, escondemos linhas menos essenciais
-    const durMin=durationToMin(a.duration);
-    const isShort=fitHeight&&durMin<45;
-    const isTiny=fitHeight&&durMin<25;
-    return h("div",{
-      draggable:true,
-      onDragStart:e=>onDragStart(e,a.id),
-      onDragEnd,
-      onClick:()=>openEdit(a),
-      title:"Arraste para reagendar · Clique para editar",
-      style:{padding:compact?(big?"8px 11px":"3px 5px"):"6px 10px",background:sc.bg,border:`1px solid ${sc.color}66`,borderLeft:`3px solid ${sc.color}`,borderRadius:6,cursor:"grab",opacity:isDragging?.3:1,userSelect:"none",position:"relative",minHeight:fitHeight?"auto":(compact&&big?56:"auto"),height:fitHeight?"100%":"auto",overflow:"hidden",boxSizing:"border-box"}
-    },
-      compact
-        ?(big
-            ?h(Fragment,null,
-                h("div",{style:{fontSize:isTiny?11:14,color:sc.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" — "+a.patientName),
-                !isTiny&&h("div",{style:{fontSize:12,color:P.text2,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.procedure),
-                !isShort&&h("div",{style:{fontSize:10.5,color:P.text3,marginTop:1}},(a.duration?`🕐 ${a.time}–${apptEndTime(a)} · `:"")+"📍 "+a.location)
-              )
-            :h("div",{style:{fontSize:9,color:sc.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.time+" "+a.patientName)
-          )
-        :h(Fragment,null,
-            h("div",{style:{fontSize:12,color:sc.color,fontWeight:700}},(a.duration?`${a.time}–${apptEndTime(a)}`:a.time)+" — "+a.patientName),
-            h("div",{style:{fontSize:11,color:P.text2}},a.procedure),
-            h("div",{style:{fontSize:10,color:P.text3}},"📍 "+a.location),
-            histCount>0&&h("div",{style:{fontSize:9,color:"#9b7aad",marginTop:2}},"🕓 "+histCount+" alteraçõe"+(histCount===1?"":"s"))
-          )
-    );
+    return h(AgendaApptCardBase,{a,compact,big,fitHeight,dragId,onCardDragStart:onDragStart,onCardDragEnd:onDragEnd,onCardClick:openEdit});
   }
-
-  // ─── COLUNA DE HORAS (view dia/semana) ───
   function HourSlots({date,appts}){
-    const STEP=30, STEPS_PH=60/STEP, STEP_PX_W=64/STEPS_PH;
-    return h("div",{
-      style:{position:"relative"},
-      // onDragOver e onDrop no container pai também, para garantir que o drop funcione
-      // mesmo quando o cursor passa sobre o card absoluto
-      onDragOver:e=>{
-        e.preventDefault();
-        const rect=e.currentTarget.getBoundingClientRect();
-        const offsetY=e.clientY-rect.top;
-        const rawMin=Math.round(offsetY/STEP_PX_W)*STEP;
-        const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
-        setDragOver({date,minute:totalMin});
-      },
-      onDrop:e=>{
-        e.preventDefault();
-        const rect=e.currentTarget.getBoundingClientRect();
-        const offsetY=e.clientY-rect.top;
-        const rawMin=Math.round(offsetY/STEP_PX_W)*STEP;
-        const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
-        onDropSlotMin(e,date,totalMin);
-      }
-    },
-      HOURS.map(hr=>
-        Array.from({length:STEPS_PH},(_,i)=>{
-          const totalMin=hr*60+i*STEP;
-          const isOver=dragOver&&dragOver.date===date&&dragOver.minute===totalMin;
-          const isHourLine=i===0;
-          return h("div",{
-            key:hr+"_"+i,
-            style:{
-              height:STEP_PX_W,
-              borderBottom:isHourLine?`1px solid rgba(71,35,37,.2)`:`1px solid rgba(71,35,37,.08)`,
-              cursor:"pointer",
-              transition:"background .12s",
-              background:isOver?"rgba(157,119,97,.18)":"transparent"
-            },
-            onClick:()=>{ if(!dragIdRef.current) onClickEmptySlotMin(date,totalMin); },
-            onDoubleClick:()=>onDblClickSlotMin(date,totalMin),
-          });
-        })
-      ),
-      (()=>{
-        const byTime={};
-        appts.forEach(a=>{ const t=a.time||"09:00"; (byTime[t]=byTime[t]||[]).push(a); });
-        return appts.map(a=>{
-          const t=a.time||"09:00";
-          const group=byTime[t];
-          const idx=group.indexOf(a);
-          const n=group.length;
-          const widthPct=100/n;
-          const leftPct=idx*widthPct;
-          const [hh,mm]=t.split(":").map(Number);
-          const top=(hh-7)*64+(mm/60)*64;
-          // Altura proporcional à duração real (início → fim), 64px = 1 hora — sem folga, vai exatamente até o horário final
-          const durMin=a.blocked
-            ?(()=>{ if(!a.endTime)return 60; const[eh,em]=a.endTime.split(":").map(Number); return Math.max(15,(eh*60+em)-(hh*60+mm)); })()
-            :durationToMin(a.duration);
-          const height=Math.max(20,(durMin/60)*64);
-          return h("div",{key:a.id,style:{position:"absolute",left:`calc(${leftPct}% + 2px)`,width:`calc(${widthPct}% - 4px)`,top,height,zIndex:2,pointerEvents:"none"}},
-            h("div",{style:{pointerEvents:"auto",height:"100%"}},
-              h(ApptCard,{a,compact:true,big:n===1,fitHeight:true})
-            )
-          );
-        });
-      })()
-    );
+    return h(AgendaHourSlotsBase,{date,appts,step:30,dragOver,setDragOver,dragIdRef,onClickEmptySlotMin,onDblClickSlotMin,onDropSlotMin,dragId,onCardDragStart:onDragStart,onCardDragEnd:onDragEnd,onCardClick:openEdit});
   }
-
-  // ─── COLUNA DE HORAS — VIEW DIA (precisão de 5 em 5 minutos) ───
-  const MIN_STEP=5; // granularidade em minutos
-  const STEPS_PER_HOUR=60/MIN_STEP; // 12
-  const STEP_PX=64/STEPS_PER_HOUR; // px por bloco de 5min
   function HourSlotsDay({date,appts}){
-    return h("div",{
-      style:{position:"relative"},
-      onDragOver:e=>{
-        e.preventDefault();
-        const rect=e.currentTarget.getBoundingClientRect();
-        const offsetY=e.clientY-rect.top;
-        const rawMin=Math.round(offsetY/STEP_PX)*MIN_STEP;
-        const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
-        setDragOver({date,minute:totalMin});
-      },
-      onDrop:e=>{
-        e.preventDefault();
-        const rect=e.currentTarget.getBoundingClientRect();
-        const offsetY=e.clientY-rect.top;
-        const rawMin=Math.round(offsetY/STEP_PX)*MIN_STEP;
-        const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
-        onDropSlotMin(e,date,totalMin);
-      }
-    },
-      // Sub-faixas de 5 minutos por hora (12 por hora)
-      HOURS.map(hr=>
-        Array.from({length:STEPS_PER_HOUR},(_,i)=>{
-          const totalMin=hr*60+i*MIN_STEP;
-          const isOver=dragOver&&dragOver.date===date&&dragOver.minute===totalMin;
-          const isHourLine=i===0;
-          return h("div",{
-            key:hr+"_"+i,
-            style:{
-              height:STEP_PX,
-              borderBottom:isHourLine?`1px solid rgba(71,35,37,.2)`:`1px solid rgba(71,35,37,.05)`,
-              cursor:"pointer",
-              transition:"background .1s",
-              background:isOver?"rgba(157,119,97,.18)":"transparent"
-            },
-            onClick:()=>{ if(!dragIdRef.current) onClickEmptySlotMin(date,totalMin); },
-            onDoubleClick:()=>onDblClickSlotMin(date,totalMin),
-          });
-        })
-      ),
-      (()=>{
-        const byTime={};
-        appts.forEach(a=>{ const t=a.time||"09:00"; (byTime[t]=byTime[t]||[]).push(a); });
-        return appts.map(a=>{
-          const t=a.time||"09:00";
-          const group=byTime[t];
-          const idx=group.indexOf(a);
-          const n=group.length;
-          const widthPct=100/n;
-          const leftPct=idx*widthPct;
-          const [hh,mm]=t.split(":").map(Number);
-          const top=(hh-7)*64+(mm/60)*64;
-          const durMin=a.blocked
-            ?(()=>{ if(!a.endTime)return 60; const[eh,em]=a.endTime.split(":").map(Number); return Math.max(15,(eh*60+em)-(hh*60+mm)); })()
-            :durationToMin(a.duration);
-          const height=Math.max(20,(durMin/60)*64);
-          return h("div",{key:a.id,style:{position:"absolute",left:`calc(${leftPct}% + 2px)`,width:`calc(${widthPct}% - 4px)`,top,height,zIndex:2,pointerEvents:"none"}},
-            h("div",{style:{pointerEvents:"auto",height:"100%"}},
-              h(ApptCard,{a,compact:true,big:n===1,fitHeight:true})
-            )
-          );
-        });
-      })()
-    );
+    return h(AgendaHourSlotsBase,{date,appts,step:5,dragOver,setDragOver,dragIdRef,onClickEmptySlotMin,onDblClickSlotMin,onDropSlotMin,dragId,onCardDragStart:onDragStart,onCardDragEnd:onDragEnd,onCardClick:openEdit});
   }
 
   return h("div",null,
