@@ -3181,6 +3181,7 @@ function _smoothPath(pts){
 }
 function EvolucaoFinanceiraChart({data}){
   const h=createElement;
+  const[hoverI,setHoverI]=useState(null);
   const W=600,H=240,padX=14,padLeft=40,padTop=26,padBot=28;
   const rawMax=Math.max(...data.map(d=>d.value),1);
   // calcula um topo "redondo" para o eixo Y (ex: 20k, 40k, 60k...)
@@ -3195,26 +3196,48 @@ function EvolucaoFinanceiraChart({data}){
   const fmtTick=v=>v===0?"0":(v>=1000?(v/1000)+"k":String(Math.round(v)));
   const yOf=v=>H-padBot-(v/topVal)*(H-padTop-padBot);
   const stepX=data.length>1?(W-padLeft-padX*2)/(data.length-1):0;
-  const pts=data.map((d,i)=>({x:padLeft+padX+i*stepX,y:yOf(d.value),v:d.value,label:d.label}));
+  const pts=data.map((d,i)=>({x:padLeft+padX+i*stepX,y:yOf(d.value),v:d.value,label:d.label,d}));
   const linePath=_smoothPath(pts);
   const areaPath=`${linePath} L${pts[pts.length-1].x},${H-padBot} L${pts[0].x},${H-padBot} Z`;
-  return h("svg",{viewBox:`0 0 ${W} ${H}`,style:{width:"100%",height:220,display:"block",overflow:"visible"}},
-    h("defs",null,h("linearGradient",{id:"evolFinGrad",x1:"0",y1:"0",x2:"0",y2:"1"},
-      h("stop",{offset:"0%",stopColor:P.rose,stopOpacity:.32}),
-      h("stop",{offset:"100%",stopColor:P.rose,stopOpacity:0})
-    )),
-    // ── Linhas horizontais de grade + valores do eixo Y ──
-    ticks.map((t,i)=>h(Fragment,{key:"grid"+i},
-      h("line",{x1:padLeft,y1:yOf(t),x2:W-padX,y2:yOf(t),stroke:P.border,strokeWidth:1,strokeDasharray:t===0?"none":"3,4"}),
-      h("text",{x:padLeft-8,y:yOf(t)+3.5,textAnchor:"end",fontSize:9.5,fill:P.text3},fmtTick(t))
-    )),
-    h("path",{d:areaPath,fill:"url(#evolFinGrad)",stroke:"none"}),
-    h("path",{d:linePath,fill:"none",stroke:P.rose,strokeWidth:2.6,strokeLinecap:"round"}),
-    pts.map((p,i)=>h(Fragment,{key:i},
-      p.v>0&&h("text",{x:p.x,y:p.y-12,textAnchor:"middle",fontSize:10.5,fontWeight:600,fill:P.rose},fmtCurr(p.v).replace(",00","")),
-      h("circle",{cx:p.x,cy:p.y,r:4.2,fill:P.bg2,stroke:P.rose,strokeWidth:2.4}),
-      h("text",{x:p.x,y:H-8,textAnchor:"middle",fontSize:10,fill:P.text3},p.label)
-    ))
+  const hov=hoverI!=null?pts[hoverI]:null;
+  const hd=hov?hov.d:null;
+  const prevVal=hoverI>0?data[hoverI-1].value:null;
+  const variacao=(hd&&prevVal)?(((hd.value-prevVal)/prevVal)*100):null;
+  const leftPct=hov?Math.min(90,Math.max(10,(hov.x/W)*100)):0;
+  const topPct=hov?(hov.y/H)*100:0;
+  return h("div",{style:{position:"relative"}},
+    h("svg",{viewBox:`0 0 ${W} ${H}`,style:{width:"100%",height:220,display:"block",overflow:"visible",cursor:"crosshair"},onMouseLeave:()=>setHoverI(null)},
+      h("defs",null,h("linearGradient",{id:"evolFinGrad",x1:"0",y1:"0",x2:"0",y2:"1"},
+        h("stop",{offset:"0%",stopColor:P.rose,stopOpacity:.32}),
+        h("stop",{offset:"100%",stopColor:P.rose,stopOpacity:0})
+      )),
+      // ── Linhas horizontais de grade + valores do eixo Y ──
+      ticks.map((t,i)=>h(Fragment,{key:"grid"+i},
+        h("line",{x1:padLeft,y1:yOf(t),x2:W-padX,y2:yOf(t),stroke:P.border,strokeWidth:1,strokeDasharray:t===0?"none":"3,4"}),
+        h("text",{x:padLeft-8,y:yOf(t)+3.5,textAnchor:"end",fontSize:9.5,fill:P.text3},fmtTick(t))
+      )),
+      h("path",{d:areaPath,fill:"url(#evolFinGrad)",stroke:"none"}),
+      h("path",{d:linePath,fill:"none",stroke:P.rose,strokeWidth:2.6,strokeLinecap:"round"}),
+      hov&&h("line",{x1:hov.x,y1:padTop,x2:hov.x,y2:H-padBot,stroke:P.rose,strokeWidth:1,strokeDasharray:"3,3",opacity:.4}),
+      pts.map((p,i)=>h(Fragment,{key:i},
+        p.v>0&&h("text",{x:p.x,y:p.y-12,textAnchor:"middle",fontSize:10.5,fontWeight:600,fill:P.rose},fmtCurr(p.v).replace(",00","")),
+        h("circle",{cx:p.x,cy:p.y,r:hoverI===i?6:4.2,fill:hoverI===i?P.rose:P.bg2,stroke:P.rose,strokeWidth:2.4}),
+        h("circle",{cx:p.x,cy:p.y,r:14,fill:"transparent",style:{cursor:"pointer"},onMouseEnter:()=>setHoverI(i),onMouseMove:()=>setHoverI(i)}),
+        h("text",{x:p.x,y:H-8,textAnchor:"middle",fontSize:10,fill:P.text3},p.label)
+      ))
+    ),
+    hov&&hd&&h("div",{style:{
+      position:"absolute",left:leftPct+"%",top:topPct+"%",transform:"translate(-50%, calc(-100% - 14px))",
+      background:P.text,color:P.accent3,borderRadius:10,padding:"10px 14px",fontSize:12,whiteSpace:"nowrap",
+      boxShadow:"0 8px 24px rgba(0,0,0,.35)",pointerEvents:"none",zIndex:20
+    }},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:14,marginBottom:6,opacity:.9}},hd.fullLabel||hd.label),
+      h("div",{style:{display:"flex",justifyContent:"space-between",gap:14,marginBottom:2}},h("span",{style:{opacity:.75}},"Receita"),h("span",{style:{color:"#9fd9af",fontWeight:600}},fmtCurr(hd.value))),
+      hd.despesas!=null&&h("div",{style:{display:"flex",justifyContent:"space-between",gap:14,marginBottom:2}},h("span",{style:{opacity:.75}},"Despesas"),h("span",{style:{color:"#e69999",fontWeight:600}},fmtCurr(hd.despesas))),
+      hd.lucro!=null&&h("div",{style:{display:"flex",justifyContent:"space-between",gap:14,marginBottom:2}},h("span",{style:{opacity:.75}},"Lucro"),h("span",{style:{color:hd.lucro>=0?"#9fd9af":"#e69999",fontWeight:600}},fmtCurr(hd.lucro))),
+      hd.sessoes!=null&&h("div",{style:{display:"flex",justifyContent:"space-between",gap:14,marginBottom:2}},h("span",{style:{opacity:.75}},"Sessões pagas"),h("span",{style:{fontWeight:600}},hd.sessoes)),
+      variacao!=null&&h("div",{style:{display:"flex",justifyContent:"space-between",gap:14,marginTop:4,paddingTop:6,borderTop:"1px solid rgba(255,255,255,.15)"}},h("span",{style:{opacity:.75}},"vs mês anterior"),h("span",{style:{color:variacao>=0?"#9fd9af":"#e69999",fontWeight:600}},(variacao>=0?"+":"")+variacao.toFixed(0)+"%"))
+    )
   );
 }
 
@@ -3231,9 +3254,11 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
   const months=[5,4,3,2,1,0].map(off=>{
     let mm=curM-off,yy=curY;while(mm<0){mm+=12;yy--;}
     const inM=d=>{const dt=parseAnyDate(d);return dt&&dt.getMonth()===mm&&dt.getFullYear()===yy;};
-    const rec=allS.filter(s=>s.paid&&inM(s.date)).reduce((a,s)=>a+Number(s.value||0),0)
+    const sessoesPagas=allS.filter(s=>s.paid&&inM(s.date));
+    const rec=sessoesPagas.reduce((a,s)=>a+Number(s.value||0),0)
       +(Array.isArray(incomes)?incomes:[]).filter(i=>!i.sessRef&&i.status==="Pago"&&inM(i.date)).reduce((a,i)=>a+Number(i.value||0),0);
-    return {label:MONTH_NAMES[mm].slice(0,3),value:rec};
+    const desp=(Array.isArray(expenses)?expenses:[]).filter(e=>e.status==="Pago"&&inM(e.date)).reduce((a,e)=>a+Number(e.value||0),0);
+    return {label:MONTH_NAMES[mm].slice(0,3),fullLabel:MONTH_NAMES[mm]+" "+yy,value:rec,despesas:desp,lucro:rec-desp,sessoes:sessoesPagas.length};
   });
   const inCurMonth=d=>{const dt=parseAnyDate(d);return dt&&dt.getMonth()===curM&&dt.getFullYear()===curY;};
   const totalRecMonth=allS.filter(s=>s.paid&&inCurMonth(s.date)).reduce((a,s)=>a+Number(s.value||0),0)
@@ -6466,6 +6491,7 @@ function FluxoCaixaProjetado({patients=[],incomes=[],expenses=[],recurringExpens
   const h=createElement;
   const[horizon,setHorizon]=useState(30);
   const[showDetail,setShowDetail]=useState(null);
+  const[hoverIdx,setHoverIdx]=useState(null);
 
   const fmtCurr2=v=>"R$\u00a0"+Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
   const fmtDateFull=iso=>{if(!iso)return"—";const[y,m,d]=iso.split("-");return`${d}/${m}/${y}`;};
@@ -6592,7 +6618,7 @@ function FluxoCaixaProjetado({patients=[],incomes=[],expenses=[],recurringExpens
           h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},"Saldo atual acumulado: ",h("span",{style:{color:saldoFinal>=0?P.green:P.red,fontWeight:600}},fmtCurr2(saldoFinal)))
         ),
         h("div",{style:{display:"flex",gap:8}},
-          [30,60,90].map(d=>h("button",{key:d,onClick:()=>setHorizon(d),style:{padding:"7px 18px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:horizon===d?P.rose:"transparent",border:`1px solid ${horizon===d?P.rose:P.border}`,color:horizon===d?P.accent3:P.text2}},d+"d"))
+          [30,60,90].map(d=>h("button",{key:d,onClick:()=>{setHorizon(d);setHoverIdx(null);},style:{padding:"7px 18px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:horizon===d?P.rose:"transparent",border:`1px solid ${horizon===d?P.rose:P.border}`,color:horizon===d?P.accent3:P.text2}},d+"d"))
         )
       )
     ),
@@ -6620,15 +6646,51 @@ function FluxoCaixaProjetado({patients=[],incomes=[],expenses=[],recurringExpens
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:val>=0?P.green:P.red}},fmtCurr2(val))
           ))
       ),
-      h("div",{style:{position:"relative",height:120}},
-        h("svg",{width:"100%",height:120,viewBox:`0 0 ${horizon*8} 100`,preserveAspectRatio:"none",style:{display:"block"}},
+      h("div",{style:{fontSize:11,color:P.text3,marginBottom:8}},"💡 Passe o mouse sobre o gráfico para ver o detalhe de cada dia"),
+      h("div",{
+        style:{position:"relative",height:120},
+        onMouseMove:e=>{
+          const rect=e.currentTarget.getBoundingClientRect();
+          const fx=(e.clientX-rect.left)/rect.width;
+          let idx=Math.round(fx*(projection.length-1));
+          idx=Math.max(0,Math.min(projection.length-1,idx));
+          setHoverIdx(idx);
+        },
+        onMouseLeave:()=>setHoverIdx(null)
+      },
+        h("svg",{width:"100%",height:120,viewBox:`0 0 ${horizon*8} 100`,preserveAspectRatio:"none",style:{display:"block",cursor:"crosshair"}},
           minSaldo<0&&h("line",{x1:0,y1:100-normSaldo(0),x2:horizon*8,y2:100-normSaldo(0),stroke:P.border,strokeWidth:0.5,strokeDasharray:"2,2"}),
           h("polyline",{points:projection.map((d,i)=>`${i*8+4},${100-normSaldo(d.saldo)}`).join(" "),fill:"none",stroke:P.rose,strokeWidth:1.5}),
           projection.filter(d=>d.hasRealData).map((d,_)=>h("circle",{key:d.iso,cx:projection.indexOf(d)*8+4,cy:100-normSaldo(d.saldo),r:2,fill:d.saldo>=0?P.green:P.red})),
+          hoverIdx!=null&&h(Fragment,null,
+            h("line",{x1:hoverIdx*8+4,y1:0,x2:hoverIdx*8+4,y2:100,stroke:P.rose,strokeWidth:0.6,strokeDasharray:"2,2",opacity:.5}),
+            h("circle",{cx:hoverIdx*8+4,cy:100-normSaldo(projection[hoverIdx].saldo),r:3.5,fill:projection[hoverIdx].saldo>=0?P.green:P.red,stroke:P.bg2,strokeWidth:1.2})
+          )
         ),
         h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:4,padding:"0 4px"}},
           Array.from({length:Math.ceil(horizon/30)},(_,i)=>{const iso=addDays(todayISO,(i+1)*30);const d=new Date(iso+"T12:00:00");return h("span",{key:i,style:{fontSize:10,color:P.text3}},MONTH_NAMES[d.getMonth()].slice(0,3)+" "+d.getDate());})
-        )
+        ),
+        hoverIdx!=null&&(()=>{
+          const hd=projection[hoverIdx];
+          const x=hoverIdx*8+4,y=100-normSaldo(hd.saldo);
+          const leftPct=Math.min(88,Math.max(12,(x/(horizon*8))*100));
+          const dow=new Date(hd.iso+"T12:00:00").getDay();
+          return h("div",{style:{
+            position:"absolute",left:leftPct+"%",top:y+"%",transform:"translate(-50%, calc(-100% - 14px))",
+            background:P.text,color:P.accent3,borderRadius:10,padding:"10px 14px",fontSize:12,whiteSpace:"nowrap",
+            boxShadow:"0 8px 24px rgba(0,0,0,.35)",pointerEvents:"none",zIndex:20
+          }},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:14,marginBottom:6,opacity:.9}},fmtDateFull(hd.iso)+" · "+dowLabels[dow]),
+            h("div",{style:{display:"flex",justifyContent:"space-between",gap:14,marginBottom:2}},h("span",{style:{opacity:.75}},"Saldo projetado"),h("span",{style:{color:hd.saldo>=0?"#9fd9af":"#e69999",fontWeight:700}},fmtCurr2(hd.saldo))),
+            hd.entradas>0&&h("div",{style:{display:"flex",justifyContent:"space-between",gap:14,marginBottom:2}},h("span",{style:{opacity:.75}},"Entradas do dia"),h("span",{style:{color:"#9fd9af",fontWeight:600}},"+ "+fmtCurr2(hd.entradas))),
+            hd.saidas>0&&h("div",{style:{display:"flex",justifyContent:"space-between",gap:14,marginBottom:2}},h("span",{style:{opacity:.75}},"Saídas do dia"),h("span",{style:{color:"#e69999",fontWeight:600}},"− "+fmtCurr2(hd.saidas))),
+            hd.hasRealData
+              ?h("div",{style:{marginTop:6,paddingTop:6,borderTop:"1px solid rgba(255,255,255,.15)",display:"flex",flexDirection:"column",gap:3}},
+                  [...new Set(hd.events.map(e=>e.source))].slice(0,3).map(src=>h("div",{key:src,style:{fontSize:11,opacity:.85}},sourceLabel(src)))
+                )
+              :hd.sazonValue>0&&h("div",{style:{marginTop:6,fontSize:11,opacity:.7,fontStyle:"italic"}},"Estimativa sazonal")
+          );
+        })()
       )
     ),
 
