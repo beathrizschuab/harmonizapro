@@ -1344,15 +1344,17 @@ function useSupaTable(key, initFallback = []) {
   const [data, setDataRaw] = useState(initFallback);
   const [synced, setSynced] = useState(false);
   const wantArray = Array.isArray(initFallback);
+  // Ref que marca se houve escrita local antes do supaRead terminar.
+  // Evita que o dado remoto (desatualizado) sobrescreva escritas recentes.
+  const localWrittenRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
+    localWrittenRef.current = false;
     supaRead(key).then(remote => {
       if (cancelled) return;
       setSynced(true);
-      if (remote !== null) {
-        // Só aceita o dado remoto se o "shape" combinar com o esperado
-        // (evita c.filter is not a function quando vem objeto/null no lugar de array)
+      if (!localWrittenRef.current && remote !== null) {
         const remoteIsArray = Array.isArray(remote);
         const shapeOk = wantArray ? remoteIsArray : (!remoteIsArray && remote && typeof remote === "object");
         if (shapeOk) setDataRaw(remote);
@@ -1363,6 +1365,7 @@ function useSupaTable(key, initFallback = []) {
   }, [key]);
 
   const setData = useCallback((valOrFn) => {
+    localWrittenRef.current = true;
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
       supaWrite(key, next);
@@ -3859,14 +3862,7 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
           anamnese:{healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",skinType:"Normal",fitzpatrick:"II",allergiesDetail:"",contraindications:"",musicStyle:"Pop",importantAlerts:[]},
           preferencias:{horario:"Sem preferência",contato:"Sem preferência",fotos:"Autoriza somente para prontuário",obs:""},
         };
-        // Usa setPatients (que já chama supaWrite internamente via useSupaTable)
-        // mas passamos o array completo para garantir que o Supabase receba tudo de uma vez,
-        // evitando race condition com outras escritas disparadas logo em seguida.
-        const updatedPatients=[...patients,newPatient];
-        setPatients(updatedPatients);
-        // Escrita direta extra: garante persistência mesmo se o estado React
-        // ainda não tiver sido commitado quando setAgenda disparar sua própria escrita.
-        supaWrite("patients",updatedPatients);
+        setPatients(prev=>[...prev,newPatient]);
       }
     }
     if(editItem){
