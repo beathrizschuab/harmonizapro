@@ -3616,8 +3616,11 @@ function mkGlobalLogEntries(apptSnapshot,events){
 }
 // Registra (no item + no log global) a criação/edição/reagendamento de um agendamento.
 // `before`=null indica criação. Devolve o item já com `history`/`rescheduleHistory` atualizados.
-function logApptChange(before,after,setAgendaLog){
-  const events=diffApptHistory(before,after);
+function logApptChange(before,after,setAgendaLog,reason){
+  let events=diffApptHistory(before,after);
+  if(reason){
+    events=events.map(e=>(e.type==="reschedule"||e.type==="status")?{...e,reason}:e);
+  }
   if(events.length&&setAgendaLog){
     setAgendaLog(prev=>[...(Array.isArray(prev)?prev:[]),...mkGlobalLogEntries(after,events)]);
   }
@@ -3642,13 +3645,16 @@ function HistEventRow({ev}){
       h("span",{style:{fontSize:10,color:P.text3,whiteSpace:"nowrap"}},ev.at)
     );
   }
-  return h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"7px 0",borderBottom:`1px solid ${P.border}`}},
-    h("span",{style:{fontSize:13}},icon),
-    h("span",{style:{fontSize:11.5,color:P.text,fontWeight:600,minWidth:84}},ev.label),
-    h("span",{style:{fontSize:11,color:P.red,background:"rgba(192,112,112,.1)",padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap"}},ev.from||"—"),
-    h("span",{style:{fontSize:12,color:P.text3}},"→"),
-    h("span",{style:{fontSize:11,color:P.green,background:"rgba(122,173,138,.1)",padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap"}},ev.to||"—"),
-    h("span",{style:{fontSize:10,color:P.text3,marginLeft:"auto",whiteSpace:"nowrap"}},ev.at)
+  return h(Fragment,null,
+    h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"7px 0",borderBottom:`1px solid ${P.border}`}},
+      h("span",{style:{fontSize:13}},icon),
+      h("span",{style:{fontSize:11.5,color:P.text,fontWeight:600,minWidth:84}},ev.label),
+      h("span",{style:{fontSize:11,color:P.red,background:"rgba(192,112,112,.1)",padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap"}},ev.from||"—"),
+      h("span",{style:{fontSize:12,color:P.text3}},"→"),
+      h("span",{style:{fontSize:11,color:P.green,background:"rgba(122,173,138,.1)",padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap"}},ev.to||"—"),
+      h("span",{style:{fontSize:10,color:P.text3,marginLeft:"auto",whiteSpace:"nowrap"}},ev.at)
+    ),
+    ev.reason&&h("div",{style:{fontSize:10.5,color:P.text2,fontStyle:"italic",padding:"0 0 7px 21px",borderBottom:`1px solid ${P.border}`}},"💬 Motivo: "+ev.reason)
   );
 }
 
@@ -3713,7 +3719,12 @@ function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,pro
   function saveAppt(){
     if(editItem){
       const merged={...editItem,...form,value:Number(form.value)||0};
-      const logged=merged.blocked?merged:logApptChange(editItem,merged,setAgendaLog);
+      let reason="";
+      const statusChangedToReason=!merged.blocked&&merged.status!==editItem.status&&["Cancelado","Faltou","Reagendado"].includes(merged.status);
+      if(statusChangedToReason){
+        reason=window.prompt(`Motivo (${merged.status}) — opcional:`,"")||"";
+      }
+      const logged=merged.blocked?merged:logApptChange(editItem,merged,setAgendaLog,reason);
       setAgenda(prev=>prev.map(a=>a.id===editItem.id?logged:a));
     }else{
       const newItem={...form,id:Date.now(),value:Number(form.value)||0,rescheduleHistory:[],history:[]};
@@ -3729,12 +3740,17 @@ function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,pro
     setAgenda(prev=>prev.filter(a=>a.id!==id));
   }
   function cycleStatus(id){
-    setAgenda(prev=>prev.map(a=>{
-      if(a.id!==id||a.blocked)return a;
-      const i=APPT_STATUS.indexOf(a.status);
-      const after={...a,status:APPT_STATUS[(i+1)%APPT_STATUS.length]};
-      return logApptChange(a,after,setAgendaLog);
-    }));
+    const a=agenda.find(x=>x.id===id);
+    if(!a||a.blocked)return;
+    const i=APPT_STATUS.indexOf(a.status);
+    const newStatus=APPT_STATUS[(i+1)%APPT_STATUS.length];
+    let reason="";
+    if(["Cancelado","Faltou","Reagendado"].includes(newStatus)){
+      reason=window.prompt(`Motivo (${newStatus}) — opcional:`,"")||"";
+    }
+    const after={...a,status:newStatus};
+    const logged=logApptChange(a,after,setAgendaLog,reason);
+    setAgenda(prev=>prev.map(ap=>ap.id===id?logged:ap));
   }
   function openEdit(a){setEditItem(a);setForm({...a,value:String(a.value||"")});setShowNew(true);}
   function prevMonth(){setViewMonth(v=>{const m=v.m-1<0?11:v.m-1,y=v.m-1<0?v.y-1:v.y;return{y,m};});}
@@ -3745,8 +3761,9 @@ function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,pro
     const novaData=window.prompt("Reagendar para qual data? (AAAA-MM-DD)",a.date);
     if(!novaData||!novaData.match(/^\d{4}-\d{2}-\d{2}$/))return;
     const novaHora=window.prompt("Qual horário? (HH:MM)",a.time)||a.time;
+    const reason=window.prompt("Motivo do reagendamento (opcional):","")||"";
     const after={...a,date:novaData,time:novaHora,status:"Reagendado"};
-    const logged=logApptChange(a,after,setAgendaLog);
+    const logged=logApptChange(a,after,setAgendaLog,reason);
     setAgenda(prev=>prev.map(ap=>ap.id===a.id?logged:ap));
     setSelDate(novaData);
   }
@@ -3797,17 +3814,23 @@ function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,pro
     e.stopPropagation();
     const rawId=e.dataTransfer.getData("text/plain")||String(dragIdRef.current||"");
     const id=Number(rawId);
-    if(!id)return;
-    const newTime=minutesToHHMM(totalMin);
-    setAgenda(prev=>prev.map(a=>{
-      if(a.id!==id)return a;
-      if(a.blocked)return{...a,date,time:newTime};
-      const after={...a,date,time:newTime,status:"Reagendado"};
-      return logApptChange(a,after,setAgendaLog);
-    }));
-    setSelDate(date);
     dragIdRef.current=null;
     setDragId(null);setDragOver(null);
+    if(!id)return;
+    const newTime=minutesToHHMM(totalMin);
+    const a=agenda.find(x=>x.id===id);
+    if(!a)return;
+    if(a.blocked){
+      setAgenda(prev=>prev.map(ap=>ap.id===id?{...ap,date,time:newTime}:ap));
+      setSelDate(date);
+      return;
+    }
+    if(a.date===date&&a.time===newTime)return;
+    const reason=window.prompt("Motivo do reagendamento (opcional):","")||"";
+    const after={...a,date,time:newTime,status:"Reagendado"};
+    const logged=logApptChange(a,after,setAgendaLog,reason);
+    setAgenda(prev=>prev.map(ap=>ap.id===id?logged:ap));
+    setSelDate(date);
   }
 
   // ── Drag & Drop — VIEW MÊS (solta sobre um dia do calendário, mantém o horário) ──
@@ -3823,11 +3846,12 @@ function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,pro
     dragIdRef.current=null;
     setDragId(null);setDragOver(null);
     if(!id)return;
-    setAgenda(prev=>prev.map(a=>{
-      if(a.id!==id||a.blocked||a.date===dateStr)return a;
-      const after={...a,date:dateStr,status:"Reagendado"};
-      return logApptChange(a,after,setAgendaLog);
-    }));
+    const a=agenda.find(x=>x.id===id);
+    if(!a||a.blocked||a.date===dateStr)return;
+    const reason=window.prompt("Motivo do reagendamento (opcional):","")||"";
+    const after={...a,date:dateStr,status:"Reagendado"};
+    const logged=logApptChange(a,after,setAgendaLog,reason);
+    setAgenda(prev=>prev.map(ap=>ap.id===id?logged:ap));
     setSelDate(dateStr);
   }
 
@@ -3889,13 +3913,17 @@ function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,pro
       // mesmo quando o cursor passa sobre o card absoluto
       onDragOver:e=>{
         e.preventDefault();
-        const rawMin=Math.round(e.nativeEvent.offsetY/STEP_PX_W)*STEP;
+        const rect=e.currentTarget.getBoundingClientRect();
+        const offsetY=e.clientY-rect.top;
+        const rawMin=Math.round(offsetY/STEP_PX_W)*STEP;
         const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
         setDragOver({date,minute:totalMin});
       },
       onDrop:e=>{
         e.preventDefault();
-        const rawMin=Math.round(e.nativeEvent.offsetY/STEP_PX_W)*STEP;
+        const rect=e.currentTarget.getBoundingClientRect();
+        const offsetY=e.clientY-rect.top;
+        const rawMin=Math.round(offsetY/STEP_PX_W)*STEP;
         const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
         onDropSlotMin(e,date,totalMin);
       }
@@ -3955,13 +3983,17 @@ function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,pro
       style:{position:"relative"},
       onDragOver:e=>{
         e.preventDefault();
-        const rawMin=Math.round(e.nativeEvent.offsetY/STEP_PX)*MIN_STEP;
+        const rect=e.currentTarget.getBoundingClientRect();
+        const offsetY=e.clientY-rect.top;
+        const rawMin=Math.round(offsetY/STEP_PX)*MIN_STEP;
         const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
         setDragOver({date,minute:totalMin});
       },
       onDrop:e=>{
         e.preventDefault();
-        const rawMin=Math.round(e.nativeEvent.offsetY/STEP_PX)*MIN_STEP;
+        const rect=e.currentTarget.getBoundingClientRect();
+        const offsetY=e.clientY-rect.top;
+        const rawMin=Math.round(offsetY/STEP_PX)*MIN_STEP;
         const totalMin=Math.max(7*60,Math.min(20*60+59,7*60+rawMin));
         onDropSlotMin(e,date,totalMin);
       }
@@ -4514,12 +4546,15 @@ function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,pr
 
   function cycleStatus(){
     if(!setAgenda)return;
-    setAgenda(prev=>prev.map(ap=>{
-      if(ap.id!==a.id)return ap;
-      const i=APPT_STATUS.indexOf(ap.status);
-      const after={...ap,status:APPT_STATUS[(i+1)%APPT_STATUS.length]};
-      return logApptChange(ap,after,setAgendaLog);
-    }));
+    const i=APPT_STATUS.indexOf(a.status);
+    const newStatus=APPT_STATUS[(i+1)%APPT_STATUS.length];
+    let reason="";
+    if(["Cancelado","Faltou","Reagendado"].includes(newStatus)){
+      reason=window.prompt(`Motivo (${newStatus}) — opcional:`,"")||"";
+    }
+    const after={...a,status:newStatus};
+    const logged=logApptChange(a,after,setAgendaLog,reason);
+    setAgenda(prev=>prev.map(ap=>ap.id===a.id?logged:ap));
   }
 
   function reschedule(){
@@ -4527,11 +4562,10 @@ function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,pr
     if(!novaData||!novaData.match(/^\d{4}-\d{2}-\d{2}$/))return;
     const novaHora=window.prompt("Qual horário? (HH:MM)",a.time)||a.time;
     if(!setAgenda)return;
-    setAgenda(prev=>prev.map(ap=>{
-      if(ap.id!==a.id)return ap;
-      const after={...ap,date:novaData,time:novaHora,status:"Reagendado"};
-      return logApptChange(ap,after,setAgendaLog);
-    }));
+    const reason=window.prompt("Motivo do reagendamento (opcional):","")||"";
+    const after={...a,date:novaData,time:novaHora,status:"Reagendado"};
+    const logged=logApptChange(a,after,setAgendaLog,reason);
+    setAgenda(prev=>prev.map(ap=>ap.id===a.id?logged:ap));
   }
 
   return h("div",{style:{marginBottom:10,background:P.bg3,border:`1px solid ${isUpcoming?"rgba(122,174,212,.3)":P.border}`,borderRadius:10,overflow:"hidden"}},
