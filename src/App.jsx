@@ -1769,7 +1769,7 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
       (patientPhotos||[]).length===0&&h("div",{style:{fontSize:12.5,color:P.text3}},"Nenhuma foto registrada ainda na ficha da paciente. Envie uma abaixo."),
       h("label",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,width:"100%",maxWidth:760,height:160,border:`2px dashed ${P.border}`,borderRadius:14,cursor:"pointer",background:P.bg3,color:P.text3,flexShrink:0}},
         h("div",{style:{fontSize:34}},"📷"),
-        h("div",{style:{fontSize:14,color:P.accent3,fontFamily:"'Cormorant Garamond',serif"}},"Enviar foto"),
+        h("div",{style:{fontSize:14,color:P.accent,fontFamily:"'Cormorant Garamond',serif"}},"Enviar foto"),
         h("div",{style:{fontSize:11.5,color:P.text3}},"Clique para selecionar uma imagem do dispositivo"),
         h("input",{type:"file",accept:"image/*",style:{display:"none"},onChange:e=>{if(e.target.files[0])handleFileUpload(e.target.files[0]);}})
       )
@@ -2189,7 +2189,7 @@ function PlanAnnotator({initial,onSave,onClose}){
       !hasImage
         ? h("label",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,width:480,height:320,border:`2px dashed ${P.border}`,borderRadius:14,cursor:"pointer",background:P.bg3,color:P.text3}},
             h("div",{style:{fontSize:48}},"📷"),
-            h("div",{style:{fontSize:16,color:P.accent3,fontFamily:"'Cormorant Garamond',serif"}},"Selecionar foto da paciente"),
+            h("div",{style:{fontSize:16,color:P.accent,fontFamily:"'Cormorant Garamond',serif"}},"Selecionar foto da paciente"),
             h("div",{style:{fontSize:12,color:P.text3}},"Clique para carregar uma imagem"),
             h("input",{type:"file",accept:"image/*",style:{display:"none"},onChange:e=>{if(e.target.files[0])handleFileUpload(e.target.files[0]);}})
           )
@@ -2215,7 +2215,7 @@ function PlanAnnotator({initial,onSave,onClose}){
     // Text input modal
     showTextBox&&h("div",{style:{position:"fixed",inset:0,zIndex:4000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.6)"},onClick:()=>{setShowTextBox(false);setTextPos(null);}},
       h("div",{onClick:e=>e.stopPropagation(),style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:12,padding:20,minWidth:320,display:"flex",flexDirection:"column",gap:10}},
-        h("div",{style:{fontSize:13,color:P.accent3}},"✍️ Texto da anotação"),
+        h("div",{style:{fontSize:13,color:P.text2}},"✍️ Texto da anotação"),
         h("input",{autoFocus:true,value:textInput,onChange:e=>setTextInput(e.target.value),onKeyDown:e=>e.key==="Enter"&&placeText(),placeholder:"Ex: Tratar aqui · Simetria · Volume",style:{padding:"9px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:14,outline:"none",fontFamily:"'DM Sans',sans-serif"}}),
         h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
           h("button",{onClick:()=>{setShowTextBox(false);setTextPos(null);},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text3,cursor:"pointer",fontSize:13}},"Cancelar"),
@@ -2453,7 +2453,7 @@ function PhotoAnnotator({photo,onSave,onClose}){
     // Text input overlay
     showTextInput&&h("div",{style:{position:"fixed",inset:0,zIndex:4000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.5)"},onClick:()=>{setShowTextInput(false);setTextPos(null);}},
       h("div",{onClick:e=>e.stopPropagation(),style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:10,minWidth:300}},
-        h("div",{style:{fontSize:13,color:P.accent3,marginBottom:4}},"Digite o texto da anotação"),
+        h("div",{style:{fontSize:13,color:P.text2,marginBottom:4}},"Digite o texto da anotação"),
         h("input",{autoFocus:true,value:textInput,onChange:e=>setTextInput(e.target.value),onKeyDown:e=>e.key==="Enter"&&placeText(),placeholder:"Ex: Tratar aqui · Assimetria",style:{padding:"9px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:14,outline:"none",fontFamily:"'DM Sans',sans-serif"}}),
         h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
           h("button",{onClick:()=>{setShowTextInput(false);setTextPos(null);},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text3,cursor:"pointer",fontSize:13}},"Cancelar"),
@@ -4926,7 +4926,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"🚭 Tabagismo"),h("div",{style:{fontSize:14,color:patient.anamnese?.smoking==="Sim"?P.red:P.text}},patient.anamnese?.smoking||"Não informado"),patient.anamnese?.pregnancy&&patient.anamnese.pregnancy!=="Não"&&h("div",{style:{fontSize:12,color:P.yellow,marginTop:4}},"⚠️ "+patient.anamnese.pregnancy)),
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"💊 Medicações"),h("div",{style:{fontSize:13,color:P.text}},patient.anamnese?.medications||"Nenhuma")),
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${patient.anamnese?.contraindications&&patient.anamnese.contraindications!=="Nenhuma"?"rgba(192,112,112,.4)":P.border}`}},h("div",{style:{fontSize:10,color:patient.anamnese?.contraindications&&patient.anamnese.contraindications!=="Nenhuma"?P.red:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"⚠️ Contraindicações"),h("div",{style:{fontSize:13,color:P.text}},patient.anamnese?.contraindications||"Nenhuma")),
-            h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"📅 Último Procedimento"),_last?h("div",null,h("div",{style:{fontSize:14,color:P.accent3}},_last.procedure),h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},_last.date+" · "+fmtCurr(_last.value||0))):h("div",{style:{fontSize:13,color:P.text3}},"Sem sessões")),
+            h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"📅 Último Procedimento"),_last?h("div",null,h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},_last.procedure),h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},_last.date+" · "+fmtCurr(_last.value||0))):h("div",{style:{fontSize:13,color:P.text3}},"Sem sessões")),
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:"1px solid rgba(196,169,106,.3)"}},h("div",{style:{fontSize:10,color:P.yellow,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"💰 Saldo em Aberto"),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:_pending>0?P.yellow:P.green}},fmtCurr(_pending)),h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},(patient.sessions||[]).filter(s=>!s.paid).length+" sessão(ões) pendente(s)"))
           )
         ),
@@ -5127,7 +5127,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}},
           h("div",null,
             h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}},
-              h("div",{style:{fontSize:13,fontWeight:700,color:P.accent3,background:"rgba(157,119,97,.12)",border:"1px solid rgba(157,119,97,.25)",borderRadius:8,padding:"3px 10px"}},"📅 "+s.date),
+              h("div",{style:{fontSize:13,fontWeight:700,color:P.accent,background:"rgba(157,119,97,.12)",border:"1px solid rgba(157,119,97,.25)",borderRadius:8,padding:"3px 10px"}},"📅 "+s.date),
               s.location&&h("div",{style:{fontSize:12,color:P.text3}},"📍 "+s.location)
             ),
             // Múltiplos procedimentos: exibe cada um individualmente
@@ -9301,7 +9301,7 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
   function delInsumo(id){setForm(p=>({...p,insumos:(p.insumos||[]).filter(i=>i.id!==id)}));}
   const custoTotalInsumos=insumos.reduce((a,i)=>{const info=getProdInfo(i.product);return a+(Number(info?.cost)||0)*(Number(i.qty)||0);},0);
   return h("div",{style:{background:P.bg3,border:`1px solid ${P.rose}`,borderRadius:12,padding:20,marginBottom:16}},
-    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.accent3,marginBottom:16}},isNew?"＋ Novo Procedimento":"✎ Editar: "+form.name),
+    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},isNew?"＋ Novo Procedimento":"✎ Editar: "+form.name),
     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
       h(Field,{label:"Nome do Procedimento"},h(Inp,{value:form.name,onChange:fv("name"),placeholder:"Ex: Preenchimento Labial"})),
       h(Field,{label:"Categoria"},
