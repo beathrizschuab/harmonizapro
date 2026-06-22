@@ -3845,7 +3845,7 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
         const today=new Date();
         const todayStr=today.toLocaleDateString("pt-BR");
         const newPatient={
-          id:Date.now()+Math.random(),
+          id:Date.now(),
           name:nameTyped,
           age:"",birthDate:"",phone:"",email:"",cpf:"",
           bloodType:"A+",allergies:"Nenhuma",
@@ -3859,7 +3859,14 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
           anamnese:{healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",skinType:"Normal",fitzpatrick:"II",allergiesDetail:"",contraindications:"",musicStyle:"Pop",importantAlerts:[]},
           preferencias:{horario:"Sem preferência",contato:"Sem preferência",fotos:"Autoriza somente para prontuário",obs:""},
         };
-        setPatients(prev=>[...prev,newPatient]);
+        // Usa setPatients (que já chama supaWrite internamente via useSupaTable)
+        // mas passamos o array completo para garantir que o Supabase receba tudo de uma vez,
+        // evitando race condition com outras escritas disparadas logo em seguida.
+        const updatedPatients=[...patients,newPatient];
+        setPatients(updatedPatients);
+        // Escrita direta extra: garante persistência mesmo se o estado React
+        // ainda não tiver sido commitado quando setAgenda disparar sua própria escrita.
+        supaWrite("patients",updatedPatients);
       }
     }
     if(editItem){
