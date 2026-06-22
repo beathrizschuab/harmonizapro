@@ -19,6 +19,9 @@ const BLOOD_TYPES=["A+","A-","B+","B-","AB+","AB-","O+","O-"];
 const SKIN_TYPES=["Normal","Seca","Oleosa","Mista","Sensível"];
 const FITZPATRICK=["I","II","III","IV","V","VI"];
 const MUSIC_STYLES=["Pop","Rock","Sertanejo","MPB","Eletrônico","Clássica","Jazz","Funk","Gospel","Outro"];
+const PREF_HORARIO=["Manhã (8h–12h)","Tarde (12h–17h)","Noite (17h–20h)","Sem preferência"];
+const PREF_CONTATO=["WhatsApp","Ligação","E-mail","WhatsApp e Ligação","Sem preferência"];
+const PREF_FOTOS=["Autoriza fotos para redes sociais","Autoriza somente para prontuário","Não autoriza fotos"];
 const INTERCORRENCIA_TYPES=["Edema","Hematoma","Assimetria","Dor","Infecção","Nódulo","Alergia","Necrose","Migração","Outro"];
 const IC_SEVERITY=["Leve","Moderada","Grave","Emergencial"];
 const IC_SEVERITY_CFG={Leve:{color:"#7aad8a",bg:"rgba(122,173,138,.14)"},Moderada:{color:"#c4a96a",bg:"rgba(196,169,106,.14)"},Grave:{color:"#c07070",bg:"rgba(192,112,112,.16)"},Emergencial:{color:"#ff6b6b",bg:"rgba(255,107,107,.18)"}};
@@ -258,18 +261,18 @@ const INIT_PATIENTS=[
   {id:1,name:"Ana Beatriz Martins",age:32,birthDate:"1993-05-28",phone:"(11) 99234-5678",email:"ana@email.com",cpf:"123.456.789-00",bloodType:"O+",allergies:"Nenhuma",since:"03/11/2025",status:"vip",tags:["VIP","Alta frequência"],profilePhoto:null,lastVisit:"28/05/2026",nextReturn:"28/08/2026",complaints:["Linhas de expressão","Volume labial"],
    sessions:[{id:1,date:"28/05/2026",procedure:"Toxina Botulínica",doctor:"Dra. Sofia",product:"Botox Allergan 100U",dose:"40U",region:"Glabela + Testa",location:"Barra Olímpica",value:850,paid:true,finStatus:"Pago",payMethod:"Pix",notes:"40U total. Glabela (20U), frontal (12U), pé de galinha D/E.",evolution:"Retorno em 14 dias.",faceMap:{type:"botox",points:{glabela_c:20,frontal_c:12,peGalinha_d:8,peGalinha_e:6}},photos:[],docs:[],intercorrencias:[],returnReminderDays:90}],
    sessions_packages:[],intercorrencias:[],planejamento:[],
-   anamnese:{healthHistory:"Sem doenças crônicas",medications:"Anticoncepcional",smoking:"Não",pregnancy:"Não",previousProcedures:"Nenhum",skinType:"Mista",fitzpatrick:"III",allergiesDetail:"Sem alergias conhecidas.",contraindications:"Nenhuma",musicStyle:"Pop",importantAlerts:[]}},
+   anamnese:{healthHistory:"Sem doenças crônicas",medications:"Anticoncepcional",smoking:"Não",pregnancy:"Não",previousProcedures:"Nenhum",skinType:"Mista",fitzpatrick:"III",allergiesDetail:"Sem alergias conhecidas.",contraindications:"Nenhuma",musicStyle:"Pop",importantAlerts:[]},preferencias:{horario:"Manhã (8h–12h)",contato:"WhatsApp",fotos:"Autoriza somente para prontuário",obs:"Gosta de música ambiente suave durante o procedimento."}},
   {id:2,name:"Camila R. Souza",age:28,birthDate:"1997-06-15",phone:"(11) 98876-1234",email:"camila@email.com",cpf:"987.654.321-00",bloodType:"A+",allergies:"Dipirona",since:"10/01/2026",status:"active",tags:["Recorrente"],profilePhoto:null,lastVisit:"28/05/2026",nextReturn:"28/08/2026",complaints:["Volume labial"],
    sessions:[{id:1,date:"28/05/2026",procedure:"Preenchimento Labial",doctor:"Dra. Sofia",product:"Juvederm Volbella 1ml",dose:"1ml",region:"Lábio superior",location:"Barra Olímpica",value:1200,paid:true,finStatus:"Pago",payMethod:"Cartão",notes:"Técnica linear. Resultado harmonioso.",evolution:"",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:180}],
    sessions_packages:[],intercorrencias:[],planejamento:[],
-   anamnese:{healthHistory:"Rinite alérgica",medications:"Loratadina ocasional",smoking:"Não",pregnancy:"Não",previousProcedures:"Preenchimento (2024)",skinType:"Seca",fitzpatrick:"II",allergiesDetail:"Alergia à dipirona — reação cutânea. Usar paracetamol.",contraindications:"Dipirona contraindicada",musicStyle:"Sertanejo",importantAlerts:["Alergia à Dipirona"]}},
+   anamnese:{healthHistory:"Rinite alérgica",medications:"Loratadina ocasional",smoking:"Não",pregnancy:"Não",previousProcedures:"Preenchimento (2024)",skinType:"Seca",fitzpatrick:"II",allergiesDetail:"Alergia à dipirona — reação cutânea. Usar paracetamol.",contraindications:"Dipirona contraindicada",musicStyle:"Sertanejo",importantAlerts:["Alergia à Dipirona"]},preferencias:{horario:"Tarde (12h–17h)",contato:"WhatsApp",fotos:"Não autoriza fotos",obs:""}},
   {id:3,name:"Fernanda Lopes",age:35,birthDate:"1990-09-03",phone:"(11) 97654-3210",email:"fernanda@email.com",cpf:"111.222.333-44",bloodType:"B+",allergies:"Nenhuma",since:"12/03/2026",status:"treatment",tags:["Em Tratamento"],profilePhoto:null,lastVisit:"12/05/2026",nextReturn:"28/05/2026",complaints:["Flacidez","Sulcos"],
    sessions:[{id:1,date:"12/05/2026",procedure:"Bioestimulador de Colágeno",doctor:"Dra. Sofia",product:"Sculptra 367mg",dose:"2 frascos",region:"Região malar",location:"Nova América",value:2400,paid:false,finStatus:"Pendente",payMethod:"Pendente",notes:"Primeira sessão de Sculptra.",evolution:"Aguardar 4-6 semanas.",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:60}],
    sessions_packages:[{id:1,name:"Sculptra 3 sessões",total:3,done:1,value:7200,active:true,expiry:"12/2026"}],intercorrencias:[],planejamento:[{id:1,title:"Protocolo Bioestimulação",steps:["Sculptra sessão 1 ✓","Sculptra sessão 2","Sculptra sessão 3","Manutenção 6 meses"],notes:"Plano aprovado em 12/03/2026",done:false}],
-   anamnese:{healthHistory:"Hipotireoidismo controlado",medications:"Levotiroxina 50mcg",smoking:"Ex-fumante",pregnancy:"Não",previousProcedures:"Botox (2023)",skinType:"Normal",fitzpatrick:"III",allergiesDetail:"Sem alergias.",contraindications:"Nenhuma",musicStyle:"MPB",importantAlerts:["Hipotireoidismo"]}},
+   anamnese:{healthHistory:"Hipotireoidismo controlado",medications:"Levotiroxina 50mcg",smoking:"Ex-fumante",pregnancy:"Não",previousProcedures:"Botox (2023)",skinType:"Normal",fitzpatrick:"III",allergiesDetail:"Sem alergias.",contraindications:"Nenhuma",musicStyle:"MPB",importantAlerts:["Hipotireoidismo"]},preferencias:{horario:"Sem preferência",contato:"Ligação",fotos:"Autoriza fotos para redes sociais",obs:""}},
   {id:4,name:"Juliana Pereira",age:41,birthDate:"1985-05-28",phone:"(11) 96543-2109",email:"juliana@email.com",cpf:"555.666.777-88",bloodType:"AB+",allergies:"Penicilina",since:"03/05/2026",status:"return",tags:["Retorno Pendente"],profilePhoto:null,lastVisit:"03/05/2026",nextReturn:"28/05/2026",complaints:["Linhas severas","Papada"],
    sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
-   anamnese:{healthHistory:"Diabetes tipo 2 controlada",medications:"Metformina 850mg",smoking:"Não",pregnancy:"Não",previousProcedures:"Nenhum",skinType:"Oleosa",fitzpatrick:"IV",allergiesDetail:"Alergia à penicilina — confirmada por teste.",contraindications:"Penicilínicos contraindicados",musicStyle:"Eletrônico",importantAlerts:["Penicilina","Diabetes"]}},
+   anamnese:{healthHistory:"Diabetes tipo 2 controlada",medications:"Metformina 850mg",smoking:"Não",pregnancy:"Não",previousProcedures:"Nenhum",skinType:"Oleosa",fitzpatrick:"IV",allergiesDetail:"Alergia à penicilina — confirmada por teste.",contraindications:"Penicilínicos contraindicados",musicStyle:"Eletrônico",importantAlerts:["Penicilina","Diabetes"]},preferencias:{horario:"Manhã (8h–12h)",contato:"WhatsApp e Ligação",fotos:"Autoriza somente para prontuário",obs:"Prefere ser atendida por último, sem pressa."}},
 ];
 const INIT_AGENDA=[
   {id:1,patientName:"Ana Beatriz Martins",date:"2026-05-28",time:"09:00",procedure:"Toxina Botulínica",location:"Barra Olímpica",duration:"1 hora",value:850,status:"Realizado",obs:""},
@@ -4350,7 +4353,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   const[filter,setFilter]=useState("all");
   const[showNew,setShowNew]=useState(false);
   const[exportingExcel,setExportingExcel]=useState(false);
-  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active",origem:"nova",canalAquisicao:"",indicadoPor:"",canalCampanha:""};
+  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active",origem:"nova",canalAquisicao:"",indicadoPor:"",canalCampanha:"",prefHorario:"Sem preferência",prefContato:"Sem preferência",prefFotos:"Autoriza somente para prontuário",prefObs:""};
   const[form,setForm]=useState(blank);
   async function handleExportExcel(){
     setExportingExcel(true);
@@ -4382,7 +4385,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   function addPatient(){
     const np={id:Date.now(),...form,age:Number(form.age),profilePhoto:profPhoto,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
       complaints:form.complaints.split(",").map(s=>s.trim()).filter(Boolean),tags:[],
-      anamnese:{healthHistory:form.healthHistory,medications:form.medications,smoking:form.smoking,pregnancy:form.pregnancy,previousProcedures:form.previousProcedures,skinType:form.skinType,fitzpatrick:form.fitzpatrick,allergiesDetail:form.allergiesDetail,contraindications:form.contraindications,musicStyle:form.musicStyle,importantAlerts:form.allergies&&form.allergies!=="Nenhuma"?[form.allergies]:[]}};
+      anamnese:{healthHistory:form.healthHistory,medications:form.medications,smoking:form.smoking,pregnancy:form.pregnancy,previousProcedures:form.previousProcedures,skinType:form.skinType,fitzpatrick:form.fitzpatrick,allergiesDetail:form.allergiesDetail,contraindications:form.contraindications,musicStyle:form.musicStyle,importantAlerts:form.allergies&&form.allergies!=="Nenhuma"?[form.allergies]:[]},preferencias:{horario:form.prefHorario||"Sem preferência",contato:form.prefContato||"Sem preferência",fotos:form.prefFotos||"Autoriza somente para prontuário",obs:form.prefObs||""}};
     setPatients(prev=>[...prev,{...np,origem:form.origem||"nova",canalAquisicao:form.canalAquisicao||"",indicadoPor:form.indicadoPor||"",canalCampanha:form.origem==="campanha"?(form.canalCampanha||form.canalAquisicao||""):""}]);setShowNew(false);setForm(blank);setProfPhoto(null);
   }
   return h("div",null,
@@ -4453,6 +4456,13 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
         h(Field,{label:"🎵 Estilo Musical",third:true},h(Sel,{value:form.musicStyle,onChange:fv("musicStyle"),options:MUSIC_STYLES})),
         h(Field,{label:"Principais Queixas"},h(TA,{value:form.complaints,onChange:fv("complaints"),placeholder:"Separadas por vírgula",rows:2})),
         h(Field,{label:"Procedimentos Anteriores"},h(TA,{value:form.previousProcedures,onChange:fv("previousProcedures"),placeholder:"Histórico...",rows:2})),
+        h("div",{style:{width:"100%",borderTop:`1px solid ${P.border}`,margin:"8px 0",paddingTop:8}},
+          h("div",{style:{fontSize:11,color:P.accent,textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:10}},"💜 Preferências da Paciente")
+        ),
+        h(Field,{label:"🕐 Horário Preferido",third:true},h(Sel,{value:form.prefHorario||"Sem preferência",onChange:fv("prefHorario"),options:PREF_HORARIO})),
+        h(Field,{label:"💬 Contato Preferido",third:true},h(Sel,{value:form.prefContato||"Sem preferência",onChange:fv("prefContato"),options:PREF_CONTATO})),
+        h(Field,{label:"📸 Autorização de Fotos",third:true},h(Sel,{value:form.prefFotos||"Autoriza somente para prontuário",onChange:fv("prefFotos"),options:PREF_FOTOS})),
+        h(Field,{label:"📝 Outras Observações / Preferências Pessoais"},h(TA,{value:form.prefObs||"",onChange:fv("prefObs"),rows:2,placeholder:"Ex: Prefere silêncio durante o procedimento. Não gosta de ser fotografada..."})),
         h(Field,{label:"Como ela chegou até você?"},
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
             CANAIS_AQUISICAO.map(o=>
@@ -4806,7 +4816,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       return{...p,items,value:total>0?String(total):""};
     });
   }
-  const[patForm,setPatForm]=useState({...patient,...patient.anamnese,complaints:(patient.complaints||[]).join(", "),origem:patient.origem||"nova",canalAquisicao:patient.canalAquisicao||"",indicadoPor:patient.indicadoPor||"",canalCampanha:patient.canalCampanha||""});
+  const[patForm,setPatForm]=useState({...patient,...patient.anamnese,complaints:(patient.complaints||[]).join(", "),origem:patient.origem||"nova",canalAquisicao:patient.canalAquisicao||"",indicadoPor:patient.indicadoPor||"",canalCampanha:patient.canalCampanha||"",prefHorario:patient.preferencias?.horario||"Sem preferência",prefContato:patient.preferencias?.contato||"Sem preferência",prefFotos:patient.preferencias?.fotos||"Autoriza somente para prontuário",prefObs:patient.preferencias?.obs||""});
   const pfv=k=>v=>setPatForm(p=>({...p,[k]:v}));
   const blankIc={type:"Edema",severity:"Leve",status:"Em Acompanhamento",procedure:"",product:"",region:"",procedureDate:"",date:todayISO(),notes:"",conduct:"",nextReavaliacao:"",sessId:null,_photoFiles:[]};
   const[icForm,setIcForm]=useState(blankIc);
@@ -4855,7 +4865,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       indicadoPor:patForm.indicadoPor||"",
       canalCampanha:patForm.origem==="campanha"?(patForm.canalCampanha||patForm.canalAquisicao||""):"",
       complaints:patForm.complaints.split(",").map(s=>s.trim()).filter(Boolean),
-      anamnese:{...p.anamnese,healthHistory:patForm.healthHistory,medications:patForm.medications,smoking:patForm.smoking,pregnancy:patForm.pregnancy,previousProcedures:patForm.previousProcedures,skinType:patForm.skinType,fitzpatrick:patForm.fitzpatrick,allergiesDetail:patForm.allergiesDetail,contraindications:patForm.contraindications,musicStyle:patForm.musicStyle,importantAlerts:patForm.allergies&&patForm.allergies!=="Nenhuma"?[patForm.allergies]:[]}}));
+      anamnese:{...p.anamnese,healthHistory:patForm.healthHistory,medications:patForm.medications,smoking:patForm.smoking,pregnancy:patForm.pregnancy,previousProcedures:patForm.previousProcedures,skinType:patForm.skinType,fitzpatrick:patForm.fitzpatrick,allergiesDetail:patForm.allergiesDetail,contraindications:patForm.contraindications,musicStyle:patForm.musicStyle,importantAlerts:patForm.allergies&&patForm.allergies!=="Nenhuma"?[patForm.allergies]:[]},preferencias:{horario:patForm.prefHorario||"Sem preferência",contato:patForm.prefContato||"Sem preferência",fotos:patForm.prefFotos||"Autoriza somente para prontuário",obs:patForm.prefObs||""}}));
     setEditPat(false);
   }
   function saveSession(){
@@ -5160,6 +5170,11 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             patient.indicadoPor&&h("span",{style:{fontSize:12,color:P.text3}},"Ind. por: "+patient.indicadoPor)
           ),
           patient.anamnese?.musicStyle&&h("div",{style:{fontSize:12,color:P.text3,marginBottom:6}},`🎵 ${patient.anamnese.musicStyle}`),
+          (patient.preferencias?.horario||patient.preferencias?.contato||patient.preferencias?.fotos)&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}},
+            patient.preferencias?.horario&&h("span",{title:"Horário preferido",style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:`${P.accent}12`,color:P.accent,border:`1px solid ${P.accent}25`}},"🕐 "+patient.preferencias.horario),
+            patient.preferencias?.contato&&h("span",{title:"Contato preferido",style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:`${P.accent}12`,color:P.accent,border:`1px solid ${P.accent}25`}},"💬 "+patient.preferencias.contato),
+            patient.preferencias?.fotos&&h("span",{title:"Autorização de fotos",style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:patient.preferencias.fotos==="Não autoriza fotos"?"rgba(192,112,112,.1)":patient.preferencias.fotos==="Autoriza fotos para redes sociais"?"rgba(122,173,138,.1)":`${P.accent}12`,color:patient.preferencias.fotos==="Não autoriza fotos"?P.red:patient.preferencias.fotos==="Autoriza fotos para redes sociais"?P.green:P.text3,border:`1px solid ${patient.preferencias.fotos==="Não autoriza fotos"?"rgba(192,112,112,.3)":patient.preferencias.fotos==="Autoriza fotos para redes sociais"?"rgba(122,173,138,.3)":P.border}`}},"📸 "+patient.preferencias.fotos)
+          ),
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},(patient.complaints||[]).map(c=>h("span",{key:c,style:{fontSize:11,padding:"3px 9px",borderRadius:20,background:`rgba(92,31,50,.12)`,color:P.accent,border:`1px solid rgba(92,31,50,.25)`}},c)))
         ),
         h("div",{style:{display:"flex",gap:12,flexWrap:"wrap"}},
@@ -5738,6 +5753,31 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       ),
       h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14}},
         [{l:"Tipo de Pele",v:patient.anamnese.skinType},{l:"Fitzpatrick",v:patient.anamnese.fitzpatrick},{l:"Fumante",v:patient.anamnese.smoking},{l:"Gestante/Lactante",v:patient.anamnese.pregnancy},{l:"Histórico de Saúde",v:patient.anamnese.healthHistory},{l:"Medicamentos",v:patient.anamnese.medications},{l:"Procedimentos Anteriores",v:patient.anamnese.previousProcedures||"Nenhum"},{l:"🎵 Estilo Musical",v:patient.anamnese.musicStyle||"—"}].map(f=>h(Card,{key:f.l,style:{padding:"14px 16px"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},f.l),h("div",{style:{fontSize:14,color:P.text}},f.v||"—")))
+      ),
+      h(Card,{style:{marginTop:14,border:`1px solid ${P.accent}30`,background:`${P.accent}08`}},
+        h("div",{style:{fontSize:11,color:P.accent,textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:14}},"💜 Preferências da Paciente"),
+        h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:12}},
+          h("div",{style:{background:P.bg3,borderRadius:10,padding:"12px 14px",border:`1px solid ${P.border}`}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"🕐 Horário Preferido"),
+            h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},patient.preferencias?.horario||"Não informado")
+          ),
+          h("div",{style:{background:P.bg3,borderRadius:10,padding:"12px 14px",border:`1px solid ${P.border}`}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"💬 Contato Preferido"),
+            h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},patient.preferencias?.contato||"Não informado")
+          ),
+          h("div",{style:{
+            background:patient.preferencias?.fotos==="Não autoriza fotos"?"rgba(192,112,112,.07)":patient.preferencias?.fotos==="Autoriza fotos para redes sociais"?"rgba(122,173,138,.07)":P.bg3,
+            borderRadius:10,padding:"12px 14px",
+            border:`1px solid ${patient.preferencias?.fotos==="Não autoriza fotos"?"rgba(192,112,112,.3)":patient.preferencias?.fotos==="Autoriza fotos para redes sociais"?"rgba(122,173,138,.3)":P.border}`
+          }},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"📸 Autorização de Fotos"),
+            h("div",{style:{fontSize:13,fontWeight:500,color:patient.preferencias?.fotos==="Não autoriza fotos"?P.red:patient.preferencias?.fotos==="Autoriza fotos para redes sociais"?P.green:P.text}},patient.preferencias?.fotos||"Não informado")
+          )
+        ),
+        patient.preferencias?.obs&&h("div",{style:{background:P.bg3,borderRadius:10,padding:"12px 14px",border:`1px solid ${P.border}`}},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"📝 Outras Observações"),
+          h("div",{style:{fontSize:13,color:P.text,lineHeight:1.6}},patient.preferencias.obs)
+        )
       )
     ),
     // ─── GALERIA TAB
@@ -6227,6 +6267,13 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Field,{label:"Gestante",third:true},h(Sel,{value:patForm.pregnancy||"Não",onChange:pfv("pregnancy"),options:["Não","Gestante","Lactante"]})),
         h(Field,{label:"🎵 Estilo Musical",third:true},h(Sel,{value:patForm.musicStyle||"Pop",onChange:pfv("musicStyle"),options:MUSIC_STYLES})),
         h(Field,{label:"Próx. Retorno"},h(Inp,{value:patForm.nextReturn||"",onChange:pfv("nextReturn"),placeholder:"DD/MM/AAAA"})),
+        h("div",{style:{width:"100%",borderTop:`1px solid ${P.border}`,margin:"8px 0",paddingTop:8}},
+          h("div",{style:{fontSize:11,color:P.accent,textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:10}},"💜 Preferências da Paciente")
+        ),
+        h(Field,{label:"🕐 Horário Preferido",third:true},h(Sel,{value:patForm.prefHorario||"Sem preferência",onChange:pfv("prefHorario"),options:PREF_HORARIO})),
+        h(Field,{label:"💬 Contato Preferido",third:true},h(Sel,{value:patForm.prefContato||"Sem preferência",onChange:pfv("prefContato"),options:PREF_CONTATO})),
+        h(Field,{label:"📸 Autorização de Fotos",third:true},h(Sel,{value:patForm.prefFotos||"Autoriza somente para prontuário",onChange:pfv("prefFotos"),options:PREF_FOTOS})),
+        h(Field,{label:"📝 Outras Observações / Preferências Pessoais"},h(TA,{value:patForm.prefObs||"",onChange:pfv("prefObs"),rows:2,placeholder:"Ex: Prefere silêncio durante o procedimento. Não gosta de ser fotografada. Traz a filha às sessões..."})),
         h(Field,{label:"Como ela chegou até você?"},
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
             CANAIS_AQUISICAO.map(o=>
