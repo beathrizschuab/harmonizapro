@@ -3547,20 +3547,127 @@ function PatientAutocomplete({value,onChange,patients}){
   );
 }
 
+// ─── HISTÓRICO / AUDITORIA DE AGENDAMENTOS ───────────────────────────────────
+// Cada agendamento passa a ter um campo `history`: lista de eventos
+// {id, at, type, label, from, to} cobrindo criação, edição de qualquer campo
+// (status, valor, procedimento, local, duração, paciente, observações) e
+// reagendamento (mudança de data/horário, tratada como um único evento).
+// `rescheduleHistory` continua sendo preenchido em paralelo (compatibilidade
+// com badges/telas antigas que já liam só esse campo).
+// Além disso, todo evento também é espelhado em `agendaLog` (estado global em
+// AppInner, tabela "agenda_log"), que é a ÚNICA fonte que sobrevive à exclusão
+// de um agendamento — permitindo consultar "todos os agendamentos e edições"
+// mesmo depois que um item específico já não existe mais em `agenda`.
+const APPT_FIELD_LABELS={
+  patientName:"Paciente", procedure:"Procedimento", location:"Local",
+  duration:"Duração", value:"Valor", status:"Status", obs:"Observações"
+};
+const HIST_TYPE_ICON={create:"✦",reschedule:"📅",status:"↻",value:"💰",procedure:"💉",location:"📍",duration:"⏱",obs:"📝",patientName:"👤",delete:"🗑"};
+const HIST_TYPE_COLOR={create:"#7aad8a",reschedule:"#9b7aad",status:"#7aaed4",value:"#c4a96a",procedure:"#c08a9f",location:"#7a9fc0",duration:"#9c9070",obs:"#9c8682",patientName:"#9d6f56",delete:"#c07070"};
+function nowBR(){return new Date().toLocaleString("pt-BR");}
+function fmtApptFieldVal(field,v){
+  if(field==="value")return fmtCurr(Number(v)||0);
+  if(v===undefined||v===null||v==="")return "—";
+  return String(v);
+}
+// Gera um id simples e único o bastante para chaves de lista (não precisa ser criptográfico)
+function histId(){return Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);}
+// Compara o agendamento antigo (before=null se for criação) com o novo e devolve
+// a lista de eventos de histórico correspondente (um por campo alterado).
+function diffApptHistory(before,after){
+  const at=nowBR(),ts=Date.now();
+  if(!before){
+    return[{id:histId(),at,ts,type:"create",label:"Agendamento criado",from:"",to:`${after.date} ${after.time}`}];
+  }
+  const events=[];
+  if(before.date!==after.date||before.time!==after.time){
+    events.push({id:histId(),at,ts,type:"reschedule",label:"Data/Horário",from:`${before.date} ${before.time}`,to:`${after.date} ${after.time}`});
+  }
+  Object.keys(APPT_FIELD_LABELS).forEach(f=>{
+    const bv=before[f],av=after[f];
+    const changed=f==="value"?(Number(bv)||0)!==(Number(av)||0):String(bv||"")!==String(av||"");
+    if(changed)events.push({id:histId(),at,ts,type:f,label:APPT_FIELD_LABELS[f],from:fmtApptFieldVal(f,bv),to:fmtApptFieldVal(f,av)});
+  });
+  return events;
+}
+// Aplica os eventos de histórico a UM agendamento: anexa em `history` e, se houver
+// evento de reagendamento, também em `rescheduleHistory` (compatibilidade).
+function applyApptHistory(item,events){
+  if(!events||!events.length)return item;
+  const reschedEntries=events.filter(e=>e.type==="reschedule").map(e=>({from:e.from,to:e.to,at:e.at}));
+  return{
+    ...item,
+    history:[...(item.history||[]),...events],
+    rescheduleHistory:reschedEntries.length?[...(item.rescheduleHistory||[]),...reschedEntries]:(item.rescheduleHistory||[])
+  };
+}
+// Devolve o histórico unificado de um agendamento (já mesclando registros antigos
+// que só tinham `rescheduleHistory`, para não perder dados de antes desta versão).
+function unifiedApptHistory(a){
+  if(!a)return[];
+  const own=a.history||[];
+  if(own.length)return own;
+  return(a.rescheduleHistory||[]).map((r,i)=>({id:"legacy_"+i,at:r.at,type:"reschedule",label:"Data/Horário",from:r.from,to:r.to}));
+}
+// Monta as entradas para o log global (agenda_log), anexando dados do agendamento
+// para que o registro continue legível mesmo se o agendamento for excluído depois.
+function mkGlobalLogEntries(apptSnapshot,events){
+  return events.map(e=>({...e,apptId:apptSnapshot.id,patientName:apptSnapshot.patientName,procedure:apptSnapshot.procedure}));
+}
+// Registra (no item + no log global) a criação/edição/reagendamento de um agendamento.
+// `before`=null indica criação. Devolve o item já com `history`/`rescheduleHistory` atualizados.
+function logApptChange(before,after,setAgendaLog){
+  const events=diffApptHistory(before,after);
+  if(events.length&&setAgendaLog){
+    setAgendaLog(prev=>[...(Array.isArray(prev)?prev:[]),...mkGlobalLogEntries(after,events)]);
+  }
+  return applyApptHistory(after,events);
+}
+// Registra a exclusão de um agendamento apenas no log global (o item deixa de existir em `agenda`).
+function logApptDelete(a,setAgendaLog){
+  if(!setAgendaLog)return;
+  const entry={id:histId(),at:nowBR(),ts:Date.now(),type:"delete",label:"Agendamento excluído",from:`${a.date} ${a.time}`,to:"",apptId:a.id,patientName:a.patientName,procedure:a.procedure};
+  setAgendaLog(prev=>[...(Array.isArray(prev)?prev:[]),entry]);
+}
+// Uma linha do histórico (criação, edição de campo, reagendamento ou exclusão).
+// Reutilizada no modal de edição, no modal de histórico e na ficha da paciente.
+function HistEventRow({ev}){
+  const h=createElement;
+  const color=HIST_TYPE_COLOR[ev.type]||P.text3;
+  const icon=HIST_TYPE_ICON[ev.type]||"•";
+  if(ev.type==="create"||ev.type==="delete"){
+    return h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",marginBottom:4,background:`${color}14`,borderRadius:7,border:`1px solid ${color}33`}},
+      h("span",{style:{fontSize:13}},icon),
+      h("span",{style:{fontSize:11.5,fontWeight:600,color,flex:1}},ev.label+(ev.type==="delete"&&ev.from?" — "+ev.from:"")),
+      h("span",{style:{fontSize:10,color:P.text3,whiteSpace:"nowrap"}},ev.at)
+    );
+  }
+  return h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"7px 0",borderBottom:`1px solid ${P.border}`}},
+    h("span",{style:{fontSize:13}},icon),
+    h("span",{style:{fontSize:11.5,color:P.text,fontWeight:600,minWidth:84}},ev.label),
+    h("span",{style:{fontSize:11,color:P.red,background:"rgba(192,112,112,.1)",padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap"}},ev.from||"—"),
+    h("span",{style:{fontSize:12,color:P.text3}},"→"),
+    h("span",{style:{fontSize:11,color:P.green,background:"rgba(122,173,138,.1)",padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap"}},ev.to||"—"),
+    h("span",{style:{fontSize:10,color:P.text3,marginLeft:"auto",whiteSpace:"nowrap"}},ev.at)
+  );
+}
+
 // ─── AGENDA (VERSÃO APRIMORADA) ───────────────────────────────────────────────
 // Funcionalidades adicionadas:
-//   1. Arrastar agendamento para reagendar (Drag & Drop) nas views Semana e Dia
+//   1. Arrastar agendamento para reagendar (Drag & Drop) nas views Semana, Dia e Mês
 //   2. Bloqueio de horário — clique duplo em slot vazio (ou botão "Bloquear")
 //   3. Clicar num slot vazio abre modal de novo agendamento com hora/data pré-preenchida
-//   4. Histórico de reagendamentos registrado no próprio agendamento
+//   4. Histórico completo por agendamento (criação + toda edição de campo) e log
+//      de auditoria global que sobrevive a exclusões (agenda_log)
 //
 // INSTRUÇÕES DE INTEGRAÇÃO:
 //   • Substitua toda a função Agenda (linhas 1789–1955 do App original) por este código.
 //   • Nenhuma outra parte do arquivo precisa ser alterada.
 //   • O campo `agenda` agora pode ter itens com { blocked: true, blockReason: "..." }
-//     para bloqueios de horário, e { rescheduleHistory: [{from, to, at}] } para histórico.
+//     para bloqueios de horário, { rescheduleHistory: [{from, to, at}] } (legado) e
+//     { history: [{id, at, type, label, from, to}] } para o histórico completo.
 
-function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,prefill,onConsumePrefill}){
+function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,proceduresFull,locations,prefill,onConsumePrefill}){
   const[selDate,setSelDate]=useState(todayISO());
   const[viewMonth,setViewMonth]=useState(()=>{const t=new Date();return{y:t.getFullYear(),m:t.getMonth()};});
   const[viewMode,setViewMode]=useState("month");
@@ -3570,6 +3677,8 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
   const[blockForm,setBlockForm]=useState({date:"",time:"09:00",endTime:"10:00",reason:""});
   const[showHistoryModal,setShowHistoryModal]=useState(false);
   const[historyAppt,setHistoryAppt]=useState(null);
+  const[showGlobalLog,setShowGlobalLog]=useState(false);
+  const[globalLogSearch,setGlobalLogSearch]=useState("");
   // Drag state
   const[dragId,setDragId]=useState(null);
   const[dragOver,setDragOver]=useState(null); // {date, hour} ou null
@@ -3602,12 +3711,31 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
   const agendaDates=new Set(agenda.map(a=>a.date));
 
   function saveAppt(){
-    if(editItem)setAgenda(prev=>prev.map(a=>a.id===editItem.id?{...a,...form,value:Number(form.value)||0}:a));
-    else setAgenda(prev=>[...prev,{...form,id:Date.now(),value:Number(form.value)||0,rescheduleHistory:[]}]);
+    if(editItem){
+      const merged={...editItem,...form,value:Number(form.value)||0};
+      const logged=merged.blocked?merged:logApptChange(editItem,merged,setAgendaLog);
+      setAgenda(prev=>prev.map(a=>a.id===editItem.id?logged:a));
+    }else{
+      const newItem={...form,id:Date.now(),value:Number(form.value)||0,rescheduleHistory:[],history:[]};
+      const logged=logApptChange(null,newItem,setAgendaLog);
+      setAgenda(prev=>[...prev,logged]);
+    }
     setShowNew(false);setEditItem(null);
   }
-  function delAppt(id){if(window.confirm("Excluir este agendamento?"))setAgenda(prev=>prev.filter(a=>a.id!==id));}
-  function cycleStatus(id){setAgenda(prev=>prev.map(a=>{if(a.id!==id)return a;const i=APPT_STATUS.indexOf(a.status);return{...a,status:APPT_STATUS[(i+1)%APPT_STATUS.length]};}));}
+  function delAppt(id){
+    if(!window.confirm("Excluir este agendamento?"))return;
+    const item=agenda.find(a=>a.id===id);
+    if(item&&!item.blocked)logApptDelete(item,setAgendaLog);
+    setAgenda(prev=>prev.filter(a=>a.id!==id));
+  }
+  function cycleStatus(id){
+    setAgenda(prev=>prev.map(a=>{
+      if(a.id!==id||a.blocked)return a;
+      const i=APPT_STATUS.indexOf(a.status);
+      const after={...a,status:APPT_STATUS[(i+1)%APPT_STATUS.length]};
+      return logApptChange(a,after,setAgendaLog);
+    }));
+  }
   function openEdit(a){setEditItem(a);setForm({...a,value:String(a.value||"")});setShowNew(true);}
   function prevMonth(){setViewMonth(v=>{const m=v.m-1<0?11:v.m-1,y=v.m-1<0?v.y-1:v.y;return{y,m};});}
   function nextMonth(){setViewMonth(v=>{const m=v.m+1>11?0:v.m+1,y=v.m+1>11?v.y+1:v.y;return{y,m};});}
@@ -3617,11 +3745,9 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
     const novaData=window.prompt("Reagendar para qual data? (AAAA-MM-DD)",a.date);
     if(!novaData||!novaData.match(/^\d{4}-\d{2}-\d{2}$/))return;
     const novaHora=window.prompt("Qual horário? (HH:MM)",a.time)||a.time;
-    const entry={from:`${a.date} ${a.time}`,to:`${novaData} ${novaHora}`,at:new Date().toLocaleString("pt-BR")};
-    setAgenda(prev=>prev.map(ap=>ap.id===a.id
-      ?{...ap,date:novaData,time:novaHora,status:"Reagendado",rescheduleHistory:[...(ap.rescheduleHistory||[]),entry]}
-      :ap
-    ));
+    const after={...a,date:novaData,time:novaHora,status:"Reagendado"};
+    const logged=logApptChange(a,after,setAgendaLog);
+    setAgenda(prev=>prev.map(ap=>ap.id===a.id?logged:ap));
     setSelDate(novaData);
   }
 
@@ -3675,12 +3801,34 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
     const newTime=minutesToHHMM(totalMin);
     setAgenda(prev=>prev.map(a=>{
       if(a.id!==id)return a;
-      const entry={from:`${a.date} ${a.time}`,to:`${date} ${newTime}`,at:new Date().toLocaleString("pt-BR")};
-      return{...a,date,time:newTime,status:"Reagendado",rescheduleHistory:[...(a.rescheduleHistory||[]),entry]};
+      if(a.blocked)return{...a,date,time:newTime};
+      const after={...a,date,time:newTime,status:"Reagendado"};
+      return logApptChange(a,after,setAgendaLog);
     }));
     setSelDate(date);
     dragIdRef.current=null;
     setDragId(null);setDragOver(null);
+  }
+
+  // ── Drag & Drop — VIEW MÊS (solta sobre um dia do calendário, mantém o horário) ──
+  function onDragOverMonthDay(e,dateStr){
+    e.preventDefault();
+    e.dataTransfer.dropEffect="move";
+    setDragOver({date:dateStr,minute:null});
+  }
+  function onDropMonthDay(e,dateStr){
+    e.preventDefault();
+    const rawId=e.dataTransfer.getData("text/plain")||String(dragIdRef.current||"");
+    const id=Number(rawId);
+    dragIdRef.current=null;
+    setDragId(null);setDragOver(null);
+    if(!id)return;
+    setAgenda(prev=>prev.map(a=>{
+      if(a.id!==id||a.blocked||a.date===dateStr)return a;
+      const after={...a,date:dateStr,status:"Reagendado"};
+      return logApptChange(a,after,setAgendaLog);
+    }));
+    setSelDate(dateStr);
   }
 
   const dayAppts=agenda.filter(a=>a.date===selDate).sort((a,b)=>a.time.localeCompare(b.time));
@@ -3701,7 +3849,7 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
         !compact&&h("div",{style:{fontSize:10,color:P.text3}},a.time+(a.endTime?" – "+a.endTime:""))
       );
     }
-    const hasHistory=(a.rescheduleHistory||[]).length>0;
+    const histCount=unifiedApptHistory(a).length;
     // Duração curta (<45min): card fica baixo, escondemos linhas menos essenciais
     const durMin=durationToMin(a.duration);
     const isShort=fitHeight&&durMin<45;
@@ -3727,7 +3875,7 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
             h("div",{style:{fontSize:12,color:sc.color,fontWeight:700}},(a.duration?`${a.time}–${apptEndTime(a)}`:a.time)+" — "+a.patientName),
             h("div",{style:{fontSize:11,color:P.text2}},a.procedure),
             h("div",{style:{fontSize:10,color:P.text3}},"📍 "+a.location),
-            hasHistory&&h("div",{style:{fontSize:9,color:"#9b7aad",marginTop:2}},"📅 Reagendado "+((a.rescheduleHistory||[]).length)+"x")
+            histCount>0&&h("div",{style:{fontSize:9,color:"#9b7aad",marginTop:2}},"🕓 "+histCount+" alteraçõe"+(histCount===1?"":"s"))
           )
     );
   }
@@ -3872,6 +4020,7 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
         h("div",{style:{fontSize:13,color:P.text3,marginTop:5}},`${MONTH_NAMES[viewMonth.m]} ${viewMonth.y}`)
       ),
       h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+        h("button",{onClick:()=>setShowGlobalLog(true),title:"Ver todo o histórico de criações, edições, reagendamentos e exclusões",style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid ${P.border}`,color:P.text2}},"📜 Histórico Geral"),
         h("button",{onClick:()=>setShowBlockModal(true),style:blockBtnStyle},"🔒 Bloquear Horário"),
         h("button",{onClick:()=>{setEditItem(null);setForm({...blank,date:selDate});setShowNew(true);},style:{padding:"9px 20px",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",transition:"all .15s",background:`linear-gradient(135deg,${P.rose},${P.gold})`,color:P.accent3,border:"none"}},"＋ Novo")
       )
@@ -3953,11 +4102,15 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
             const isSel=ds===selDate,hasApp=agendaDates.has(ds),isToday=ds===todayISO();
             const apptCount=agenda.filter(a=>a.date===ds&&!a.blocked).length;
             const blockCount=agenda.filter(a=>a.date===ds&&a.blocked).length;
+            const isDragOverDay=dragOver&&dragOver.date===ds&&dragOver.minute===null;
             return h("div",{key:d,
               onClick:()=>setSelDate(ds),
               onDoubleClick:()=>{setSelDate(ds);setBlockForm({date:ds,time:"09:00",endTime:"10:00",reason:""});setShowBlockModal(true);},
-              title:"Clique para ver · Duplo clique para bloquear",
-              style:{textAlign:"center",padding:"9px 2px",borderRadius:8,cursor:"pointer",fontSize:13,position:"relative",color:isSel?P.accent3:hasApp?P.text:P.text3,background:isSel?`linear-gradient(135deg,${P.rose},${P.gold})`:"transparent",border:`1px solid ${isToday&&!isSel?"rgba(157,119,97,.4)":"transparent"}`}},
+              onDragOver:e=>onDragOverMonthDay(e,ds),
+              onDragLeave:()=>setDragOver(prev=>(prev&&prev.date===ds&&prev.minute===null)?null:prev),
+              onDrop:e=>onDropMonthDay(e,ds),
+              title:"Clique para ver · Duplo clique para bloquear · Arraste um agendamento aqui para reagendar",
+              style:{textAlign:"center",padding:"9px 2px",borderRadius:8,cursor:"pointer",fontSize:13,position:"relative",color:isSel?P.accent3:hasApp?P.text:P.text3,background:isDragOverDay?"rgba(157,119,97,.28)":isSel?`linear-gradient(135deg,${P.rose},${P.gold})`:"transparent",border:`1px solid ${isDragOverDay?P.accent:(isToday&&!isSel?"rgba(157,119,97,.4)":"transparent")}`,transition:"background .12s"}},
               d,
               apptCount>0&&!isSel&&h("div",{style:{width:4,height:4,borderRadius:"50%",background:P.rose,position:"absolute",bottom:3,left:"50%",transform:"translateX(-50%)"}}),
               blockCount>0&&h("div",{style:{width:4,height:4,borderRadius:"50%",background:P.red,position:"absolute",bottom:3,left:blockCount>0&&apptCount>0?"calc(50% + 4px)":"50%",transform:"translateX(-50%)"}})
@@ -3967,15 +4120,17 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
       ),
       // Painel lateral do dia selecionado
       h("div",{style:{background:P.card,border:`1px solid ${P.border}`,borderRadius:12,padding:20}},
-        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},new Date(selDate+"T12:00").toLocaleDateString("pt-BR",{day:"numeric",month:"short"})),
           h("span",{style:{fontSize:12,color:P.text3}},`${dayAppts.filter(a=>!a.blocked).length} consulta(s)`)
         ),
+        dayAppts.some(a=>!a.blocked)&&h("div",{style:{fontSize:10,color:P.text3,marginBottom:12}},"Arraste um agendamento até outro dia no calendário para reagendar"),
         dayAppts.length===0
           ?h("div",{style:{color:P.text3,fontSize:13,textAlign:"center",padding:24}},"Nenhuma consulta.")
           :dayAppts.map(a=>{
             const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
-            const hasHistory=(a.rescheduleHistory||[]).length>0;
+            const histCount=unifiedApptHistory(a).length;
+            const isDragging=dragId===a.id;
             if(a.blocked){
               return h("div",{key:a.id,style:{padding:"10px 12px",marginBottom:8,background:"rgba(192,112,112,.06)",borderRadius:9,border:`1px dashed rgba(192,112,112,.3)`}},
                 h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
@@ -3987,17 +4142,24 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
                 )
               );
             }
-            return h("div",{key:a.id,style:{padding:"10px 12px",marginBottom:8,background:P.bg3,borderRadius:9,border:`1px solid ${P.border}`}},
+            return h("div",{
+              key:a.id,
+              draggable:true,
+              onDragStart:e=>onDragStart(e,a.id),
+              onDragEnd,
+              title:"Arraste para outro dia para reagendar",
+              style:{padding:"10px 12px",marginBottom:8,background:P.bg3,borderRadius:9,border:`1px solid ${P.border}`,cursor:"grab",opacity:isDragging?.35:1}
+            },
               h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:6}},
                 h("div",{style:{fontSize:11,color:P.accent,fontWeight:700,minWidth:74}},a.time+(a.duration?" – "+apptEndTime(a):"")),
                 h("div",{style:{flex:1}},
                   h("div",{style:{display:"flex",alignItems:"center",gap:6}},
                     h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},a.patientName),
-                    hasHistory&&h("button",{
+                    histCount>0&&h("button",{
                       onClick:()=>{setHistoryAppt(a);setShowHistoryModal(true);},
-                      title:"Ver histórico de reagendamentos",
+                      title:"Ver histórico do agendamento",
                       style:{fontSize:9,color:"#9b7aad",background:"rgba(155,122,173,.12)",border:"1px solid rgba(155,122,173,.25)",borderRadius:10,padding:"1px 6px",cursor:"pointer"}
-                    },"📅 "+((a.rescheduleHistory||[]).length)+"x")
+                    },"🕓 "+histCount+"x")
                   ),
                   h("div",{style:{fontSize:11,color:P.text3}},a.procedure),
                   h("div",{style:{fontSize:10,color:P.text3}},"📍 "+a.location)
@@ -4033,11 +4195,9 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
         h(Field,{label:"Status",half:true},h(Sel,{value:form.status,onChange:fv("status"),options:APPT_STATUS})),
         h(Field,{label:"Observações"},h(TA,{value:form.obs,onChange:fv("obs"),placeholder:"Anotações, avisos...",rows:2}))
       ),
-      editItem&&(editItem.rescheduleHistory||[]).length>0&&h("div",{style:{marginTop:14,padding:"10px 14px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
-        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},"Histórico de Reagendamentos"),
-        (editItem.rescheduleHistory||[]).map((r,i)=>h("div",{key:i,style:{fontSize:11,color:P.text3,padding:"3px 0",borderBottom:`1px solid ${P.border}`}},
-          `#${i+1} · De ${r.from} → Para ${r.to} · ${r.at}`
-        ))
+      editItem&&unifiedApptHistory(editItem).length>0&&h("div",{style:{marginTop:14,padding:"10px 14px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
+        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},"Histórico do Agendamento"),
+        unifiedApptHistory(editItem).map(ev=>h(HistEventRow,{key:ev.id,ev}))
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},
         h(Btn,{variant:"ghost",onClick:()=>{setShowNew(false);setEditItem(null);}},"Cancelar"),
@@ -4060,27 +4220,45 @@ function Agenda({patients,agenda,setAgenda,procedures,proceduresFull,locations,p
       )
     ),
 
-    // ─── MODAL: HISTÓRICO DE REAGENDAMENTOS ─────────────────────────────────────
-    h(Modal,{open:showHistoryModal,onClose:()=>setShowHistoryModal(false),title:"📅 Histórico de Reagendamentos",width:480},
+    // ─── MODAL: HISTÓRICO DO AGENDAMENTO ────────────────────────────────────────
+    h(Modal,{open:showHistoryModal,onClose:()=>setShowHistoryModal(false),title:"🕓 Histórico do Agendamento",width:480},
       historyAppt&&h("div",null,
         h("div",{style:{marginBottom:14,padding:"10px 14px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
           h("div",{style:{fontSize:14,color:P.text,fontWeight:600}},historyAppt.patientName),
           h("div",{style:{fontSize:12,color:P.text3}},historyAppt.procedure)
         ),
-        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}},"Histórico completo"),
-        (historyAppt.rescheduleHistory||[]).length===0
-          ?h("div",{style:{fontSize:13,color:P.text3,textAlign:"center",padding:16}},"Nenhum reagendamento registrado.")
-          :(historyAppt.rescheduleHistory||[]).map((r,i)=>h("div",{key:i,style:{padding:"10px 14px",marginBottom:8,background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
-              h("div",{style:{fontSize:11,color:P.text3,marginBottom:4}},"Reagendamento #"+(i+1)+" · "+r.at),
-              h("div",{style:{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}},
-                h("span",{style:{fontSize:12,color:P.red,background:"rgba(192,112,112,.1)",padding:"2px 8px",borderRadius:6}},"De: "+r.from),
-                h("span",{style:{fontSize:14,color:P.text3}},"→"),
-                h("span",{style:{fontSize:12,color:P.green,background:"rgba(122,173,138,.1)",padding:"2px 8px",borderRadius:6}},"Para: "+r.to)
-              )
-            ))
+        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}},"Linha do tempo — criação, edições e reagendamentos"),
+        unifiedApptHistory(historyAppt).length===0
+          ?h("div",{style:{fontSize:13,color:P.text3,textAlign:"center",padding:16}},"Nenhuma alteração registrada.")
+          :unifiedApptHistory(historyAppt).map(ev=>h(HistEventRow,{key:ev.id,ev}))
       ),
       h("div",{style:{display:"flex",justifyContent:"flex-end",marginTop:12}},
         h(Btn,{variant:"ghost",onClick:()=>setShowHistoryModal(false)},"Fechar")
+      )
+    ),
+
+    // ─── MODAL: HISTÓRICO GERAL (log de auditoria — sobrevive a exclusões) ─────
+    h(Modal,{open:showGlobalLog,onClose:()=>setShowGlobalLog(false),title:"📜 Histórico Geral da Agenda",width:560},
+      h("div",{style:{marginBottom:12,fontSize:12,color:P.text3}},"Todas as criações, edições, reagendamentos e exclusões de agendamentos — inclusive os que já foram excluídos."),
+      h(Inp,{value:globalLogSearch,onChange:v=>setGlobalLogSearch(v),placeholder:"Buscar por paciente ou procedimento..."}),
+      h("div",{style:{marginTop:12,maxHeight:420,overflowY:"auto"}},
+        (()=>{
+          const q=globalLogSearch.trim().toLowerCase();
+          const list=Array.isArray(agendaLog)?agendaLog:[];
+          const filtered=list
+            .filter(e=>!q||String(e.patientName||"").toLowerCase().includes(q)||String(e.procedure||"").toLowerCase().includes(q))
+            .slice()
+            .sort((a,b)=>(b.ts||0)-(a.ts||0))
+            .slice(0,300);
+          if(filtered.length===0)return h("div",{style:{fontSize:13,color:P.text3,textAlign:"center",padding:20}},list.length===0?"Nenhum registro ainda — toda nova criação, edição ou exclusão de agendamento aparecerá aqui.":"Nenhum registro encontrado para essa busca.");
+          return filtered.map(ev=>h("div",{key:ev.id,style:{marginBottom:8}},
+            h("div",{style:{fontSize:11,color:P.text,fontWeight:600,marginBottom:2}},(ev.patientName||"—")+(ev.procedure?" · "+ev.procedure:"")),
+            h(HistEventRow,{ev})
+          ));
+        })()
+      ),
+      h("div",{style:{display:"flex",justifyContent:"flex-end",marginTop:12}},
+        h(Btn,{variant:"ghost",onClick:()=>setShowGlobalLog(false)},"Fechar")
       )
     )
   );
@@ -4325,11 +4503,12 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   );
 }
 // ─── AGENDA APPT ROW (usado na aba Agenda do prontuário) ─────────────────────
-function AgendaApptRow({a,setAgenda,patient,patients,setPatients,procedures,locations}){
+function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations}){
   const h=createElement;
   const[open,setOpen]=useState(false);
   const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
-  const hasHistory=(a.rescheduleHistory||[]).length>0;
+  const histList=unifiedApptHistory(a);
+  const hasHistory=histList.length>0;
   const apptDate=new Date((a.date||"")+"T"+(a.time||"00:00"));
   const isUpcoming=apptDate>=new Date();
 
@@ -4338,7 +4517,8 @@ function AgendaApptRow({a,setAgenda,patient,patients,setPatients,procedures,loca
     setAgenda(prev=>prev.map(ap=>{
       if(ap.id!==a.id)return ap;
       const i=APPT_STATUS.indexOf(ap.status);
-      return{...ap,status:APPT_STATUS[(i+1)%APPT_STATUS.length]};
+      const after={...ap,status:APPT_STATUS[(i+1)%APPT_STATUS.length]};
+      return logApptChange(ap,after,setAgendaLog);
     }));
   }
 
@@ -4346,10 +4526,12 @@ function AgendaApptRow({a,setAgenda,patient,patients,setPatients,procedures,loca
     const novaData=window.prompt("Reagendar para qual data? (AAAA-MM-DD)",a.date);
     if(!novaData||!novaData.match(/^\d{4}-\d{2}-\d{2}$/))return;
     const novaHora=window.prompt("Qual horário? (HH:MM)",a.time)||a.time;
-    const entry={from:`${a.date} ${a.time}`,to:`${novaData} ${novaHora}`,at:new Date().toLocaleString("pt-BR")};
-    if(setAgenda){
-      setAgenda(prev=>prev.map(ap=>ap.id!==a.id?ap:{...ap,date:novaData,time:novaHora,status:"Reagendado",rescheduleHistory:[...(ap.rescheduleHistory||[]),entry]}));
-    }
+    if(!setAgenda)return;
+    setAgenda(prev=>prev.map(ap=>{
+      if(ap.id!==a.id)return ap;
+      const after={...ap,date:novaData,time:novaHora,status:"Reagendado"};
+      return logApptChange(ap,after,setAgendaLog);
+    }));
   }
 
   return h("div",{style:{marginBottom:10,background:P.bg3,border:`1px solid ${isUpcoming?"rgba(122,174,212,.3)":P.border}`,borderRadius:10,overflow:"hidden"}},
@@ -4375,19 +4557,13 @@ function AgendaApptRow({a,setAgenda,patient,patients,setPatients,procedures,loca
       // Ações
       h("div",{style:{display:"flex",gap:5,flexShrink:0}},
         setAgenda&&h("button",{onClick:reschedule,title:"Reagendar",style:{fontSize:11,color:"#9b7aad",background:"transparent",border:"1px solid rgba(155,122,173,.3)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"📅"),
-        hasHistory&&h("button",{onClick:()=>setOpen(v=>!v),style:{fontSize:11,color:"#9b7aad",background:"rgba(155,122,173,.08)",border:"1px solid rgba(155,122,173,.25)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},open?"▲ Histórico":"▼ Histórico ("+(a.rescheduleHistory||[]).length+"x)")
+        hasHistory&&h("button",{onClick:()=>setOpen(v=>!v),style:{fontSize:11,color:"#9b7aad",background:"rgba(155,122,173,.08)",border:"1px solid rgba(155,122,173,.25)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},open?"▲ Histórico":"▼ Histórico ("+histList.length+"x)")
       )
     ),
-    // Histórico de reagendamentos (expansível)
-    open&&hasHistory&&h("div",{style:{borderTop:`1px solid ${P.border}`,padding:"10px 14px 12px 28px",background:"rgba(155,122,173,.04)"}},
-      h("div",{style:{fontSize:9.5,color:"#9b7aad",textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:8}},"Histórico de Reagendamentos"),
-      (a.rescheduleHistory||[]).map((r,i)=>h("div",{key:i,style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"5px 0",borderBottom:`1px solid ${P.border}`}},
-        h("span",{style:{fontSize:10,color:P.text3,minWidth:30}},"#"+(i+1)),
-        h("span",{style:{fontSize:11,color:P.red,background:"rgba(192,112,112,.1)",padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap"}},"De: "+r.from),
-        h("span",{style:{fontSize:12,color:P.text3}},"→"),
-        h("span",{style:{fontSize:11,color:P.green,background:"rgba(122,173,138,.1)",padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap"}},"Para: "+r.to),
-        h("span",{style:{fontSize:10,color:P.text3,marginLeft:"auto",whiteSpace:"nowrap"}},r.at)
-      ))
+    // Histórico completo (expansível): criação, edições de campo e reagendamentos
+    open&&hasHistory&&h("div",{style:{borderTop:`1px solid ${P.border}`,padding:"10px 14px 12px 14px",background:"rgba(155,122,173,.04)"}},
+      h("div",{style:{fontSize:9.5,color:"#9b7aad",textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:8}},"Histórico do Agendamento"),
+      histList.map(ev=>h(HistEventRow,{key:ev.id,ev}))
     )
   );
 }
@@ -4552,7 +4728,7 @@ function getPatientPhotoGallery(patient){
   });
   return list;
 }
-function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings,agenda,setAgenda,maquininhas=[]}){
+function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings,agenda,setAgenda,setAgendaLog,maquininhas=[]}){
   const _vTemplates=Array.isArray(voucherTemplates)&&voucherTemplates.length?voucherTemplates:DEFAULT_VOUCHER_TEMPLATES;
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
@@ -5769,7 +5945,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       function ApptRow(a){
         const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
         const hasHistory=(a.rescheduleHistory||[]).length>0;
-        return h(AgendaApptRow,{key:a.id,a,setAgenda,patient,patients,setPatients,procedures,locations});
+        return h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations});
       }
 
       const statsStyle={background:P.bg3,borderRadius:10,padding:"10px 14px",border:`1px solid ${P.border}`,textAlign:"center",flex:"1 1 80px"};
@@ -5803,7 +5979,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             h("div",{style:{width:3,height:14,background:"#7aaed4",borderRadius:2}}),
             "Próximas Consultas"
           ),
-          upcoming.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,patient,patients,setPatients,procedures,locations}))
+          upcoming.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations}))
         ),
         // ── Histórico ──
         h("div",null,
@@ -5813,7 +5989,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           ),
           past.length===0
             ?h("div",{style:{color:P.text3,fontSize:13,padding:"20px 0"}})
-            :past.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,patient,patients,setPatients,procedures,locations}))
+            :past.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations}))
         ),
         patAppts.length===0&&h(Card,{style:{textAlign:"center",padding:40}},
           h("div",{style:{fontSize:32,marginBottom:12}},"📅"),
@@ -11330,6 +11506,10 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav,voucherTe
 function AppInner({ session, onLogout }) {
   const[patientsRaw,setPatients,loadingPatients]=useSupaTable("patients",INIT_PATIENTS);
   const[agendaRaw,setAgenda,loadingAgenda]=useSupaTable("agenda",INIT_AGENDA);
+  // Log de auditoria da agenda: registra criação, edição, reagendamento e exclusão
+  // de agendamentos. Fica separado do array `agenda` para que o histórico sobreviva
+  // mesmo quando um agendamento é excluído (o item sai de `agenda`, mas o rastro fica aqui).
+  const[agendaLogRaw,setAgendaLog]=useSupaTable("agenda_log",[]);
   const[expensesRaw,setExpenses,loadingExpenses]=useSupaTable("expenses",INIT_EXPENSES);
   const[recurringExpensesRaw,setRecurringExpenses,loadingRecurringExpenses]=useSupaTable("recurring_expenses",INIT_RECURRING_EXPENSES);
   const[incomesRaw,setIncomes,loadingIncomes]=useSupaTable("incomes",[]);
@@ -11375,6 +11555,7 @@ function AppInner({ session, onLogout }) {
   // Sobrescreve as variáveis originais — todo código abaixo já fica protegido
   const patients=Array.isArray(patientsRaw)?patientsRaw:[];
   const agenda=Array.isArray(agendaRaw)?agendaRaw:[];
+  const agendaLog=Array.isArray(agendaLogRaw)?agendaLogRaw:[];
   const expenses=Array.isArray(expensesRaw)?expensesRaw:[];
   const recurringExpenses=Array.isArray(recurringExpensesRaw)?recurringExpensesRaw:[];
   const incomes=Array.isArray(incomesRaw)?incomesRaw:[];
@@ -11644,10 +11825,10 @@ function AppInner({ session, onLogout }) {
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,onScheduleReturn:handleScheduleReturn,procedures:procedureNames,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses,products}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn}),
-            page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null)}),
+            page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null)}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
-            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,maquininhas}),
+            page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,setAgendaLog,maquininhas}),
             page==="estoque"&&h(Estoque,{products,setProducts,stockCats,setStockCats}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products,maquininhas,setMaquininhas}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
