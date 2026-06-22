@@ -29,7 +29,21 @@ const icStatusOf=ic=>ic.status||"Em Acompanhamento";
 const icConductsOf=ic=>(ic.conducts&&ic.conducts.length)?ic.conducts:(ic.conduct?[{id:"legacy_c",date:ic.date,text:ic.conduct}]:[]);
 const icEvolutionsOf=ic=>ic.evolutions||[];
 const EXPENSE_CATS=["Aluguel","Marketing","Fornecedores","Produtos","Impostos","Equipamentos","Funcionários","Outros"];
-// Sub-canais de origem quando a paciente veio de Campanha (origem==="campanha")
+// ── Canais de aquisição (como a paciente chegou até a clínica) ─────────────────
+// Usado tanto no cadastro quanto nos relatórios de faturamento.
+const CANAIS_AQUISICAO=[
+  {k:"instagram",    l:"Instagram",              icon:"📸", group:"digital"},
+  {k:"tiktok",       l:"TikTok",                 icon:"🎵", group:"digital"},
+  {k:"google",       l:"Google (busca/maps)",     icon:"🔍", group:"digital"},
+  {k:"site",         l:"Site da Clínica",         icon:"🌐", group:"digital"},
+  {k:"facebook",     l:"Facebook/Meta Ads",       icon:"📘", group:"digital"},
+  {k:"indicacao",    l:"Indicação (boca a boca)", icon:"🤝", group:"relacionamento"},
+  {k:"whatsapp",     l:"WhatsApp",                icon:"💬", group:"relacionamento"},
+  {k:"evento",       l:"Evento / Parceria",       icon:"🎪", group:"relacionamento"},
+  {k:"influencer",   l:"Influencer",              icon:"⭐", group:"relacionamento"},
+  {k:"outro",        l:"Outro",                   icon:"📌", group:"outro"},
+];
+// Sub-canais de campanha paga (usado quando canal inclui anúncio pago)
 const CAMPAIGN_CHANNELS=["Instagram","TikTok","Facebook/Meta Ads","Google Ads","Site","WhatsApp","Indicação Direta (boca a boca)","Influencer/Parceria","Evento","Outro"];
 // Paleta vibrante para cards de KPI com fundo colorido (vouchers, pacotes, estoque, aniversariantes, retornos, dashboard)
 const KPI={
@@ -4178,7 +4192,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   const[filter,setFilter]=useState("all");
   const[showNew,setShowNew]=useState(false);
   const[exportingExcel,setExportingExcel]=useState(false);
-  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active",origem:"nova",indicadoPor:"",canalCampanha:""};
+  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active",origem:"nova",canalAquisicao:"",indicadoPor:"",canalCampanha:""};
   const[form,setForm]=useState(blank);
   async function handleExportExcel(){
     setExportingExcel(true);
@@ -4211,7 +4225,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
     const np={id:Date.now(),...form,age:Number(form.age),profilePhoto:profPhoto,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
       complaints:form.complaints.split(",").map(s=>s.trim()).filter(Boolean),tags:[],
       anamnese:{healthHistory:form.healthHistory,medications:form.medications,smoking:form.smoking,pregnancy:form.pregnancy,previousProcedures:form.previousProcedures,skinType:form.skinType,fitzpatrick:form.fitzpatrick,allergiesDetail:form.allergiesDetail,contraindications:form.contraindications,musicStyle:form.musicStyle,importantAlerts:form.allergies&&form.allergies!=="Nenhuma"?[form.allergies]:[]}};
-    setPatients(prev=>[...prev,{...np,origem:form.origem||"nova",indicadoPor:form.indicadoPor||"",canalCampanha:form.origem==="campanha"?(form.canalCampanha||""):""}]);setShowNew(false);setForm(blank);setProfPhoto(null);
+    setPatients(prev=>[...prev,{...np,origem:form.origem||"nova",canalAquisicao:form.canalAquisicao||"",indicadoPor:form.indicadoPor||"",canalCampanha:form.origem==="campanha"?(form.canalCampanha||form.canalAquisicao||""):""}]);setShowNew(false);setForm(blank);setProfPhoto(null);
   }
   return h("div",null,
     h(SectionHeader,{title:"Pacientes",sub:`${patients.length} pacientes cadastrados`,action:h("div",{style:{display:"flex",gap:8}},
@@ -4281,9 +4295,27 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
         h(Field,{label:"🎵 Estilo Musical",third:true},h(Sel,{value:form.musicStyle,onChange:fv("musicStyle"),options:MUSIC_STYLES})),
         h(Field,{label:"Principais Queixas"},h(TA,{value:form.complaints,onChange:fv("complaints"),placeholder:"Separadas por vírgula",rows:2})),
         h(Field,{label:"Procedimentos Anteriores"},h(TA,{value:form.previousProcedures,onChange:fv("previousProcedures"),placeholder:"Histórico...",rows:2})),
-        h(Field,{label:"Origem da Paciente"},h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},[{k:"nova",l:"🌟 Nova"},{k:"indicacao",l:"🤝 Indicação"},{k:"campanha",l:"📣 Campanha"},{k:"recorrente",l:"🔄 Recorrente"}].map(o=>h("button",{key:o.k,onClick:()=>setForm(p=>({...p,origem:o.k})),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:form.origem===o.k?P.rose:"transparent",border:`1px solid ${form.origem===o.k?P.rose:P.border}`,color:form.origem===o.k?P.accent3:P.text2}},o.l)))),
-        form.origem==="indicacao"&&h(Field,{label:"Indicado(a) por"},h(Inp,{value:form.indicadoPor,onChange:fv("indicadoPor"),placeholder:"Nome de quem indicou"})),
-        form.origem==="campanha"&&h(Field,{label:"Canal da Campanha"},h(Sel,{value:form.canalCampanha||"",onChange:fv("canalCampanha"),options:["",...CAMPAIGN_CHANNELS]}))
+        h(Field,{label:"Como ela chegou até você?"},
+          h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+            CANAIS_AQUISICAO.map(o=>
+              h("button",{key:o.k,onClick:()=>setForm(p=>({...p,canalAquisicao:o.k,origem:"nova",indicadoPor:o.k==="indicacao"?p.indicadoPor:""})),
+                style:{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
+                  background:form.canalAquisicao===o.k?P.rose:"transparent",
+                  border:`1px solid ${form.canalAquisicao===o.k?P.rose:P.border}`,
+                  color:form.canalAquisicao===o.k?P.accent3:P.text2}},
+                o.icon+" "+o.l)
+            )
+          )
+        ),
+        form.canalAquisicao==="indicacao"&&h(Field,{label:"Indicado(a) por"},h(Inp,{value:form.indicadoPor,onChange:fv("indicadoPor"),placeholder:"Nome de quem indicou"})),
+        form.canalAquisicao&&h(Field,{label:"Veio por anúncio pago? (campanha)"},
+          h("label",{style:{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:P.text2}},
+            h("input",{type:"checkbox",checked:form.origem==="campanha",
+              onChange:e=>setForm(p=>({...p,origem:e.target.checked?"campanha":"nova"})),
+              style:{width:15,height:15,accentColor:P.rose,cursor:"pointer"}}),
+            "Sim, veio de um anúncio pago"
+          )
+        ),
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},
         h(Btn,{variant:"ghost",onClick:()=>setShowNew(false)},"Cancelar"),
@@ -4616,7 +4648,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       return{...p,items,value:total>0?String(total):""};
     });
   }
-  const[patForm,setPatForm]=useState({...patient,...patient.anamnese,complaints:(patient.complaints||[]).join(", "),origem:patient.origem||"nova",indicadoPor:patient.indicadoPor||"",canalCampanha:patient.canalCampanha||""});
+  const[patForm,setPatForm]=useState({...patient,...patient.anamnese,complaints:(patient.complaints||[]).join(", "),origem:patient.origem||"nova",canalAquisicao:patient.canalAquisicao||"",indicadoPor:patient.indicadoPor||"",canalCampanha:patient.canalCampanha||""});
   const pfv=k=>v=>setPatForm(p=>({...p,[k]:v}));
   const blankIc={type:"Edema",severity:"Leve",status:"Em Acompanhamento",procedure:"",product:"",region:"",procedureDate:"",date:todayISO(),notes:"",conduct:"",nextReavaliacao:"",sessId:null,_photoFiles:[]};
   const[icForm,setIcForm]=useState(blankIc);
@@ -4661,8 +4693,9 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   function savePat(){
     upd(p=>({...p,...patForm,age:Number(patForm.age),
       origem:patForm.origem||p.origem||"nova",
-      indicadoPor:patForm.origem==="indicacao"?(patForm.indicadoPor||""):(patForm.indicadoPor||""),
-      canalCampanha:patForm.origem==="campanha"?(patForm.canalCampanha||""):"",
+      canalAquisicao:patForm.canalAquisicao||p.canalAquisicao||"",
+      indicadoPor:patForm.indicadoPor||"",
+      canalCampanha:patForm.origem==="campanha"?(patForm.canalCampanha||patForm.canalAquisicao||""):"",
       complaints:patForm.complaints.split(",").map(s=>s.trim()).filter(Boolean),
       anamnese:{...p.anamnese,healthHistory:patForm.healthHistory,medications:patForm.medications,smoking:patForm.smoking,pregnancy:patForm.pregnancy,previousProcedures:patForm.previousProcedures,skinType:patForm.skinType,fitzpatrick:patForm.fitzpatrick,allergiesDetail:patForm.allergiesDetail,contraindications:patForm.contraindications,musicStyle:patForm.musicStyle,importantAlerts:patForm.allergies&&patForm.allergies!=="Nenhuma"?[patForm.allergies]:[]}}));
     setEditPat(false);
@@ -4956,7 +4989,14 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             patient.phone&&h("span",{style:{fontSize:12,color:P.text3}},"📞 "+patient.phone),
             patient.email&&h("span",{style:{fontSize:12,color:P.text3}},"✉ "+patient.email),
             patient.cpf&&h("span",{style:{fontSize:12,color:P.text3}},"CPF "+patient.cpf),
-            patient.origem&&h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(157,119,97,.12)",color:P.accent,border:"1px solid rgba(157,119,97,.2)"}},(()=>({nova:"🌟 Nova",indicacao:"🤝 Indicação",campanha:"📣 Campanha"+(patient.canalCampanha?" — "+patient.canalCampanha:""),recorrente:"🔄 Recorrente"})[patient.origem]||patient.origem)()),
+            (patient.canalAquisicao||patient.origem)&&(()=>{
+              const canal=CANAIS_AQUISICAO.find(c=>c.k===(patient.canalAquisicao||""));
+              const isCampanha=patient.origem==="campanha";
+              const label=canal?(canal.icon+" "+canal.l):(patient.origem==="indicacao"?"🤝 Indicação":patient.origem==="nova"?"🌟 Nova":"🔄 Recorrente");
+              return h("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(157,119,97,.12)",color:P.accent,border:"1px solid rgba(157,119,97,.2)"}},
+                label+(isCampanha?" · 📣 Campanha":"")+(patient.indicadoPor?" → "+patient.indicadoPor:"")
+              );
+            })(),
             // Badge automático de recorrente: ≥ 2 sessões realizadas e origem ainda não marcada como recorrente
             (patient.sessions||[]).length>=2&&patient.origem!=="recorrente"&&h("span",{title:"Esta paciente já realizou "+(patient.sessions||[]).length+" sessões — considere marcá-la como Recorrente ao editar.",style:{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(122,174,212,.12)",color:"#7aaed4",border:"1px solid rgba(122,174,212,.25)",cursor:"default"}},"🔁 "+((patient.sessions||[]).length)+"ª visita"),
             patient.indicadoPor&&h("span",{style:{fontSize:12,color:P.text3}},"Ind. por: "+patient.indicadoPor)
@@ -6029,15 +6069,27 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Field,{label:"Gestante",third:true},h(Sel,{value:patForm.pregnancy||"Não",onChange:pfv("pregnancy"),options:["Não","Gestante","Lactante"]})),
         h(Field,{label:"🎵 Estilo Musical",third:true},h(Sel,{value:patForm.musicStyle||"Pop",onChange:pfv("musicStyle"),options:MUSIC_STYLES})),
         h(Field,{label:"Próx. Retorno"},h(Inp,{value:patForm.nextReturn||"",onChange:pfv("nextReturn"),placeholder:"DD/MM/AAAA"})),
-        h(Field,{label:"Origem da Paciente"},
+        h(Field,{label:"Como ela chegou até você?"},
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-            [{k:"nova",l:"🌟 Nova"},{k:"indicacao",l:"🤝 Indicação"},{k:"campanha",l:"📣 Campanha"},{k:"recorrente",l:"🔄 Recorrente"}].map(o=>
-              h("button",{key:o.k,onClick:()=>pfv("origem")(o.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:(patForm.origem||"nova")===o.k?P.rose:"transparent",border:`1px solid ${(patForm.origem||"nova")===o.k?P.rose:P.border}`,color:(patForm.origem||"nova")===o.k?P.accent3:P.text2}},o.l)
+            CANAIS_AQUISICAO.map(o=>
+              h("button",{key:o.k,onClick:()=>pfv("canalAquisicao")(o.k),
+                style:{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
+                  background:(patForm.canalAquisicao||"")===o.k?P.rose:"transparent",
+                  border:`1px solid ${(patForm.canalAquisicao||"")===o.k?P.rose:P.border}`,
+                  color:(patForm.canalAquisicao||"")===o.k?P.accent3:P.text2}},
+                o.icon+" "+o.l)
             )
           )
         ),
-        patForm.origem==="indicacao"&&h(Field,{label:"Indicado(a) por"},h(Inp,{value:patForm.indicadoPor||"",onChange:pfv("indicadoPor"),placeholder:"Nome de quem indicou"})),
-        patForm.origem==="campanha"&&h(Field,{label:"Canal da Campanha"},h(Sel,{value:patForm.canalCampanha||"",onChange:pfv("canalCampanha"),options:["",...CAMPAIGN_CHANNELS]}))
+        patForm.canalAquisicao==="indicacao"&&h(Field,{label:"Indicado(a) por"},h(Inp,{value:patForm.indicadoPor||"",onChange:pfv("indicadoPor"),placeholder:"Nome de quem indicou"})),
+        patForm.canalAquisicao&&h(Field,{label:"Veio por anúncio pago? (campanha)"},
+          h("label",{style:{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:P.text2}},
+            h("input",{type:"checkbox",checked:(patForm.origem||"nova")==="campanha",
+              onChange:e=>pfv("origem")(e.target.checked?"campanha":"nova"),
+              style:{width:15,height:15,accentColor:P.rose,cursor:"pointer"}}),
+            "Sim, veio de um anúncio pago"
+          )
+        ),
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},h(Btn,{variant:"ghost",onClick:()=>setEditPat(false)},"Cancelar"),h(Btn,{onClick:savePat},"Salvar Alterações"))
     ),
@@ -8590,36 +8642,59 @@ function DonutChart({catList,totalCat}){
 function OrigemFaturamento({patients,selMonth,selYear,parseDMY2}){
   const h=createElement;
   const safePats=Array.isArray(patients)?patients.filter(Boolean):[];
-  const allS=safePats.flatMap(p=>(Array.isArray(p.sessions)?p.sessions:[]).filter(Boolean).map(s=>({...s,value:Number(s.value)||0,origem:p.origem||"nova",indicadoPor:p.indicadoPor||"",canalCampanha:p.canalCampanha||"",pname:p.name,pid:p.id,since:p.since})));
+  const allS=safePats.flatMap(p=>(Array.isArray(p.sessions)?p.sessions:[]).filter(Boolean).map(s=>({...s,value:Number(s.value)||0,
+    origem:p.origem||"nova",
+    canalAquisicao:p.canalAquisicao||"",
+    indicadoPor:p.indicadoPor||"",
+    canalCampanha:p.canalCampanha||"",
+    pname:p.name,pid:p.id,
+    sessCount:(p.sessions||[]).length,
+  })));
   const monthS=allS.filter(s=>{try{const d=parseDMY2(s.date);return d&&d.getMonth()===selMonth&&d.getFullYear()===selYear&&s.paid;}catch{return false;}});
   const total=monthS.reduce((a,s)=>a+s.value,0)||1;
 
-  // Classifica sessão por origem da paciente + se é recorrente no mês
-  const patSessionsThisMonth={};
-  monthS.forEach(s=>{if(!patSessionsThisMonth[s.pid])patSessionsThisMonth[s.pid]=[];patSessionsThisMonth[s.pid].push(s);});
+  // ── Agrupamento por Canal de Aquisição ──────────────────────────────────────
+  const canalMap={};
+  const campMap={};   // faturamento de sessões de pacientes vindas de campanha paga
+  let totalRecorrente=0;
 
-  const groups={nova:0,recorrente:0,indicacao:0,campanha:0};
+  // Para saber se paciente é recorrente no contexto geral (>1 sessão paga em qualquer momento)
+  const patAllPaidSessions={};
+  allS.filter(s=>s.paid).forEach(s=>{patAllPaidSessions[s.pid]=(patAllPaidSessions[s.pid]||0)+1;});
+
   monthS.forEach(s=>{
-    const orig=s.origem||"nova";
-    if(orig==="indicacao")groups.indicacao+=s.value;
-    else if(orig==="campanha")groups.campanha+=s.value;
-    else if(patSessionsThisMonth[s.pid]&&allS.filter(x=>x.pid===s.pid&&x.paid).length>1)groups.recorrente+=s.value;
-    else groups.nova+=s.value;
+    const isRecorrente=patAllPaidSessions[s.pid]>1;
+    if(isRecorrente){
+      totalRecorrente+=s.value;
+      return; // recorrente tem categoria própria, independente do canal de aquisição
+    }
+    const canal=s.canalAquisicao||"outro";
+    canalMap[canal]=(canalMap[canal]||0)+s.value;
+    if(s.origem==="campanha"){
+      const ch=s.canalAquisicao||s.canalCampanha||"outro";
+      campMap[ch]=(campMap[ch]||0)+s.value;
+    }
   });
 
-  const cats=[
-    {k:"nova",l:"Novas Pacientes",icon:"🌟",color:"#9b7aad",bg:"rgba(155,122,173,.12)"},
-    {k:"recorrente",l:"Recorrentes",icon:"🔄",color:P.green,bg:"rgba(122,173,138,.12)"},
-    {k:"indicacao",l:"Indicações",icon:"🤝",color:"#7aaed4",bg:"rgba(122,174,212,.12)"},
-    {k:"campanha",l:"Campanhas",icon:"📣",color:P.yellow,bg:"rgba(196,169,106,.12)"},
+  const totalCampanha=Object.values(campMap).reduce((a,v)=>a+v,0);
+  const totalNovo=Object.values(canalMap).reduce((a,v)=>a+v,0);
+
+  const summaryCards=[
+    {k:"recorrente", l:"Recorrentes",       icon:"🔄", color:P.green,    bg:"rgba(122,173,138,.12)", val:totalRecorrente},
+    {k:"novo",       l:"Novas Pacientes",    icon:"🌟", color:"#9b7aad",  bg:"rgba(155,122,173,.12)", val:totalNovo},
+    {k:"campanha",   l:"Via Campanha Paga",  icon:"📣", color:P.yellow,   bg:"rgba(196,169,106,.12)", val:totalCampanha},
   ];
 
-  const indicacoes=safePats.filter(p=>p.origem==="indicacao"&&p.indicadoPor);
-  // Quebra de Campanha por sub-canal (Instagram, Google Ads etc.)
-  const campMap={};
-  monthS.filter(s=>s.origem==="campanha").forEach(s=>{const ch=s.canalCampanha||"Não informado";campMap[ch]=(campMap[ch]||0)+s.value;});
-  const campChannels=Object.entries(campMap).sort((a,b)=>b[1]-a[1]);
-  const totalCamp=campChannels.reduce((a,[,v])=>a+v,0)||1;
+  // Ordena canais por valor
+  const canalList=CANAIS_AQUISICAO
+    .map(c=>({...c,val:canalMap[c.k]||0}))
+    .filter(c=>c.val>0)
+    .sort((a,b)=>b.val-a.val);
+
+  const campList=Object.entries(campMap).sort((a,b)=>b[1]-a[1]);
+  const totalCamp=campList.reduce((a,[,v])=>a+v,0)||1;
+
+  const indicacoes=safePats.filter(p=>p.canalAquisicao==="indicacao"&&p.indicadoPor);
 
   if(monthS.length===0)return null;
   return h(Card,{style:{marginBottom:22,border:"1px solid rgba(157,119,97,.3)"}},
@@ -8627,27 +8702,48 @@ function OrigemFaturamento({patients,selMonth,selYear,parseDMY2}){
       h("span",{style:{fontSize:20}},"📊"),
       h("div",null,
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Origem do Faturamento"),
-        h("div",{style:{fontSize:12,color:P.text3,marginTop:1}},"Distribuição por origem das pacientes")
+        h("div",{style:{fontSize:12,color:P.text3,marginTop:1}},"Canal de aquisição das pacientes · novas vs recorrentes")
       )
     ),
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12,marginBottom:16}},
-      cats.map(cat=>h("div",{key:cat.k,style:{padding:"14px",borderRadius:10,background:cat.bg,border:"1px solid "+cat.color+"33"}},
-        h("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:8}},
-          h("span",{style:{fontSize:18}},cat.icon),
-          h("span",{style:{fontSize:12,color:P.text2,fontWeight:500}},cat.l)
+    // Cards de resumo (recorrentes / novas / campanha)
+    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:18}},
+      summaryCards.map(cat=>h("div",{key:cat.k,style:{padding:"12px",borderRadius:10,background:cat.bg,border:"1px solid "+cat.color+"33"}},
+        h("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:6}},
+          h("span",{style:{fontSize:16}},cat.icon),
+          h("span",{style:{fontSize:11,color:P.text2,fontWeight:500}},cat.l)
         ),
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:cat.color,lineHeight:1}},
-          "R$"+(groups[cat.k]||0).toLocaleString("pt-BR")
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:cat.color,lineHeight:1}},
+          "R$"+(cat.val).toLocaleString("pt-BR")
         ),
-        h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},
-          Math.round(((groups[cat.k]||0)/total)*100)+"% do faturamento"
+        h("div",{style:{fontSize:11,color:P.text3,marginTop:3}},
+          Math.round((cat.val/total)*100)+"% do faturamento"
         ),
-        h("div",{style:{height:4,borderRadius:2,background:"rgba(255,255,255,.08)",overflow:"hidden",marginTop:8}},
-          h("div",{style:{height:"100%",width:Math.round(((groups[cat.k]||0)/total)*100)+"%",background:cat.color,borderRadius:2,transition:"width .4s"}})
+        h("div",{style:{height:3,borderRadius:2,background:"rgba(255,255,255,.08)",overflow:"hidden",marginTop:8}},
+          h("div",{style:{height:"100%",width:Math.round((cat.val/total)*100)+"%",background:cat.color,borderRadius:2,transition:"width .4s"}})
         )
       ))
     ),
-    indicacoes.length>0&&h("div",{style:{marginBottom:campChannels.length>0?16:0}},
+    // Breakdown por canal de aquisição (apenas novas)
+    canalList.length>0&&h("div",{style:{marginBottom:16}},
+      h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10,fontWeight:600}},"📡 Faturamento por Canal de Aquisição (novas pacientes)"),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+        canalList.map(c=>{
+          const pct=Math.round((c.val/totalNovo||1)*100);
+          const isCamp=!!(campMap[c.k]);
+          return h("div",{key:c.k},
+            h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text2,marginBottom:4}},
+              h("span",null,c.icon," ",c.l,isCamp&&h("span",{style:{fontSize:10,marginLeft:6,padding:"1px 6px",borderRadius:8,background:"rgba(196,169,106,.15)",color:P.yellow}},"📣 incl. anúncio")),
+              h("span",{style:{color:P.accent,fontWeight:600}},fmtCurr(c.val)+" · "+pct+"%")
+            ),
+            h("div",{style:{height:4,borderRadius:2,background:P.bg3,overflow:"hidden"}},
+              h("div",{style:{height:"100%",width:pct+"%",background:P.accent,borderRadius:2}})
+            )
+          );
+        })
+      )
+    ),
+    // Indicações
+    indicacoes.length>0&&h("div",{style:{marginBottom:14}},
       h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,fontWeight:600}},"🤝 Pacientes por Indicação"),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
         indicacoes.map(p=>h("div",{key:p.id,style:{fontSize:12,padding:"4px 10px",borderRadius:20,background:"rgba(122,174,212,.1)",border:"1px solid rgba(122,174,212,.2)",color:"#7aaed4"}},
@@ -8655,14 +8751,16 @@ function OrigemFaturamento({patients,selMonth,selYear,parseDMY2}){
         ))
       )
     ),
-    campChannels.length>0&&h("div",null,
-      h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,fontWeight:600}},"📣 Campanha por Canal"),
+    // Detalhe de campanha paga por canal
+    campList.length>0&&h("div",null,
+      h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8,fontWeight:600}},"📣 Campanhas Pagas por Canal"),
       h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-        campChannels.map(([ch,val])=>{
+        campList.map(([ch,val])=>{
+          const c=CANAIS_AQUISICAO.find(x=>x.k===ch);
           const pct=Math.round((val/totalCamp)*100);
           return h("div",{key:ch},
             h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text2,marginBottom:4}},
-              h("span",null,ch),
+              h("span",null,(c?.icon||"📌")," ",(c?.l||ch)),
               h("span",{style:{color:P.yellow,fontWeight:600}},fmtCurr(val)+" · "+pct+"%")
             ),
             h("div",{style:{height:4,borderRadius:2,background:P.bg3,overflow:"hidden"}},
@@ -9444,6 +9542,12 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
       // Reaproveita patient.origem (já usado em "Origem do Faturamento") e o sub-canal de Campanha.
       const origemLabel=o=>{
         const pat=o.pat||{};
+        const canal=CANAIS_AQUISICAO.find(c=>c.k===(pat.canalAquisicao||""));
+        if(canal){
+          const isCamp=pat.origem==="campanha";
+          return canal.icon+" "+canal.l+(isCamp?" (Campanha)":"");
+        }
+        // fallback para dados antigos sem canalAquisicao
         const orig=pat.origem||"nova";
         if(orig==="campanha")return"📣 Campanha"+(pat.canalCampanha?" — "+pat.canalCampanha:" — Não informado");
         if(orig==="indicacao")return"🤝 Indicação";
