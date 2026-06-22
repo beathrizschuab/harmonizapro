@@ -150,6 +150,27 @@ function NavIcon({name,size=17}){
   };
   return icons[name]||null;
 }
+function TabIcon({name,size=15}){
+  const h=createElement;
+  const c={width:size,height:size,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:1.7,strokeLinecap:"round",strokeLinejoin:"round"};
+  const icons={
+    prontuario:h("svg",c,h("rect",{x:5,y:4,width:14,height:17,rx:2}),h("rect",{x:9,y:2,width:6,height:3,rx:1}),h("line",{x1:8,y1:10,x2:16,y2:10}),h("line",{x1:8,y1:14,x2:16,y2:14})),
+    fichaRapida:h("svg",c,h("path",{d:"M13 3L5 13h5l-1 8l8-10h-5Z"})),
+    agendaPaciente:h("svg",c,h("rect",{x:3,y:5,width:18,height:16,rx:2}),h("line",{x1:3,y1:10,x2:21,y2:10}),h("line",{x1:8,y1:3,x2:8,y2:7}),h("line",{x1:16,y1:3,x2:16,y2:7})),
+    orcamentos:h("svg",c,h("rect",{x:3,y:7,width:18,height:13,rx:2}),h("path",{d:"M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"}),h("line",{x1:3,y1:13,x2:21,y2:13})),
+    mapa:h("svg",c,h("path",{d:"M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12Z"}),h("circle",{cx:12,cy:9,r:2})),
+    intercorrencias:h("svg",c,h("path",{d:"M12 3L22 20H2Z"}),h("line",{x1:12,y1:9,x2:12,y2:14}),h("circle",{cx:12,cy:17,r:0.9,fill:"currentColor",stroke:"none"})),
+    planejamento:h("svg",c,h("circle",{cx:12,cy:12,r:9}),h("circle",{cx:12,cy:12,r:5}),h("circle",{cx:12,cy:12,r:1.1,fill:"currentColor",stroke:"none"})),
+    anamnese:h("svg",c,h("rect",{x:5,y:3,width:14,height:18,rx:2}),h("line",{x1:8,y1:8,x2:16,y2:8}),h("line",{x1:8,y1:12,x2:16,y2:12}),h("line",{x1:8,y1:16,x2:13,y2:16})),
+    galeria:h("svg",c,h("rect",{x:3,y:4,width:18,height:16,rx:2}),h("circle",{cx:8.5,cy:9.5,r:1.5,fill:"currentColor",stroke:"none"}),h("path",{d:"M21 16l-5.5-5.5-4 4-3-3L3 17"})),
+    docs:h("svg",c,h("path",{d:"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"}),h("path",{d:"M14 2v6h6"})),
+    pacotes:h("svg",c,h("path",{d:"M21 8L12 3L3 8v8l9 5l9-5Z"}),h("path",{d:"M3 8l9 5l9-5"}),h("line",{x1:12,y1:13,x2:12,y2:21})),
+    financeiro:h("svg",c,h("rect",{x:2,y:6,width:20,height:12,rx:2}),h("circle",{cx:12,cy:12,r:3})),
+    skincare:h("svg",c,h("path",{d:"M12 2C12 2 5.5 10.5 5.5 15.5a6.5 6.5 0 0 0 13 0C18.5 10.5 12 2 12 2Z"})),
+    indicacoes:h("svg",c,h("circle",{cx:8,cy:12,r:3}),h("circle",{cx:16,cy:12,r:3}),h("line",{x1:11,y1:12,x2:13,y2:12})),
+  };
+  return icons[name]||null;
+}
 const ZONE_DEFS={
   botox:[
     {k:"frontal_c",label:"Frontal",cx:130,cy:56,r:22},{k:"sorrisoGeng_c",label:"Sorr. Gengival",cx:130,cy:73,r:10},{k:"glabela_c",label:"Glabela",cx:130,cy:95,r:14},
@@ -1449,8 +1470,12 @@ function Field({label,children,half,third}){
     createElement("label",{style:{display:"block",fontSize:10,textTransform:"uppercase",letterSpacing:".12em",color:P.text3,marginBottom:6,fontWeight:500}},label),children);
 }
 function TabBar({tabs,active,onChange}){
-  return createElement("div",{style:{display:"flex",gap:2,marginBottom:20,background:P.bg2,padding:4,borderRadius:10,border:`1px solid ${P.border}`,width:"fit-content",flexWrap:"wrap"}},
-    tabs.map(t=>createElement("button",{key:t.k,onClick:()=>onChange(t.k),style:{padding:"7px 14px",borderRadius:7,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:"none",transition:"all .15s",background:active===t.k?P.rose:"transparent",color:active===t.k?P.accent3:P.text3}},t.l)));
+  const h=createElement;
+  return h("div",{style:{display:"flex",gap:2,marginBottom:20,background:P.bg2,padding:4,borderRadius:10,border:`1px solid ${P.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch"}},
+    tabs.map(t=>h("button",{key:t.k,onClick:()=>onChange(t.k),style:{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:7,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:"none",transition:"all .15s",background:active===t.k?P.rose:"transparent",color:active===t.k?P.accent3:P.text3,whiteSpace:"nowrap",flexShrink:0}},
+      t.icon&&h(TabIcon,{name:t.icon,size:15}),
+      t.l
+    )));
 }
 function SectionHeader({title,sub,action}){
   return createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}},
@@ -4583,7 +4608,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const icfv=k=>v=>setIcForm(p=>({...p,[k]:v}));
   const[planForm,setPlanForm]=useState({title:"",steps:"",notes:""});
   const totalSpent=(patient.sessions||[]).reduce((a,s)=>a+s.value,0);
-  const tabs=[{k:"prontuario",l:"📋 Prontuário"},{k:"fichaRapida",l:"⚡ Ficha Rápida"},{k:"agendaPaciente",l:"📅 Agenda"},{k:"orcamentos",l:"💼 Orçamentos"},{k:"mapa",l:"🗺 Mapa"},{k:"intercorrencias",l:"⚠ Intercorr."},{k:"planejamento",l:"🎯 Planejamento"},{k:"anamnese",l:"📄 Anamnese"},{k:"galeria",l:"🖼 Fotos"},{k:"docs",l:"📎 Docs"},{k:"pacotes",l:"📦 Pacotes"},{k:"financeiro",l:"💰 Financeiro"},{k:"skincare",l:"🧴 Skincare"},{k:"indicacoes",l:"🤝 Indicações"}];
+  const tabs=[{k:"prontuario",l:"Prontuário",icon:"prontuario"},{k:"fichaRapida",l:"Ficha Rápida",icon:"fichaRapida"},{k:"agendaPaciente",l:"Agenda",icon:"agendaPaciente"},{k:"orcamentos",l:"Orçamentos",icon:"orcamentos"},{k:"mapa",l:"Mapa",icon:"mapa"},{k:"intercorrencias",l:"Intercorr.",icon:"intercorrencias"},{k:"planejamento",l:"Planejamento",icon:"planejamento"},{k:"anamnese",l:"Anamnese",icon:"anamnese"},{k:"galeria",l:"Fotos",icon:"galeria"},{k:"docs",l:"Docs",icon:"docs"},{k:"pacotes",l:"Pacotes",icon:"pacotes"},{k:"financeiro",l:"Financeiro",icon:"financeiro"},{k:"skincare",l:"Skincare",icon:"skincare"},{k:"indicacoes",l:"Indicações",icon:"indicacoes"}];
   function upd(fn){setPatients(prev=>prev.map(p=>p.id===patient.id?fn(p):p));}
   // Sincroniza sessão → incomes (fonte única de verdade)
   function syncIncome(sess,patName){
