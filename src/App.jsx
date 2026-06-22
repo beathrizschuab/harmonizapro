@@ -7541,60 +7541,111 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
         h("div",{style:{marginBottom:10}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},h("div",null,h("div",{style:{fontSize:11,color:P.text3}},"🔄 Sessões auto-sincronizadas do prontuário"),h("div",{style:{fontSize:10,color:P.text3,marginTop:1}},filteredSessions.length+" resultado(s)")),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.green}},fmtCurr(filteredSessions.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0))))),
         filteredSessions.length===0&&h("div",{style:{textAlign:"center",color:P.text3,fontSize:12,padding:"10px 0"}},"Nenhuma sessão no período"),
         filteredSessions.slice().sort((a,b)=>(parseAnyDate(b.date)||0)-(parseAnyDate(a.date)||0)).map((s,i)=>{
-          // Calcula o que de fato cai na conta no mês selecionado para esta sessão
           const pm=s.payMethod||"";
-          const isCard=pm==="Cartão Crédito"||pm==="Cartão Débito";
-          const depositsMes=(isCard&&s.maqDeposits)?s.maqDeposits.filter(dep=>{
+          const isCredito=pm==="Cartão Crédito";
+          const isDebito=pm==="Cartão Débito";
+          const isCard=isCredito||isDebito;
+          const nParc=isCredito?Math.max(1,Number(s.parcelas)||1):1;
+          const valorParc=nParc>1?Number(s.value||0)/nParc:0;
+
+          // Resolve cronograma: usa maqDeposits se existir, senão estima (D+30 por parcela)
+          let deposits=s.maqDeposits&&s.maqDeposits.length>0?s.maqDeposits:null;
+          if(!deposits&&isCard&&nParc>=1){
+            const baseISO=(()=>{
+              const d=parseAnyDate(s.date);
+              return d?d.toISOString().slice(0,10):null;
+            })();
+            if(baseISO){
+              deposits=Array.from({length:nParc},(_,idx)=>({
+                n:idx+1,
+                valor:Number(s.value||0)/nParc,
+                liquido:Number(s.netValue&&s.netValue>0?s.netValue:s.value||0)/nParc,
+                data:addMonthsISO(baseISO,idx),
+                estimado:true,
+              }));
+            }
+          }
+
+          const isAntec=deposits&&deposits[0]?.antecipado;
+          const showSchedule=isCard&&deposits&&deposits.length>1&&!isAntec;
+
+          // Depósitos que caem no mês selecionado
+          const depositsMes=(deposits||[]).filter(dep=>{
             if(!dep.data)return false;
             const dt=new Date(dep.data+"T12:00:00");
             return dt.getMonth()===selMonth&&dt.getFullYear()===selYear;
-          }):[];
-          const valorCaixaMes=isCard&&s.maqDeposits&&s.maqDeposits.length>0
-            ?depositsMes.reduce((a,dep)=>a+Number(dep.liquido||dep.valor||0),0)
-            :(s.paid?Number(s.value||0):0);
-          const hasDepositThisMes=isCard&&depositsMes.length>0;
-          const hasDepositFuture=isCard&&s.maqDeposits&&s.maqDeposits.some(dep=>{
+          });
+          const depositsFuturos=(deposits||[]).filter(dep=>{
             if(!dep.data)return false;
             const dt=new Date(dep.data+"T12:00:00");
-            return dt.getMonth()!==selMonth||dt.getFullYear()!==selYear;
+            return dt>new Date();
           });
-          return h("div",{key:i,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
-            h("div",{style:{flex:1,minWidth:0}},
-              h("div",{style:{fontSize:13,color:P.text}},`${s.pname} — ${s.procedure}`),
-              h("div",{style:{fontSize:11,color:P.text3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}},
-                `${s.date} · ${s.payMethod}`,
-                s.payMethod==="Cartão Crédito"&&s.parcelas>1&&h("span",null,`· ${s.parcelas}x`),
-                s.maqDeposits&&s.maqDeposits[0]?.antecipado&&h("span",{style:{color:P.green,fontWeight:600}},"💨 Antecipado"),
-                // Mostra quais parcelas caem neste mês
-                hasDepositThisMes&&depositsMes.length>0&&h("span",{style:{fontSize:10,padding:"1px 7px",borderRadius:10,background:"rgba(122,173,138,.15)",color:P.green,fontWeight:600}},
-                  depositsMes.length===1
-                    ?`💳 dep. ${fmtDateShort(depositsMes[0].data)}`
-                    :`💳 ${depositsMes.length} dep. neste mês`
-                ),
-                hasDepositFuture&&h("span",{style:{fontSize:10,color:P.text3}},
-                  `· ${(s.maqDeposits||[]).filter(dep=>{if(!dep.data)return false;const dt=new Date(dep.data+"T12:00:00");return!(dt.getMonth()===selMonth&&dt.getFullYear()===selYear);}).length} dep. em meses futuros`
+
+          // Valor que efetivamente entra na conta neste mês
+          let valorCaixaMes=0;
+          if(isCard&&deposits){
+            valorCaixaMes=depositsMes.reduce((a,dep)=>a+Number(dep.liquido||dep.valor||0),0);
+          } else if(s.paid){
+            const dt=parseAnyDate(s.date);
+            if(dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear){
+              valorCaixaMes=Number(s.netValue&&s.netValue>0?s.netValue:s.value||0);
+            }
+          }
+
+          return h("div",{key:i,style:{padding:"10px 0",borderBottom:`1px solid ${P.border}`}},
+            h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}},
+              // ── Lado esquerdo: info da sessão
+              h("div",{style:{flex:1,minWidth:0}},
+                h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},`${s.pname} — ${s.procLabel||s.procedure}`),
+                h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginTop:3,alignItems:"center"}},
+                  h("span",{style:{fontSize:11,color:P.text3}},s.date),
+                  h("span",{style:{fontSize:11,color:P.text2}},"· "+pm),
+                  isCredito&&nParc>1&&h("span",{style:{fontSize:11,padding:"1px 8px",borderRadius:20,background:"rgba(122,174,212,.15)",color:"#7aaed4",fontWeight:600}},`${nParc}x de ${fmtCurr(valorParc)}`),
+                  isAntec&&h("span",{style:{fontSize:11,color:P.green,fontWeight:600}},"💨 Antecipado"),
+                  // Badge: depósito(s) neste mês
+                  isCard&&depositsMes.length>0&&h("span",{style:{fontSize:10,padding:"1px 8px",borderRadius:20,background:"rgba(122,173,138,.18)",color:P.green,fontWeight:700,border:`1px solid ${P.green}33`}},
+                    depositsMes.length===1
+                      ?`💳 dep. ${fmtDateShort(depositsMes[0].data)}`
+                      :`💳 ${depositsMes.length} dep. neste mês`
+                  ),
+                  isCard&&deposits&&depositsMes.length===0&&s.paid&&h("span",{style:{fontSize:10,color:P.text3}},"sem dep. neste mês"),
                 )
               ),
-              // Mini-cronograma dos depósitos quando parcelado em cartão
-              isCard&&s.maqDeposits&&s.maqDeposits.length>1&&!s.maqDeposits[0]?.antecipado&&h("div",{style:{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}},
-                s.maqDeposits.map((dep,di)=>{
-                  const dt=dep.data?new Date(dep.data+"T12:00:00"):null;
-                  const isMes=dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear;
-                  return h("span",{key:di,title:`Depósito ${dep.n}: ${fmtDateShort(dep.data)} — ${fmtCurr(dep.liquido||dep.valor||0)}`,style:{fontSize:9,padding:"1px 6px",borderRadius:8,background:isMes?"rgba(122,173,138,.2)":"rgba(200,200,200,.1)",color:isMes?P.green:P.text3,border:`1px solid ${isMes?P.green+"44":P.border}`,fontWeight:isMes?700:400,cursor:"default"}},
-                    isMes?"★ "+fmtDateShort(dep.data):fmtDateShort(dep.data)
-                  );
-                })
+              // ── Lado direito: valores e status
+              h("div",{style:{display:"flex",alignItems:"center",gap:8,flexShrink:0}},
+                h("div",{style:{textAlign:"right"}},
+                  h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:s.paid?P.green:P.yellow}},fmtCurr(s.value)),
+                  // O que entra na conta este mês
+                  isCard&&deposits&&h("div",{style:{fontSize:10,color:valorCaixaMes>0?P.green:P.text3,fontWeight:valorCaixaMes>0?700:400}},
+                    valorCaixaMes>0?`↓ ${fmtCurr(valorCaixaMes)} este mês`:"↓ R$0 este mês"
+                  ),
+                  // Parcelas futuras
+                  depositsFuturos.length>0&&h("div",{style:{fontSize:10,color:P.yellow}},
+                    `⏳ ${depositsFuturos.length}x a receber`
+                  )
+                ),
+                h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.pid,s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
               )
             ),
-            h("div",{style:{display:"flex",alignItems:"center",gap:8,flexShrink:0}},
-              h("div",{style:{textAlign:"right"}},
-                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:s.paid?P.green:P.yellow}},fmtCurr(s.value)),
-                isCard&&s.parcelas>1&&h("div",{style:{fontSize:10,color:P.accent,fontWeight:600}},`${s.parcelas}x ${fmtCurr(s.value/s.parcelas)}`),
-                // Destaque do que entra na conta NESTE mês
-                isCard&&s.maqDeposits&&s.maqDeposits.length>0&&valorCaixaMes>0&&h("div",{style:{fontSize:10,color:P.green,fontWeight:700}},`↓ ${fmtCurr(valorCaixaMes)} este mês`),
-                isCard&&s.maqDeposits&&s.maqDeposits.length>0&&valorCaixaMes===0&&s.paid&&h("div",{style:{fontSize:10,color:P.text3}},`↓ R$0 este mês`)
-              ),
-              h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.pid,s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
+            // ── Cronograma de depósitos (bolinhas com ★)
+            showSchedule&&h("div",{style:{display:"flex",gap:4,marginTop:6,flexWrap:"wrap"}},
+              deposits.map((dep,di)=>{
+                const dt=dep.data?new Date(dep.data+"T12:00:00"):null;
+                const isMes=dt&&dt.getMonth()===selMonth&&dt.getFullYear()===selYear;
+                const isFeito=dt&&dt<=new Date()&&!isMes;
+                return h("span",{key:di,
+                  title:`Parcela ${dep.n||di+1}: ${fmtDateShort(dep.data)} — ${fmtCurr(dep.liquido||dep.valor||0)}${dep.estimado?" (estimado)":" "}`,
+                  style:{
+                    fontSize:10,padding:"2px 8px",borderRadius:20,cursor:"default",whiteSpace:"nowrap",
+                    background:isMes?"rgba(122,173,138,.22)":isFeito?"rgba(122,173,138,.1)":"rgba(200,200,200,.08)",
+                    color:isMes?P.green:isFeito?"#7aad8a":P.text3,
+                    border:`1px solid ${isMes?P.green+"55":isFeito?P.green+"22":P.border}`,
+                    fontWeight:isMes?700:400,
+                  }},
+                  isMes?"★ "+fmtDateShort(dep.data):fmtDateShort(dep.data)
+                );
+              }),
+              deposits.some(d=>d.estimado)&&h("span",{style:{fontSize:9,color:P.text3,alignSelf:"center"}},"(datas estimadas — sem maquininha)")
             )
           );
         }),
