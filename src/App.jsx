@@ -168,6 +168,16 @@ function TabIcon({name,size=15}){
     financeiro:h("svg",c,h("rect",{x:2,y:6,width:20,height:12,rx:2}),h("circle",{cx:12,cy:12,r:3})),
     skincare:h("svg",c,h("path",{d:"M12 2C12 2 5.5 10.5 5.5 15.5a6.5 6.5 0 0 0 13 0C18.5 10.5 12 2 12 2Z"})),
     indicacoes:h("svg",c,h("circle",{cx:8,cy:12,r:3}),h("circle",{cx:16,cy:12,r:3}),h("line",{x1:11,y1:12,x2:13,y2:12})),
+    // ── Relatórios tabs ──
+    rel_geral:h("svg",c,h("rect",{x:4,y:12,width:4,height:8,rx:1}),h("rect",{x:10,y:7,width:4,height:13,rx:1}),h("rect",{x:16,y:3,width:4,height:17,rx:1})),
+    rel_indicacoes:h("svg",c,h("circle",{cx:9,cy:10,r:3}),h("circle",{cx:17,cy:7,r:2.5}),h("path",{d:"M3 20c0-3.3 2.7-5 6-5"}),h("path",{d:"M13 17c0-2.8 2-4 4-4s4 1.2 4 4"})),
+    rel_funil:h("svg",c,h("path",{d:"M3 4h18l-7 9v6l-4-2V13Z"})),
+    rel_despesas:h("svg",c,h("rect",{x:3,y:3,width:18,height:18,rx:2}),h("line",{x1:8,y1:12,x2:16,y2:12}),h("line",{x1:12,y1:8,x2:12,y2:16})),
+    rel_yoy:h("svg",c,h("rect",{x:3,y:4,width:18,height:17,rx:2}),h("line",{x1:3,y1:9,x2:21,y2:9}),h("path",{d:"M8 2v3M16 2v3"}),h("path",{d:"M7 14l3 3 7-7"})),
+    rel_horarios:h("svg",c,h("rect",{x:3,y:4,width:18,height:17,rx:2}),h("line",{x1:3,y1:9,x2:21,y2:9}),h("line",{x1:9,y1:2,x2:9,y2:6}),h("line",{x1:15,y1:2,x2:15,y2:6}),h("circle",{cx:12,cy:15,r:3}),h("path",{d:"M12 13v2l1.5 1.5"})),
+    rel_ltv:h("svg",c,h("path",{d:"M12 3l1.5 4.5H18l-3.75 2.75L15.75 15 12 12.25 8.25 15l1.5-4.75L6 7.5h4.5Z"})),
+    rel_churn:h("svg",c,h("path",{d:"M3 17l4-8 4 4 4-6 4 5"}),h("circle",{cx:21,cy:12,r:2,fill:"currentColor",stroke:"none"})),
+    rel_unidades:h("svg",c,h("path",{d:"M3 21V9l9-6 9 6v12"}),h("path",{d:"M9 21v-6h6v6"})),
   };
   return icons[name]||null;
 }
@@ -8338,19 +8348,17 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     h(SectionHeader,{title:"Relatórios",sub:"Análise completa da clínica",action:h(Btn,{variant:"ghost",onClick:handleExportPDF,disabled:exportingPdf,style:{fontSize:12,padding:"8px 16px"}},exportingPdf?"Gerando...":"📄 Exportar PDF")}),
 
     // ── Abas de relatório ──────────────────────────────────────────────────
-    h("div",{style:{display:"flex",gap:8,marginBottom:20,flexWrap:"nowrap",overflowX:"auto",paddingBottom:4,WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}},
-      [
-        {k:"geral",l:"📊 Geral"},
-        {k:"indicacoes",l:"🤝 Indicações"},
-        {k:"funil",l:"💼 Funil de Orçamentos"},
-        {k:"orcamento_despesas",l:"📐 Orçamento de Despesas"},
-        {k:"yoy",l:"📆 Comparativo Anual"},
-        {k:"horarios",l:"🗓️ Horários"},
-        {k:"ltv",l:"💎 LTV Pacientes"},
-        {k:"churn",l:"📉 Churn & Retenção"},
-        {k:"unidades",l:"🏢 Por Unidade"},
-      ].map(t=>h("button",{key:t.k,onClick:()=>setRelTab(t.k),style:{padding:"7px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:relTab===t.k?P.rose:"transparent",border:`1px solid ${relTab===t.k?P.rose:P.border}`,color:relTab===t.k?P.accent3:P.text2,whiteSpace:"nowrap",flexShrink:0}},t.l))
-    ),
+    h(TabBar,{active:relTab,onChange:setRelTab,tabs:[
+      {k:"geral",       l:"Geral",                icon:"rel_geral"},
+      {k:"indicacoes",  l:"Indicações",           icon:"rel_indicacoes"},
+      {k:"funil",       l:"Funil de Orçamentos",  icon:"rel_funil"},
+      {k:"orcamento_despesas",l:"Orç. de Despesas",icon:"rel_despesas"},
+      {k:"yoy",         l:"Comparativo Anual",    icon:"rel_yoy"},
+      {k:"horarios",    l:"Horários",             icon:"rel_horarios"},
+      {k:"ltv",         l:"LTV Pacientes",        icon:"rel_ltv"},
+      {k:"churn",       l:"Churn & Retenção",     icon:"rel_churn"},
+      {k:"unidades",    l:"Por Unidade",          icon:"rel_unidades"},
+    ]}),
 
     // ── ABA GERAL (conteúdo original) ─────────────────────────────────────
     relTab==="geral"&&h("div",null,
