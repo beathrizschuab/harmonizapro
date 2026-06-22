@@ -3792,7 +3792,7 @@ function AgendaHourSlotsBase({date,appts,step,dragOver,setDragOver,dragIdRef,onC
   );
 }
 
-function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,proceduresFull,locations,prefill,onConsumePrefill}){
+function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,proceduresFull,locations,prefill,onConsumePrefill}){
   const[selDate,setSelDate]=useState(todayISO());
   const[viewMonth,setViewMonth]=useState(()=>{const t=new Date();return{y:t.getFullYear(),m:t.getMonth()};});
   const[viewMode,setViewMode]=useState("month");
@@ -3836,6 +3836,32 @@ function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,pro
   const agendaDates=new Set(agenda.map(a=>a.date));
 
   function saveAppt(){
+    // ── Auto-cadastro: cria paciente se o nome não existir no cadastro ──
+    const nameTyped=(form.patientName||"").trim();
+    if(nameTyped&&setPatients){
+      const normalizeStr=s=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+      const alreadyExists=(patients||[]).some(p=>normalizeStr(p.name||"")=== normalizeStr(nameTyped));
+      if(!alreadyExists){
+        const today=new Date();
+        const todayStr=today.toLocaleDateString("pt-BR");
+        const newPatient={
+          id:Date.now()+Math.random(),
+          name:nameTyped,
+          age:"",birthDate:"",phone:"",email:"",cpf:"",
+          bloodType:"A+",allergies:"Nenhuma",
+          since:todayStr,status:"new",
+          tags:["Nova"],
+          profilePhoto:null,
+          lastVisit:"",nextReturn:"",
+          complaints:[],
+          sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
+          origem:"nova",canalAquisicao:"",indicadoPor:"",canalCampanha:"",
+          anamnese:{healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",skinType:"Normal",fitzpatrick:"II",allergiesDetail:"",contraindications:"",musicStyle:"Pop",importantAlerts:[]},
+          preferencias:{horario:"Sem preferência",contato:"Sem preferência",fotos:"Autoriza somente para prontuário",obs:""},
+        };
+        setPatients(prev=>[...prev,newPatient]);
+      }
+    }
     if(editItem){
       const merged={...editItem,...form,value:Number(form.value)||0};
       let reason="";
@@ -4165,7 +4191,22 @@ function Agenda({patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,pro
     // ─── MODAL: NOVO / EDITAR AGENDAMENTO ───────────────────────────────────────
     h(Modal,{open:showNew,onClose:()=>{setShowNew(false);setEditItem(null);},title:editItem?"✎ Editar Agendamento":"✦ Novo Agendamento",width:540},
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
-        h(Field,{label:"Paciente"},h(PatientAutocomplete,{value:form.patientName,onChange:(name,pat)=>{if(pat){setForm(p=>({...p,patientName:name,procedure:pat.sessions&&pat.sessions.length>0?pat.sessions[0].procedure:p.procedure,location:pat.sessions&&pat.sessions.length>0?pat.sessions[0].location:p.location}));}else{setForm(p=>({...p,patientName:name}));}},patients})),
+        h(Field,{label:"Paciente"},
+          h("div",null,
+            h(PatientAutocomplete,{value:form.patientName,onChange:(name,pat)=>{if(pat){setForm(p=>({...p,patientName:name,procedure:pat.sessions&&pat.sessions.length>0?pat.sessions[0].procedure:p.procedure,location:pat.sessions&&pat.sessions.length>0?pat.sessions[0].location:p.location}));}else{setForm(p=>({...p,patientName:name}));}},patients}),
+            (()=>{
+              const nameTyped=(form.patientName||"").trim();
+              if(!nameTyped)return null;
+              const normalizeStr=s=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+              const found=(patients||[]).some(p=>normalizeStr(p.name||"")===normalizeStr(nameTyped));
+              if(found)return null;
+              return h("div",{style:{marginTop:6,padding:"7px 11px",borderRadius:8,background:"rgba(196,169,106,.12)",border:"1px solid rgba(196,169,106,.3)",display:"flex",alignItems:"center",gap:7}},
+                h("span",{style:{fontSize:14}},"✨"),
+                h("span",{style:{fontSize:12,color:"#c4a96a",lineHeight:1.4}},"Paciente nova — será cadastrada automaticamente ao confirmar.")
+              );
+            })()
+          )
+        ),
         h(Field,{label:"Procedimento"},h(Sel,{value:form.procedure,onChange:fvProcedure,options:procedures})),
         h(Field,{label:"Data",half:true},h(Inp,{type:"date",value:form.date,onChange:fv("date")})),
         h(Field,{label:"Horário",half:true},h(Inp,{type:"time",value:form.time,onChange:fv("time")})),
@@ -11854,7 +11895,7 @@ function AppInner({ session, onLogout }) {
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,onScheduleReturn:handleScheduleReturn,procedures:procedureNames,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses,products}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn}),
-            page==="agenda"&&h(Agenda,{patients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null)}),
+            page==="agenda"&&h(Agenda,{patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null)}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,setAgendaLog,maquininhas}),
