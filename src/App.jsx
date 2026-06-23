@@ -9236,18 +9236,42 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     ),
     h(Card,{style:{marginBottom:22}},
       h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"Evolução dos Últimos 6 Meses"),
-      h("div",{style:{display:"flex",alignItems:"flex-end",gap:10,height:110,marginBottom:8}},
-        monthlyData.map((m,i)=>{
-          const isSelected=i===5;
-          const hPct=maxRec>0?Math.round((m.rec/maxRec)*90):0;
-          return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}},
-            h("div",{style:{fontSize:10,color:P.text3,marginBottom:2}},m.rec>0?fmtCurr(m.rec):"—"),
-            h("div",{style:{width:"100%",height:80,display:"flex",alignItems:"flex-end"}},h("div",{style:{flex:1,height:(hPct||4)+"%",background:isSelected?"linear-gradient(to top,"+P.rose+","+P.gold+")":" linear-gradient(to top,"+P.rose2+",rgba(92,31,50,.3))",borderRadius:"3px 3px 0 0",transition:"height .4s ease"}})),
-            h("div",{style:{fontSize:10,color:isSelected?P.accent:P.text3,fontWeight:isSelected?600:400}},m.label)
+      h((()=>{
+        const[hovBar,setHovBar]=useState(null);
+        return function BarChart6m(){
+          return h("div",{style:{position:"relative"}},
+            h("div",{style:{display:"flex",alignItems:"flex-end",gap:10,height:110,marginBottom:8}},
+              monthlyData.map((m,i)=>{
+                const isSelected=i===5;
+                const isHov=hovBar===i;
+                const hPct=maxRec>0?Math.round((m.rec/maxRec)*90):0;
+                return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer",position:"relative"},
+                  onMouseEnter:()=>setHovBar(i),onMouseLeave:()=>setHovBar(null)},
+                  isHov&&m.rec>0&&h("div",{style:{
+                    position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",
+                    background:P.text,color:P.accent3,borderRadius:8,padding:"8px 12px",
+                    fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",
+                    pointerEvents:"none",marginBottom:6
+                  }},
+                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:4,opacity:.85}},m.label),
+                    h("div",{style:{display:"flex",justifyContent:"space-between",gap:12,marginBottom:2}},
+                      h("span",{style:{opacity:.7}},"Receita"),h("span",{style:{color:"#9fd9af",fontWeight:600}},fmtCurr(m.rec))
+                    ),
+                    h("div",{style:{display:"flex",justifyContent:"space-between",gap:12}},
+                      h("span",{style:{opacity:.7}},"Sessões"),h("span",{style:{fontWeight:600}},m.count)
+                    )
+                  ),
+                  h("div",{style:{fontSize:10,color:isHov?P.rose:P.text3,marginBottom:2,fontWeight:isHov?600:400}},m.rec>0?fmtCurr(m.rec):"—"),
+                  h("div",{style:{width:"100%",height:80,display:"flex",alignItems:"flex-end"}},
+                    h("div",{style:{flex:1,height:(hPct||4)+"%",background:isHov?"linear-gradient(to top,"+P.gold+","+P.rose+")":isSelected?"linear-gradient(to top,"+P.rose+","+P.gold+")":"linear-gradient(to top,"+P.rose2+",rgba(92,31,50,.3))",borderRadius:"3px 3px 0 0",transition:"height .4s ease,background .2s ease",transform:isHov?"scaleX(1.05)":"scaleX(1)",transformOrigin:"bottom"}})),
+                  h("div",{style:{fontSize:10,color:isSelected?P.accent:P.text3,fontWeight:isSelected?600:400}},m.label)
+                );
+              })
+            ),
+            h("div",{style:{fontSize:11,color:P.text3}},"Mês atual destacado · Barras = receita recebida · Passe o mouse para detalhes")
           );
-        })
-      ),
-      h("div",{style:{fontSize:11,color:P.text3}},"Mês atual destacado · Barras = receita recebida")
+        };
+      })(),null)
     ),
     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:18,marginBottom:22}},
       h(Card,null,h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:4}},"Forecast"),h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},`Projeção para ${MONTH_NAMES[nextM]} ${nextY}`),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:32,color:P.green,marginBottom:6}},fmtCurr(forecastRev)),h("div",{style:{fontSize:11,color:P.text3}},"Média dos últimos 3 meses + 5%")),
@@ -9264,21 +9288,51 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
       !hasHistory?h("div",{style:{textAlign:"center",padding:30,color:P.text3,fontSize:13}},"Ainda não há histórico suficiente. À medida que sessões forem registradas ao longo dos meses, a previsão de sazonalidade aparecerá aqui automaticamente."):
       h("div",null,
         // Gráfico de 12 meses
-        h("div",{style:{display:"flex",alignItems:"flex-end",gap:6,height:120,marginBottom:10}},
-          seasonality.map((s,i)=>{
-            const hPct=maxAvgCount>0?Math.max((s.avgCount/maxAvgCount)*100,s.totalCount>0?6:0):0;
-            const isPeak=peakMonths.some(p=>p.m===i);
-            const isLow=lowMonths.some(p=>p.m===i);
-            const isCurrent=i===now.getMonth();
-            return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}},
-              h("div",{style:{fontSize:9,color:isPeak?P.gold:P.text3,fontWeight:isPeak?700:400}},s.totalCount>0?Math.round(s.avgCount*10)/10:"—"),
-              h("div",{style:{width:"100%",height:88,display:"flex",alignItems:"flex-end"}},
-                h("div",{style:{width:"100%",height:hPct+"%",borderRadius:"3px 3px 0 0",background:isPeak?`linear-gradient(to top,${P.gold},#f0d9a0)`:isLow?"linear-gradient(to top,#7a8a9a,rgba(122,138,154,.3))":`linear-gradient(to top,${P.rose},rgba(92,31,50,.3))`,border:isCurrent?`1px solid ${P.accent}`:"none",transition:"height .4s ease"}})
-              ),
-              h("div",{style:{fontSize:9.5,color:isCurrent?P.accent:P.text3,fontWeight:isCurrent?700:400}},s.label.slice(0,3))
+        h((()=>{
+          const[hovSeason,setHovSeason]=useState(null);
+          return function SeasonChart(){
+            return h("div",{style:{position:"relative",display:"flex",alignItems:"flex-end",gap:6,height:120,marginBottom:10}},
+              seasonality.map((s,i)=>{
+                const hPct=maxAvgCount>0?Math.max((s.avgCount/maxAvgCount)*100,s.totalCount>0?6:0):0;
+                const isPeak=peakMonths.some(p=>p.m===i);
+                const isLow=lowMonths.some(p=>p.m===i);
+                const isCurrent=i===now.getMonth();
+                const isHov=hovSeason===i;
+                const barColor=isPeak?`linear-gradient(to top,${P.gold},#f0d9a0)`:isLow?"linear-gradient(to top,#7a8a9a,rgba(122,138,154,.3))":`linear-gradient(to top,${P.rose},rgba(92,31,50,.3))`;
+                return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer",position:"relative"},
+                  onMouseEnter:()=>setHovSeason(i),onMouseLeave:()=>setHovSeason(null)},
+                  isHov&&s.totalCount>0&&h("div",{style:{
+                    position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",
+                    background:P.text,color:P.accent3,borderRadius:8,padding:"9px 12px",
+                    fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",
+                    pointerEvents:"none",marginBottom:6
+                  }},
+                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:5,opacity:.85}},s.label),
+                    h("div",{style:{display:"flex",justifyContent:"space-between",gap:12,marginBottom:2}},
+                      h("span",{style:{opacity:.7}},"Média sessões"),h("span",{style:{fontWeight:600}},Math.round(s.avgCount*10)/10+"/mês")
+                    ),
+                    h("div",{style:{display:"flex",justifyContent:"space-between",gap:12,marginBottom:2}},
+                      h("span",{style:{opacity:.7}},"Total sessões"),h("span",{style:{fontWeight:600}},s.totalCount)
+                    ),
+                    h("div",{style:{display:"flex",justifyContent:"space-between",gap:12,marginBottom:2}},
+                      h("span",{style:{opacity:.7}},"Receita méd."),h("span",{style:{color:"#9fd9af",fontWeight:600}},fmtCurr(s.avgRev))
+                    ),
+                    s.years&&s.years.length>0&&h("div",{style:{marginTop:5,paddingTop:5,borderTop:"1px solid rgba(255,255,255,.15)",fontSize:10,opacity:.65}},
+                      "Anos: "+s.years.join(", ")
+                    ),
+                    isPeak&&h("div",{style:{marginTop:5,color:P.gold,fontWeight:700,fontSize:11}},"🔥 Pico de demanda"),
+                    isLow&&h("div",{style:{marginTop:5,color:"#9aafc0",fontSize:11}},"📉 Baixa temporada")
+                  ),
+                  h("div",{style:{fontSize:9,color:isHov?(isPeak?P.gold:P.rose):isPeak?P.gold:P.text3,fontWeight:isPeak||isHov?700:400}},s.totalCount>0?Math.round(s.avgCount*10)/10:"—"),
+                  h("div",{style:{width:"100%",height:88,display:"flex",alignItems:"flex-end"}},
+                    h("div",{style:{width:"100%",height:hPct+"%",borderRadius:"3px 3px 0 0",background:barColor,border:isCurrent?`1px solid ${P.accent}`:"none",transition:"height .4s ease",transform:isHov?"scaleX(1.08)":"scaleX(1)",transformOrigin:"bottom",opacity:isHov?1:.85}})
+                  ),
+                  h("div",{style:{fontSize:9.5,color:isCurrent?P.accent:isHov?P.rose:P.text3,fontWeight:isCurrent||isHov?700:400}},s.label.slice(0,3))
+                );
+              })
             );
-          })
-        ),
+          };
+        })(),null),
         h("div",{style:{display:"flex",gap:16,fontSize:10,color:P.text3,marginBottom:20,flexWrap:"wrap"}},
           h("div",{style:{display:"flex",alignItems:"center",gap:5}},h("span",{style:{width:9,height:9,borderRadius:2,background:P.gold,display:"inline-block"}}),"Pico de demanda"),
           h("div",{style:{display:"flex",alignItems:"center",gap:5}},h("span",{style:{width:9,height:9,borderRadius:2,background:"#7a8a9a",display:"inline-block"}}),"Baixa demanda"),
@@ -10130,6 +10184,90 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
       const maxEvo=Math.max(...unitData.flatMap(u=>u.evo.map(e=>e.rec)),1);
       const uColors=["#7aaed4","#9b7aad","#7aad8a","#c4a96a",P.rose];
 
+      // ── Gráfico combinado Linha+Barra das unidades (últimos 6 meses) ──
+      const ComparativoUnidades=(()=>{
+        const[hovCU,setHovCU]=useState(null);
+        const W=600,H=220,padL=44,padR=16,padT=28,padB=32;
+        const labels=last6.map(({m})=>MONTH_NAMES[m].slice(0,3));
+        // Valores por mês para cada unidade
+        const seriesData=unitData.map((u,ui)=>last6.map(({m,y})=>{
+          const ss=u.sess.filter(s=>{const d=parseDMY2(s.date);return d&&d.getMonth()===m&&d.getFullYear()===y;});
+          return{rec:ss.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0),count:ss.length};
+        }));
+        const allRecs=seriesData.flatMap(s=>s.map(d=>d.rec));
+        const maxV=Math.max(...allRecs,1);
+        // Eixo Y arredondado
+        const rawStep=maxV/4;
+        const mag=Math.pow(10,Math.floor(Math.log10(Math.max(rawStep,1))));
+        const norm=rawStep/mag;
+        const niceNorm=norm<=1?1:norm<=2?2:norm<=2.5?2.5:norm<=5?5:10;
+        const step=niceNorm*mag;
+        const topV=step*4;
+        const ticks=Array.from({length:5},(_,i)=>step*i);
+        const fmtT=v=>v===0?"0":v>=1000?(v/1000).toFixed(v%1000===0?0:1)+"k":String(Math.round(v));
+        const chartW=W-padL-padR;
+        const chartH=H-padT-padB;
+        const xOf=i=>padL+(i/(labels.length-1))*chartW;
+        const yOf=v=>padT+chartH-(v/topV)*chartH;
+        const barW=Math.min(22,chartW/labels.length*0.28);
+        // ponto de hover
+        const hov=hovCU!=null;
+
+        return h("svg",{viewBox:`0 0 ${W} ${H}`,style:{width:"100%",height:210,display:"block",overflow:"visible"},onMouseLeave:()=>setHovCU(null)},
+          // grade
+          ticks.map((t,i)=>h(Fragment,{key:"t"+i},
+            h("line",{x1:padL,y1:yOf(t),x2:W-padR,y2:yOf(t),stroke:P.border,strokeWidth:1,strokeDasharray:t===0?"none":"3,4"}),
+            h("text",{x:padL-6,y:yOf(t)+4,textAnchor:"end",fontSize:9,fill:P.text3},fmtT(t))
+          )),
+          // labels eixo X
+          labels.map((l,i)=>h("text",{key:"xl"+i,x:xOf(i),y:H-padB+14,textAnchor:"middle",fontSize:9.5,fill:hovCU===i?P.text:P.text3,fontWeight:hovCU===i?700:400},l)),
+          // Barras agrupadas por unidade
+          seriesData.map((serie,ui)=>{
+            const col=uColors[ui%uColors.length];
+            const offset=(ui-seriesData.length/2+0.5)*barW*1.3;
+            return serie.map((d,i)=>h("rect",{
+              key:"b"+ui+i,
+              x:xOf(i)+offset-barW/2,y:yOf(d.rec),
+              width:barW,height:Math.max(chartH-(yOf(d.rec)-padT),1),
+              fill:hovCU===i?col:`${col}99`,rx:2,
+              style:{transition:"fill .15s"},
+              onMouseEnter:()=>setHovCU(i),onMouseMove:()=>setHovCU(i)
+            }));
+          }),
+          // Linhas de receita por unidade
+          seriesData.map((serie,ui)=>{
+            const col=uColors[ui%uColors.length];
+            const pts=serie.map((d,i)=>({x:xOf(i),y:yOf(d.rec),v:d.rec}));
+            if(pts.length<2)return null;
+            const lp=_smoothPath(pts);
+            return h(Fragment,{key:"line"+ui},
+              h("path",{d:lp,fill:"none",stroke:col,strokeWidth:2.2,strokeLinecap:"round",opacity:hovCU!=null?0.5:1,style:{transition:"opacity .2s"}}),
+              pts.map((p,i)=>h("circle",{key:"pt"+i,cx:p.x,cy:p.y,r:hovCU===i?5:3.2,fill:hovCU===i?col:P.bg2,stroke:col,strokeWidth:2,style:{transition:"r .15s"},onMouseEnter:()=>setHovCU(i),onMouseMove:()=>setHovCU(i)}))
+            );
+          }),
+          // Tooltip vertical
+          hovCU!=null&&h(Fragment,{key:"tt"},
+            h("line",{x1:xOf(hovCU),y1:padT,x2:xOf(hovCU),y2:H-padB,stroke:P.text3,strokeWidth:1,strokeDasharray:"3,3",opacity:.5}),
+            h("foreignObject",{x:Math.min(xOf(hovCU)-70,W-160),y:padT,width:150,height:120+unitData.length*20},
+              h("div",{xmlns:"http://www.w3.org/1999/xhtml",style:{background:P.text,color:P.accent3,borderRadius:9,padding:"9px 12px",fontSize:11,boxShadow:"0 6px 20px rgba(0,0,0,.35)",lineHeight:1.5}},
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:6,opacity:.85}},labels[hovCU]),
+                unitData.map((u,ui)=>{
+                  const col=uColors[ui%uColors.length];
+                  const d=seriesData[ui][hovCU];
+                  return h("div",{key:ui,style:{marginBottom:4}},
+                    h("div",{style:{display:"flex",justifyContent:"space-between",gap:10}},
+                      h("span",{style:{color:col,fontWeight:600}},u.loc),
+                      h("span",{style:{fontWeight:600}},fmtCurr(d.rec))
+                    ),
+                    h("div",{style:{fontSize:10,opacity:.65}},d.count+" sessão(ões)")
+                  );
+                })
+              )
+            )
+          )
+        );
+      })();
+
       return h("div",null,
         // Seletor de mês
         h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:20,padding:"10px 16px",background:P.card,border:`1px solid ${P.border}`,borderRadius:12}},
@@ -10139,7 +10277,21 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
           ),
           h("button",{onClick:nextMonth,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text2,cursor:"pointer",padding:"6px 12px",fontSize:14}},"→")
         ),
-        // Comparativo lado a lado
+        // Gráfico comparativo combinado (linha + barra)
+        unitData.length>=2&&h(Card,{style:{marginBottom:18,border:`1px solid ${P.border}`}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Comparativo entre Unidades — Últimos 6 Meses"),
+            h("div",{style:{display:"flex",gap:14}},
+              unitData.map((u,ui)=>h("div",{key:ui,style:{display:"flex",alignItems:"center",gap:6,fontSize:11,color:P.text2}},
+                h("span",{style:{display:"inline-block",width:14,height:14,borderRadius:3,background:uColors[ui%uColors.length]}}),
+                u.loc
+              ))
+            )
+          ),
+          ComparativoUnidades,
+          h("div",{style:{fontSize:10,color:P.text3,marginTop:4}},"Barras = receita por mês · Linhas = tendência · Passe o mouse para detalhes")
+        ),
+        // Comparativo lado a lado (cards individuais por unidade — mantidos)
         h("div",{style:{display:"grid",gridTemplateColumns:`repeat(${Math.min(unitData.length,2)},1fr)`,gap:18,marginBottom:18}},
           unitData.map((u,ui)=>{
             const col=uColors[ui%uColors.length];
