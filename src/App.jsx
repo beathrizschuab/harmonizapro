@@ -9797,22 +9797,22 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     // ── ABA CHURN & RETENÇÃO ──────────────────────────────────────────────
     relTab==="churn"&&(()=>{
       const today=new Date();
-      // Classifica cada paciente
-      const CHURN_DIAS=120; // inativa após 4 meses sem sessão
+      const CHURN_DIAS=120;
+      const RISCO_DIAS=60;
       const patsComSess=safePats.filter(p=>(p.sessions||[]).length>0);
       const churnData=patsComSess.map(p=>{
         const sess=[...(p.sessions||[])].sort((a,b)=>(parseDMY2(b.date)||new Date(0))-(parseDMY2(a.date)||new Date(0)));
         const ultima=parseDMY2(sess[0]?.date)||null;
         const diasSemVir=ultima?Math.floor((today-ultima)/864e5):999;
-        const status=diasSemVir>CHURN_DIAS?"churned":diasSemVir>60?"risco":"ativa";
+        const status=diasSemVir>CHURN_DIAS?"churned":diasSemVir>RISCO_DIAS?"risco":"ativa";
         const totalPago=sess.filter(s=>s.paid).reduce((a,s)=>a+Number(s.value||0),0);
         return{...p,ultima,diasSemVir,status,totalPago,nSessoes:sess.length};
       });
       const ativas=churnData.filter(p=>p.status==="ativa");
       const risco=churnData.filter(p=>p.status==="risco");
       const churned=churnData.filter(p=>p.status==="churned");
-      const taxaChurn=patsComSess.length>0?Math.round((churned.length/patsComSess.length)*100):0;
-      const taxaRetencao=100-taxaChurn;
+      const taxaRetencao=patsComSess.length>0?Math.round((ativas.length/patsComSess.length)*100):0;
+
       // Novas por mês (últimos 6 meses)
       const last6m=Array.from({length:6},(_,i)=>{
         const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);
@@ -9824,84 +9824,157 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
       });
       const maxNovas=Math.max(...newPerMonth.map(x=>x.novas),1);
 
-      const StatusBadge=({status})=>{
-        const cfg={ativa:{l:"Ativa",c:P.green,bg:"rgba(122,173,138,.13)"},risco:{l:"Em risco",c:P.yellow,bg:"rgba(196,169,106,.13)"},churned:{l:"Inativa",c:P.red,bg:"rgba(192,112,112,.14)"}};
-        const s=cfg[status];
-        return h("span",{style:{fontSize:10,padding:"2px 9px",borderRadius:12,background:s.bg,color:s.c,fontWeight:600}},s.l);
+      // Cor do status de retenção
+      const retColor=taxaRetencao>=70?P.green:taxaRetencao>=50?P.yellow:P.red;
+      const retMsg=taxaRetencao>=70?"✦ Ótima retenção — mais de 70% das pacientes estão ativas":taxaRetencao>=50?"⚡ Retenção moderada — acione as pacientes em risco antes que somam":"⚠ Retenção baixa — priorize uma campanha de reativação agora";
+
+      // Avatar helpers
+      const avatarColors=[
+        {bg:"rgba(157,111,86,.18)",c:P.accent},
+        {bg:"rgba(122,40,64,.15)",c:P.rose},
+        {bg:"rgba(185,139,106,.18)",c:P.gold},
+        {bg:"rgba(79,156,104,.15)",c:P.green},
+        {bg:"rgba(122,174,212,.15)",c:"#5a9ec4"},
+      ];
+      const mkInitials=name=>name.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
+      const mkAvatar=(name,idx)=>{
+        const ac=avatarColors[idx%avatarColors.length];
+        return h("div",{style:{width:32,height:32,borderRadius:"50%",background:ac.bg,border:`1px solid ${ac.c}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:ac.c,flexShrink:0}},mkInitials(name));
       };
 
+      // Badge de status
+      const mkBadge=(tipo)=>{
+        const cfg={
+          risco:{l:"Em risco",bg:"rgba(217,164,65,.15)",c:P.yellow,border:`1px solid ${P.yellow}44`},
+          churned:{l:"Inativa",bg:"rgba(194,85,95,.13)",c:P.red,border:`1px solid ${P.red}33`},
+        };
+        const s=cfg[tipo];
+        return h("span",{style:{fontSize:10,padding:"3px 10px",borderRadius:20,background:s.bg,color:s.c,border:s.border,fontWeight:600,whiteSpace:"nowrap"}},s.l);
+      };
+
+      // Linha de paciente
+      const mkPatRow=(p,idx,tipo,waMsg)=>h("div",{key:p.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${P.border}44`}},
+        h("div",{style:{display:"flex",alignItems:"center",gap:10,minWidth:0}},
+          mkAvatar(p.name,idx),
+          h("div",{style:{minWidth:0}},
+            h("div",{style:{fontSize:13,fontWeight:500,color:P.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},p.name),
+            h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},
+              `${p.dias||p.diasSemVir}d sem visita · ${p.nSessoes} sessão${p.nSessoes!==1?"ões":""} · ${fmtCurr(p.totalPago)}`
+            )
+          )
+        ),
+        h("div",{style:{display:"flex",alignItems:"center",gap:8,flexShrink:0,marginLeft:8}},
+          mkBadge(tipo),
+          p.phone&&h("a",{
+            href:`https://wa.me/55${(p.phone||"").replace(/\D/g,"")}?text=${encodeURIComponent("Olá "+p.name.split(" ")[0]+"! "+waMsg)}`,
+            target:"_blank",rel:"noopener noreferrer",
+            style:{fontSize:11,padding:"5px 11px",borderRadius:8,background:"rgba(79,156,104,.12)",border:`1px solid ${P.green}44`,color:P.green,textDecoration:"none",whiteSpace:"nowrap"}
+          },"💬 Contatar")
+        )
+      );
+
+      const ltvChurned=churned.reduce((a,p)=>a+p.totalPago,0);
+
       return h("div",null,
-        // KPIs
-        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}},
+
+        // ── Caixa explicativa ──
+        h(Card,{style:{marginBottom:18,background:P.card2,border:`1px solid ${P.border}`}},
+          h("div",{style:{display:"flex",gap:12,alignItems:"flex-start"}},
+            h("div",{style:{fontSize:20,flexShrink:0}},"💡"),
+            h("div",null,
+              h("div",{style:{fontSize:13,fontWeight:600,color:P.text,marginBottom:4}},"Como funciona este painel?"),
+              h("div",{style:{fontSize:12,color:P.text2,lineHeight:1.65}},
+                "Cada paciente com ao menos 1 sessão é classificada automaticamente. ",
+                h("span",{style:{color:P.green,fontWeight:600}},"Ativa"),
+                " = veio nos últimos 60 dias. ",
+                h("span",{style:{color:P.yellow,fontWeight:600}},"Em risco"),
+                " = ausente entre 60 e 120 dias. ",
+                h("span",{style:{color:P.red,fontWeight:600}},"Inativa"),
+                " = mais de 120 dias sem visita."
+              )
+            )
+          )
+        ),
+
+        // ── Funil: 3 cards lado a lado ──
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:18}},
           [
-            {l:"Ativas",v:String(ativas.length),c:P.green},
-            {l:"Em risco (>60d)",v:String(risco.length),c:P.yellow},
-            {l:"Churned (>120d)",v:String(churned.length),c:P.red},
-            {l:"Taxa de retenção",v:taxaRetencao+"%",c:taxaRetencao>=70?P.green:taxaRetencao>=50?P.yellow:P.red},
-          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
-            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:k.c}},k.v)
+            {l:"Ativas",v:ativas.length,desc:"Últimas 60 dias",c:P.green,bg:"rgba(79,156,104,.1)",border:`1px solid ${P.green}33`},
+            {l:"Em risco",v:risco.length,desc:"Entre 60 e 120 dias",c:P.yellow,bg:"rgba(217,164,65,.1)",border:`1px solid ${P.yellow}33`},
+            {l:"Inativas",v:churned.length,desc:"Mais de 120 dias",c:P.red,bg:"rgba(194,85,95,.1)",border:`1px solid ${P.red}33`},
+          ].map(k=>h(Card,{key:k.l,style:{textAlign:"center",background:k.bg,border:k.border}},
+            h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}},k.l),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c,lineHeight:1}},k.v),
+            h("div",{style:{fontSize:10,color:P.text3,marginTop:5}},k.desc)
           ))
         ),
-        // Gráfico de novas por mês
+
+        // ── Barra de retenção ──
         h(Card,{style:{marginBottom:18}},
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Novas Pacientes — Últimos 6 Meses"),
-          h("div",{style:{display:"flex",alignItems:"flex-end",gap:10,height:80,marginBottom:8}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:10}},
+            h("div",{style:{fontSize:14,fontWeight:500,color:P.text}},"Taxa de retenção"),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:retColor}},taxaRetencao+"%")
+          ),
+          h("div",{style:{height:8,borderRadius:6,background:P.bg3,overflow:"hidden",marginBottom:10}},
+            h("div",{style:{height:"100%",width:taxaRetencao+"%",background:retColor,borderRadius:6,transition:"width .4s"}})
+          ),
+          h("div",{style:{fontSize:12,color:retColor,fontWeight:500}},retMsg)
+        ),
+
+        // ── Novas pacientes últimos 6 meses ──
+        h(Card,{style:{marginBottom:18}},
+          h("div",{style:{fontSize:14,fontWeight:500,color:P.text,marginBottom:14}},"Novas pacientes — últimos 6 meses"),
+          h("div",{style:{display:"flex",alignItems:"flex-end",gap:8,height:80}},
             newPerMonth.map((m,i)=>{
-              const h2=maxNovas>0?Math.max((m.novas/maxNovas)*100,m.novas>0?10:0):0;
+              const pct=maxNovas>0?Math.max((m.novas/maxNovas)*100,m.novas>0?8:0):0;
               return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}},
                 h("div",{style:{fontSize:10,color:P.text3}},m.novas>0?m.novas:"—"),
-                h("div",{style:{width:"100%",height:66,display:"flex",alignItems:"flex-end"}},
-                  h("div",{style:{flex:1,height:h2+"%",background:`linear-gradient(to top,${P.rose2},rgba(92,31,50,.3))`,borderRadius:"3px 3px 0 0"}})
+                h("div",{style:{width:"100%",height:58,display:"flex",alignItems:"flex-end"}},
+                  h("div",{style:{flex:1,height:pct+"%",background:P.rose2+"99",borderRadius:"3px 3px 0 0",minHeight:m.novas>0?3:0}})
                 ),
                 h("div",{style:{fontSize:9,color:P.text3}},m.label)
               );
             })
           )
         ),
-        // Pacientes em risco — ação prioritária
-        risco.length>0&&h(Card,{style:{marginBottom:18,border:`1px solid ${P.yellow}44`}},
-          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
-            h("div",null,
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"⚠ Pacientes em Risco de Churn"),
-              h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},"Sem visita entre 60 e 120 dias — reativar agora")
+
+        // ── Pacientes em risco ──
+        h(Card,{style:{marginBottom:18,border:`1px solid ${P.yellow}33`}},
+          h("div",{style:{marginBottom:12}},
+            h("div",{style:{fontSize:14,fontWeight:500,color:P.text,marginBottom:2}},"⚡ Pacientes em risco — agir agora"),
+            h("div",{style:{fontSize:12,color:P.text3}},
+              risco.length>0
+                ? `${risco.length} paciente${risco.length!==1?"s":""} sem visita entre 60 e 120 dias — um contato hoje pode trazê-las de volta`
+                : "Nenhuma paciente em risco no momento"
             )
           ),
-          h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-            risco.sort((a,b)=>b.diasSemVir-a.diasSemVir).map(p=>h("div",{key:p.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",borderRadius:9,background:P.bg3,border:`1px solid ${P.border}`}},
-              h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-                h("div",{style:{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${P.rose},${P.gold})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:P.accent3}},
-                  p.name.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()
-                ),
-                h("div",null,
-                  h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},p.name),
-                  h("div",{style:{fontSize:11,color:P.text3}},`Última visita: ${p.ultima?p.ultima.toLocaleDateString("pt-BR"):"—"} · ${p.nSessoes} sessões · ${fmtCurr(p.totalPago)} gasto`)
+          risco.length===0
+            ? h("div",{style:{textAlign:"center",padding:"16px 0",fontSize:13,color:P.text3}},"✓ Tudo certo por aqui!")
+            : h("div",{style:{display:"flex",flexDirection:"column"}},
+                risco.sort((a,b)=>b.diasSemVir-a.diasSemVir).map((p,i)=>
+                  mkPatRow({...p,dias:p.diasSemVir},i,"risco","Sentimos sua falta! Que tal agendar um retorno? 🌸")
                 )
-              ),
-              h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-                h("span",{style:{fontSize:11,color:P.yellow,fontWeight:600}},p.diasSemVir+"d sem vir"),
-                p.pphone&&h("a",{href:`https://wa.me/55${(p.phone||"").replace(/\D/g,"")}?text=Olá ${p.name.split(" ")[0]}! Sentimos sua falta. Que tal agendar um retorno? 🌸`,target:"_blank",rel:"noopener noreferrer",style:{fontSize:11,padding:"5px 12px",borderRadius:8,background:"rgba(122,173,138,.15)",border:"1px solid rgba(122,173,138,.3)",color:P.green,textDecoration:"none",cursor:"pointer"}},"💬 Reativar")
               )
-            ))
-          )
         ),
-        // Churned
-        churned.length>0&&h(Card,{style:{border:`1px solid ${P.red}33`}},
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:4}},"Pacientes Inativas (>120 dias)"),
-          h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},`${churned.length} pacientes · ${fmtCurr(churned.reduce((a,p)=>a+p.totalPago,0))} em LTV histórico`),
-          h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
-            churned.sort((a,b)=>b.totalPago-a.totalPago).slice(0,8).map(p=>h("div",{key:p.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderRadius:8,background:P.bg3}},
-              h("div",null,
-                h("div",{style:{fontSize:12,color:P.text}},p.name),
-                h("div",{style:{fontSize:10,color:P.text3}},`${p.diasSemVir}d ausente · ${fmtCurr(p.totalPago)} histórico`)
-              ),
-              h("div",{style:{display:"flex",gap:6,alignItems:"center"}},
-                h(StatusBadge,{status:"churned"}),
-                p.phone&&h("a",{href:`https://wa.me/55${(p.phone||"").replace(/\D/g,"")}?text=Olá ${p.name.split(" ")[0]}! 🌸 Faz um tempinho que não nos vemos. Temos novidades incríveis — que tal marcarmos uma avaliação?`,target:"_blank",rel:"noopener noreferrer",style:{fontSize:11,padding:"4px 10px",borderRadius:7,background:"rgba(122,173,138,.12)",border:"1px solid rgba(122,173,138,.25)",color:P.green,textDecoration:"none"}},"💬 Reconquistar")
-              )
-            ))
+
+        // ── Pacientes inativas ──
+        h(Card,{style:{border:`1px solid ${P.red}28`}},
+          h("div",{style:{marginBottom:12}},
+            h("div",{style:{fontSize:14,fontWeight:500,color:P.text,marginBottom:2}},"Pacientes inativas — reconquistar"),
+            h("div",{style:{fontSize:12,color:P.text3}},
+              churned.length>0
+                ? `${churned.length} paciente${churned.length!==1?"s":""} · ${fmtCurr(ltvChurned)} em LTV histórico`
+                : "Nenhuma paciente inativa"
+            )
           ),
-          churned.length>8&&h("div",{style:{textAlign:"center",marginTop:10,fontSize:12,color:P.text3}},`... e mais ${churned.length-8} pacientes inativas`)
+          churned.length===0
+            ? h("div",{style:{textAlign:"center",padding:"16px 0",fontSize:13,color:P.text3}},"✓ Tudo certo por aqui!")
+            : h("div",{style:{display:"flex",flexDirection:"column"}},
+                churned.sort((a,b)=>b.totalPago-a.totalPago).slice(0,10).map((p,i)=>
+                  mkPatRow({...p,dias:p.diasSemVir},i,"churned","Faz um tempo que não nos vemos! Temos novidades — que tal marcarmos? 🌸")
+                ),
+                churned.length>10&&h("div",{style:{textAlign:"center",marginTop:12,fontSize:12,color:P.text3}},`... e mais ${churned.length-10} pacientes inativas`)
+              )
         )
       );
     })(),
