@@ -10207,199 +10207,183 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     })(),
 
     // ── ABA MARGEM DE LUCRO ───────────────────────────────────────────────
-    relTab==="margem"&&(()=>{
-      // Agrega TODAS as sessões pagas do histórico por procedimento
-      // e cruza com custo de insumos via sessionCost
-      const[margemPeriod,setMargemPeriod]=useState("all");
-      const[margemSort,setMargemSort]=useState("margemPct"); // "margemPct"|"margemAbs"|"receita"|"count"
-      const[margemView,setMargemView]=useState("ranking"); // "ranking"|"scatter"
-      const now2=new Date();
-
-      // Filtra sessões por período
-      const margemSessions=allS.filter(s=>{
-        if(!s.paid)return false;
-        const d=parseDMY2(s.date);
-        if(!d)return false;
-        if(margemPeriod==="all")return true;
-        if(margemPeriod==="year")return d.getFullYear()===now2.getFullYear();
-        if(margemPeriod==="6m"){const cutoff=new Date(now2);cutoff.setMonth(cutoff.getMonth()-6);return d>=cutoff;}
-        if(margemPeriod==="3m"){const cutoff=new Date(now2);cutoff.setMonth(cutoff.getMonth()-3);return d>=cutoff;}
-        return true;
-      });
-
-      // Agrega por procedimento
-      const mpMap={};
-      margemSessions.forEach(s=>{
-        const proc=s.procedure||"Sem procedimento";
-        if(!mpMap[proc])mpMap[proc]={proc,count:0,receita:0,custo:0};
-        mpMap[proc].count++;
-        mpMap[proc].receita+=Number(s.value)||0;
-        mpMap[proc].custo+=sessionCost(s,products);
-      });
-
-      const mpList=Object.values(mpMap).map(d=>({
-        ...d,
-        margemAbs:d.receita-d.custo,
-        margemPct:d.receita>0?Math.round(((d.receita-d.custo)/d.receita)*100):0,
-        ticketMedio:d.count>0?Math.round(d.receita/d.count):0,
-        custoMedio:d.count>0?Math.round(d.custo/d.count):0,
-      })).filter(d=>d.count>0);
-
-      // Ordena conforme seleção
-      mpList.sort((a,b)=>b[margemSort]-a[margemSort]);
-
-      const totalReceita=mpList.reduce((a,d)=>a+d.receita,0);
-      const totalCusto=mpList.reduce((a,d)=>a+d.custo,0);
-      const totalMargem=totalReceita-totalCusto;
-      const margemMediaPct=totalReceita>0?Math.round((totalMargem/totalReceita)*100):0;
-      const melhor=mpList[0]||null;
-      const pior=mpList.length>1?[...mpList].sort((a,b)=>a.margemPct-b.margemPct)[0]:null;
-      const maxReceita=mpList.reduce((a,d)=>d.receita>a?d.receita:a,1);
-
-      // Cor da margem %
-      const margemColor=pct=>pct>=60?P.green:pct>=35?P.yellow:P.red;
-
-      const PERIOD_OPTS=[
-        {k:"all",l:"Todo histórico"},{k:"year",l:"Este ano"},{k:"6m",l:"Últimos 6 meses"},{k:"3m",l:"Últimos 3 meses"}
-      ];
-      const SORT_OPTS=[
-        {k:"margemPct",l:"% Margem"},{k:"margemAbs",l:"Margem R$"},{k:"receita",l:"Receita"},{k:"count",l:"Sessões"}
-      ];
-
-      return h("div",null,
-        // ── Filtros ──
-        h("div",{style:{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}},
-          h("div",{style:{display:"flex",gap:5,flexWrap:"wrap"}},
-            PERIOD_OPTS.map(p=>h("button",{key:p.k,onClick:()=>setMargemPeriod(p.k),style:{padding:"5px 13px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${margemPeriod===p.k?P.rose:P.border}`,background:margemPeriod===p.k?P.rose:"transparent",color:margemPeriod===p.k?P.accent3:P.text2}},p.l))
-          ),
-          h("div",{style:{marginLeft:"auto",display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}},
-            h("span",{style:{fontSize:11,color:P.text3}},"Ordenar por:"),
-            SORT_OPTS.map(s=>h("button",{key:s.k,onClick:()=>setMargemSort(s.k),style:{padding:"4px 11px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${margemSort===s.k?P.gold:P.border}`,background:margemSort===s.k?P.gold:"transparent",color:margemSort===s.k?P.bg:P.text2}},s.l))
-          )
-        ),
-
-        // ── KPIs ──
-        mpList.length===0?h(Card,{style:{textAlign:"center",padding:48,marginBottom:20}},
-          h("div",{style:{fontSize:32,marginBottom:12}},"📊"),
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:6}},"Sem dados no período"),
-          h("div",{style:{fontSize:13,color:P.text3}},"Registre sessões pagas para ver a análise de margem.")
-        ):h("div",null,
-          h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}},
-            [
-              {l:"Receita total",v:fmtCurr(totalReceita),c:P.green},
-              {l:"Custo de insumos",v:fmtCurr(totalCusto),c:P.red},
-              {l:"Margem bruta",v:fmtCurr(totalMargem),c:P.gold},
-              {l:"Margem média %",v:margemMediaPct+"%",c:margemColor(margemMediaPct)},
-            ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
-              h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)
-            ))
-          ),
-
-          // ── Destaques: melhor e pior ──
-          (melhor||pior)&&h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20}},
-            melhor&&h("div",{style:{padding:"16px 18px",borderRadius:12,background:"rgba(122,173,138,.1)",border:`1px solid ${P.green}44`}},
-              h("div",{style:{fontSize:11,color:P.green,fontWeight:700,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}},"🏆 Maior Margem"),
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text,marginBottom:4}},melhor.proc),
-              h("div",{style:{display:"flex",gap:14,flexWrap:"wrap"}},
-                h("span",{style:{fontSize:22,fontFamily:"'Cormorant Garamond',serif",color:P.green}},melhor.margemPct+"%"),
-                h("div",null,
-                  h("div",{style:{fontSize:11,color:P.text3}},"Margem R$: "+fmtCurr(melhor.margemAbs)),
-                  h("div",{style:{fontSize:11,color:P.text3}},melhor.count+"x realizadas · ticket "+fmtCurr(melhor.ticketMedio))
-                )
-              )
-            ),
-            pior&&h("div",{style:{padding:"16px 18px",borderRadius:12,background:"rgba(192,112,112,.08)",border:`1px solid ${P.red}44`}},
-              h("div",{style:{fontSize:11,color:P.red,fontWeight:700,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}},"⚠ Menor Margem"),
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text,marginBottom:4}},pior.proc),
-              h("div",{style:{display:"flex",gap:14,flexWrap:"wrap"}},
-                h("span",{style:{fontSize:22,fontFamily:"'Cormorant Garamond',serif",color:pior.margemPct<0?P.red:P.yellow}},pior.margemPct+"%"),
-                h("div",null,
-                  h("div",{style:{fontSize:11,color:P.text3}},"Margem R$: "+fmtCurr(pior.margemAbs)),
-                  h("div",{style:{fontSize:11,color:P.text3}},pior.count+"x realizadas · ticket "+fmtCurr(pior.ticketMedio))
-                )
-              )
-            )
-          ),
-
-          // ── Aviso se custo de insumos = 0 ──
-          totalCusto===0&&h("div",{style:{marginBottom:16,padding:"10px 14px",background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:8,fontSize:12,color:P.yellow}},
-            "💡 Os custos de insumos estão zerados. Para ver margens precisas, cadastre os insumos em Configurações → Procedimentos → Ficha de Insumos e inclua o custo unitário de cada produto em Estoque."
-          ),
-
-          // ── Ranking completo ──
-          h(Card,{style:{marginBottom:20}},
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"📊 Ranking de Procedimentos por Margem"),
-            h("div",{style:{display:"flex",flexDirection:"column",gap:0}},
-              // Cabeçalho
-              h("div",{style:{display:"grid",gridTemplateColumns:"28px 1fr 90px 90px 90px 80px",gap:10,padding:"8px 12px",background:P.bg3,borderRadius:"8px 8px 0 0",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".07em",fontWeight:600}},
-                h("span",null,"#"),
-                h("span",null,"Procedimento"),
-                h("span",{style:{textAlign:"right"}},"Receita"),
-                h("span",{style:{textAlign:"right"}},"Custo"),
-                h("span",{style:{textAlign:"right"}},"Margem R$"),
-                h("span",{style:{textAlign:"center"}},"Margem %")
-              ),
-              mpList.map((d,i)=>{
-                const mc=margemColor(d.margemPct);
-                const barPct=maxReceita>0?Math.round((d.receita/maxReceita)*100):0;
-                const isLast=i===mpList.length-1;
-                return h("div",{key:d.proc,style:{borderBottom:isLast?"none":`1px solid ${P.border}`}},
-                  h("div",{style:{display:"grid",gridTemplateColumns:"28px 1fr 90px 90px 90px 80px",gap:10,padding:"12px 12px",alignItems:"center",background:i%2===0?P.card:P.bg2}},
-                    // Posição
-                    h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:i===0?P.gold:i===1?"#b9c0c9":i===2?"#c08a5a":P.text3,fontWeight:600,textAlign:"center"}},i+1+"°"),
-                    // Nome + barra
-                    h("div",null,
-                      h("div",{style:{fontSize:13,color:P.text,fontWeight:500,marginBottom:5}},d.proc),
-                      h("div",{style:{display:"flex",alignItems:"center",gap:8}},
-                        h("div",{style:{flex:1,height:5,borderRadius:3,background:P.bg3,overflow:"hidden"}},
-                          h("div",{style:{height:"100%",width:barPct+"%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:3}})
-                        ),
-                        h("span",{style:{fontSize:10,color:P.text3,whiteSpace:"nowrap"}},d.count+"x · ticket "+fmtCurr(d.ticketMedio))
-                      )
-                    ),
-                    // Receita
-                    h("div",{style:{textAlign:"right",fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:P.text}},fmtCurr(d.receita)),
-                    // Custo
-                    h("div",{style:{textAlign:"right",fontSize:13,color:d.custo>0?P.red:P.text3}},d.custo>0?fmtCurr(d.custo):"—"),
-                    // Margem R$
-                    h("div",{style:{textAlign:"right",fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:d.margemAbs>=0?P.green:P.red}},fmtCurr(d.margemAbs)),
-                    // Margem %
-                    h("div",{style:{textAlign:"center"}},
-                      h("span",{style:{fontSize:13,fontWeight:700,padding:"3px 10px",borderRadius:20,background:mc+"22",color:mc}},d.margemPct+"%")
-                    )
-                  )
-                );
-              })
-            )
-          ),
-
-          // ── Insight automático ──
-          mpList.length>=2&&h(Card,{style:{border:`1px solid rgba(196,169,106,.25)`,background:"rgba(196,169,106,.05)"}},
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.gold,marginBottom:12}},"💡 Insights de Margem"),
-            h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
-              // Procedimentos com margem negativa
-              mpList.filter(d=>d.margemPct<0).length>0&&h("div",{style:{padding:"10px 13px",borderRadius:8,background:"rgba(192,112,112,.1)",border:"1px solid rgba(192,112,112,.3)"}},
-                h("span",{style:{fontSize:12,color:P.red}},"⚠ "+mpList.filter(d=>d.margemPct<0).length+" procedimento(s) com margem negativa: "+mpList.filter(d=>d.margemPct<0).map(d=>d.proc).join(", ")+". Revise o custo dos insumos ou o preço cobrado.")
-              ),
-              // Procedimento mais lucrativo em R$ absoluto
-              (()=>{const top=[...mpList].sort((a,b)=>b.margemAbs-a.margemAbs)[0];return top&&h("div",{style:{padding:"10px 13px",borderRadius:8,background:"rgba(122,173,138,.1)",border:"1px solid rgba(122,173,138,.3)"}},
-                h("span",{style:{fontSize:12,color:P.green}},"✦ Maior gerador de lucro em R$: "+top.proc+" — "+fmtCurr(top.margemAbs)+" de margem bruta acumulada ("+top.count+"x realizadas).")
-              );})(),
-              // Maior volume mas margem baixa
-              (()=>{const highVol=[...mpList].sort((a,b)=>b.count-a.count)[0];return highVol&&highVol.margemPct<50&&h("div",{style:{padding:"10px 13px",borderRadius:8,background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)"}},
-                h("span",{style:{fontSize:12,color:P.yellow}},"📌 Procedimento mais realizado ("+highVol.proc+", "+highVol.count+"x) tem margem de "+highVol.margemPct+"%. Pequenos ajustes de preço aqui têm alto impacto no resultado.")
-              );})()
-            )
-          )
-        )
-      );
-    })()
+    relTab==="margem"&&h(MargemLucro,{allS,parseDMY2,products})
   );
 }
 
-// ─── CONFIGURAÇÕES ────────────────────────────────────────────────────────────
-// ─── CONFIGURAÇÕES ────────────────────────────────────────────────────────────
+// ─── COMPONENTE MARGEM DE LUCRO ───────────────────────────────────────────────
+function MargemLucro({allS,parseDMY2,products}){
+  const h=createElement;
+  const[margemPeriod,setMargemPeriod]=useState("all");
+  const[margemSort,setMargemSort]=useState("margemPct");
+  const now2=new Date();
+
+  const margemSessions=allS.filter(s=>{
+    if(!s.paid)return false;
+    const d=parseDMY2(s.date);
+    if(!d)return false;
+    if(margemPeriod==="all")return true;
+    if(margemPeriod==="year")return d.getFullYear()===now2.getFullYear();
+    if(margemPeriod==="6m"){const cutoff=new Date(now2);cutoff.setMonth(cutoff.getMonth()-6);return d>=cutoff;}
+    if(margemPeriod==="3m"){const cutoff=new Date(now2);cutoff.setMonth(cutoff.getMonth()-3);return d>=cutoff;}
+    return true;
+  });
+
+  const mpMap={};
+  margemSessions.forEach(s=>{
+    const proc=s.procedure||"Sem procedimento";
+    if(!mpMap[proc])mpMap[proc]={proc,count:0,receita:0,custo:0};
+    mpMap[proc].count++;
+    mpMap[proc].receita+=Number(s.value)||0;
+    mpMap[proc].custo+=sessionCost(s,products);
+  });
+
+  const mpList=Object.values(mpMap).map(d=>({
+    ...d,
+    margemAbs:d.receita-d.custo,
+    margemPct:d.receita>0?Math.round(((d.receita-d.custo)/d.receita)*100):0,
+    ticketMedio:d.count>0?Math.round(d.receita/d.count):0,
+    custoMedio:d.count>0?Math.round(d.custo/d.count):0,
+  })).filter(d=>d.count>0);
+
+  mpList.sort((a,b)=>b[margemSort]-a[margemSort]);
+
+  const totalReceita=mpList.reduce((a,d)=>a+d.receita,0);
+  const totalCusto=mpList.reduce((a,d)=>a+d.custo,0);
+  const totalMargem=totalReceita-totalCusto;
+  const margemMediaPct=totalReceita>0?Math.round((totalMargem/totalReceita)*100):0;
+  const melhor=mpList[0]||null;
+  const pior=mpList.length>1?[...mpList].sort((a,b)=>a.margemPct-b.margemPct)[0]:null;
+  const maxReceita=mpList.reduce((a,d)=>d.receita>a?d.receita:a,1);
+
+  const margemColor=pct=>pct>=60?P.green:pct>=35?P.yellow:P.red;
+
+  const PERIOD_OPTS=[
+    {k:"all",l:"Todo histórico"},{k:"year",l:"Este ano"},{k:"6m",l:"Últimos 6 meses"},{k:"3m",l:"Últimos 3 meses"}
+  ];
+  const SORT_OPTS=[
+    {k:"margemPct",l:"% Margem"},{k:"margemAbs",l:"Margem R$"},{k:"receita",l:"Receita"},{k:"count",l:"Sessões"}
+  ];
+
+  return h("div",null,
+    // ── Filtros ──
+    h("div",{style:{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}},
+      h("div",{style:{display:"flex",gap:5,flexWrap:"wrap"}},
+        PERIOD_OPTS.map(p=>h("button",{key:p.k,onClick:()=>setMargemPeriod(p.k),style:{padding:"5px 13px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${margemPeriod===p.k?P.rose:P.border}`,background:margemPeriod===p.k?P.rose:"transparent",color:margemPeriod===p.k?P.accent3:P.text2}},p.l))
+      ),
+      h("div",{style:{marginLeft:"auto",display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}},
+        h("span",{style:{fontSize:11,color:P.text3}},"Ordenar por:"),
+        SORT_OPTS.map(s=>h("button",{key:s.k,onClick:()=>setMargemSort(s.k),style:{padding:"4px 11px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${margemSort===s.k?P.gold:P.border}`,background:margemSort===s.k?P.gold:"transparent",color:margemSort===s.k?P.bg:P.text2}},s.l))
+      )
+    ),
+
+    // ── KPIs ──
+    mpList.length===0?h(Card,{style:{textAlign:"center",padding:48,marginBottom:20}},
+      h("div",{style:{fontSize:32,marginBottom:12}},"📊"),
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:6}},"Sem dados no período"),
+      h("div",{style:{fontSize:13,color:P.text3}},"Registre sessões pagas para ver a análise de margem.")
+    ):h("div",null,
+      h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}},
+        [
+          {l:"Receita total",v:fmtCurr(totalReceita),c:P.green},
+          {l:"Custo de insumos",v:fmtCurr(totalCusto),c:P.red},
+          {l:"Margem bruta",v:fmtCurr(totalMargem),c:P.gold},
+          {l:"Margem média %",v:margemMediaPct+"%",c:margemColor(margemMediaPct)},
+        ].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)
+        ))
+      ),
+
+      // ── Destaques: melhor e pior ──
+      (melhor||pior)&&h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20}},
+        melhor&&h("div",{style:{padding:"16px 18px",borderRadius:12,background:"rgba(122,173,138,.1)",border:`1px solid ${P.green}44`}},
+          h("div",{style:{fontSize:11,color:P.green,fontWeight:700,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}},"🏆 Maior Margem"),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text,marginBottom:4}},melhor.proc),
+          h("div",{style:{display:"flex",gap:14,flexWrap:"wrap"}},
+            h("span",{style:{fontSize:22,fontFamily:"'Cormorant Garamond',serif",color:P.green}},melhor.margemPct+"%"),
+            h("div",null,
+              h("div",{style:{fontSize:11,color:P.text3}},"Margem R$: "+fmtCurr(melhor.margemAbs)),
+              h("div",{style:{fontSize:11,color:P.text3}},melhor.count+"x realizadas · ticket "+fmtCurr(melhor.ticketMedio))
+            )
+          )
+        ),
+        pior&&h("div",{style:{padding:"16px 18px",borderRadius:12,background:"rgba(192,112,112,.08)",border:`1px solid ${P.red}44`}},
+          h("div",{style:{fontSize:11,color:P.red,fontWeight:700,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}},"⚠ Menor Margem"),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text,marginBottom:4}},pior.proc),
+          h("div",{style:{display:"flex",gap:14,flexWrap:"wrap"}},
+            h("span",{style:{fontSize:22,fontFamily:"'Cormorant Garamond',serif",color:pior.margemPct<0?P.red:P.yellow}},pior.margemPct+"%"),
+            h("div",null,
+              h("div",{style:{fontSize:11,color:P.text3}},"Margem R$: "+fmtCurr(pior.margemAbs)),
+              h("div",{style:{fontSize:11,color:P.text3}},pior.count+"x realizadas · ticket "+fmtCurr(pior.ticketMedio))
+            )
+          )
+        )
+      ),
+
+      // ── Aviso se custo de insumos = 0 ──
+      totalCusto===0&&h("div",{style:{marginBottom:16,padding:"10px 14px",background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:8,fontSize:12,color:P.yellow}},
+        "💡 Os custos de insumos estão zerados. Para ver margens precisas, cadastre os insumos em Configurações → Procedimentos → Ficha de Insumos e inclua o custo unitário de cada produto em Estoque."
+      ),
+
+      // ── Ranking completo ──
+      h(Card,{style:{marginBottom:20}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"📊 Ranking de Procedimentos por Margem"),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:0}},
+          h("div",{style:{display:"grid",gridTemplateColumns:"28px 1fr 90px 90px 90px 80px",gap:10,padding:"8px 12px",background:P.bg3,borderRadius:"8px 8px 0 0",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".07em",fontWeight:600}},
+            h("span",null,"#"),
+            h("span",null,"Procedimento"),
+            h("span",{style:{textAlign:"right"}},"Receita"),
+            h("span",{style:{textAlign:"right"}},"Custo"),
+            h("span",{style:{textAlign:"right"}},"Margem R$"),
+            h("span",{style:{textAlign:"center"}},"Margem %")
+          ),
+          mpList.map((d,i)=>{
+            const mc=margemColor(d.margemPct);
+            const barPct=maxReceita>0?Math.round((d.receita/maxReceita)*100):0;
+            const isLast=i===mpList.length-1;
+            return h("div",{key:d.proc,style:{borderBottom:isLast?"none":`1px solid ${P.border}`}},
+              h("div",{style:{display:"grid",gridTemplateColumns:"28px 1fr 90px 90px 90px 80px",gap:10,padding:"12px 12px",alignItems:"center",background:i%2===0?P.card:P.bg2}},
+                h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:i===0?P.gold:i===1?"#b9c0c9":i===2?"#c08a5a":P.text3,fontWeight:600,textAlign:"center"}},i+1+"°"),
+                h("div",null,
+                  h("div",{style:{fontSize:13,color:P.text,fontWeight:500,marginBottom:5}},d.proc),
+                  h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+                    h("div",{style:{flex:1,height:5,borderRadius:3,background:P.bg3,overflow:"hidden"}},
+                      h("div",{style:{height:"100%",width:barPct+"%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:3}})
+                    ),
+                    h("span",{style:{fontSize:10,color:P.text3,whiteSpace:"nowrap"}},d.count+"x · ticket "+fmtCurr(d.ticketMedio))
+                  )
+                ),
+                h("div",{style:{textAlign:"right",fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:P.text}},fmtCurr(d.receita)),
+                h("div",{style:{textAlign:"right",fontSize:13,color:d.custo>0?P.red:P.text3}},d.custo>0?fmtCurr(d.custo):"—"),
+                h("div",{style:{textAlign:"right",fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:d.margemAbs>=0?P.green:P.red}},fmtCurr(d.margemAbs)),
+                h("div",{style:{textAlign:"center"}},
+                  h("span",{style:{fontSize:13,fontWeight:700,padding:"3px 10px",borderRadius:20,background:mc+"22",color:mc}},d.margemPct+"%")
+                )
+              )
+            );
+          })
+        )
+      ),
+
+      // ── Insights automáticos ──
+      mpList.length>=2&&h(Card,{style:{border:"1px solid rgba(196,169,106,.25)",background:"rgba(196,169,106,.05)"}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.gold,marginBottom:12}},"💡 Insights de Margem"),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+          mpList.filter(d=>d.margemPct<0).length>0&&h("div",{style:{padding:"10px 13px",borderRadius:8,background:"rgba(192,112,112,.1)",border:"1px solid rgba(192,112,112,.3)"}},
+            h("span",{style:{fontSize:12,color:P.red}},"⚠ "+mpList.filter(d=>d.margemPct<0).length+" procedimento(s) com margem negativa: "+mpList.filter(d=>d.margemPct<0).map(d=>d.proc).join(", ")+". Revise o custo dos insumos ou o preço cobrado.")
+          ),
+          (()=>{const top=[...mpList].sort((a,b)=>b.margemAbs-a.margemAbs)[0];return top&&h("div",{style:{padding:"10px 13px",borderRadius:8,background:"rgba(122,173,138,.1)",border:"1px solid rgba(122,173,138,.3)"}},
+            h("span",{style:{fontSize:12,color:P.green}},"✦ Maior gerador de lucro em R$: "+top.proc+" — "+fmtCurr(top.margemAbs)+" de margem bruta acumulada ("+top.count+"x realizadas).")
+          );})(),
+          (()=>{const highVol=[...mpList].sort((a,b)=>b.count-a.count)[0];return highVol&&highVol.margemPct<50&&h("div",{style:{padding:"10px 13px",borderRadius:8,background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)"}},
+            h("span",{style:{fontSize:12,color:P.yellow}},"📌 Procedimento mais realizado ("+highVol.proc+", "+highVol.count+"x) tem margem de "+highVol.margemPct+"%. Pequenos ajustes de preço aqui têm alto impacto no resultado.")
+          );})()
+        )
+      )
+    )
+  );
+}
 const PROC_CATS=["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios / Lifting","Skincare Clínico","Avaliação / Consultoria","Outros"];
 const PROC_MAP_ICONS={"Toxina Botulínica":"💉","Preenchimento":"✨","Bioestimuladores":"🧬","Fios / Lifting":"🧵","Skincare Clínico":"🧴","Avaliação / Consultoria":"📋","Outros":"🩺"};
 const PROC_CAT_COLORS={"Toxina Botulínica":P.rose,"Preenchimento":"#7aaed4","Bioestimuladores":P.gold,"Fios / Lifting":"#9b7aad","Skincare Clínico":P.accent,"Avaliação / Consultoria":P.green,"Outros":P.text3};
