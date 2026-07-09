@@ -3862,11 +3862,7 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
           anamnese:{healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",skinType:"Normal",fitzpatrick:"II",allergiesDetail:"",contraindications:"",musicStyle:"Pop",importantAlerts:[]},
           preferencias:{horario:"Sem preferência",contato:"Sem preferência",fotos:"Autoriza somente para prontuário",obs:""},
         };
-        // 1) Atualiza o estado React (dispara supaWrite via useSupaTable)
         setPatients(prev=>[...prev,newPatient]);
-        // 2) Grava diretamente no Supabase com a lista consolidada,
-        //    garantindo persistência mesmo se o componente remontar logo após.
-        supaWrite("patients",[...patients,newPatient]);
       }
     }
     if(editItem){
@@ -9070,6 +9066,153 @@ function PagamentosCard({allS}){
       })
   );
 }
+function FaturamentoMesAMes({yoyData,maxMonthVal,colors,fmtCurr}){
+  const h=createElement;
+  const[hov,setHov]=useState(null);
+  return h("div",null,
+    h("div",{style:{display:"flex",alignItems:"flex-end",gap:10,height:130}},
+      Array.from({length:12},(_,m)=>{
+        const isHov=hov===m;
+        return h("div",{key:m,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5,cursor:"pointer",position:"relative"},
+          onMouseEnter:()=>setHov(m),onMouseLeave:()=>setHov(null)},
+          isHov&&h("div",{style:{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",background:P.text,color:P.accent3,borderRadius:8,padding:"8px 12px",fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",pointerEvents:"none",marginBottom:6}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:5,opacity:.85}},MONTH_NAMES[m]),
+            yoyData.map((d,i)=>h("div",{key:d.year,style:{display:"flex",justifyContent:"space-between",gap:12,marginBottom:2}},
+              h("span",{style:{color:colors[i%colors.length],fontWeight:600}},String(d.year)),
+              h("span",{style:{fontWeight:600}},fmtCurr(d.byMonth[m].rec)),
+              h("span",{style:{fontSize:10,opacity:.65}},d.byMonth[m].count+"sess")
+            ))
+          ),
+          h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",gap:2,width:"100%"}},
+            yoyData.map((d,i)=>{
+              const v=d.byMonth[m].rec;
+              return h("div",{key:d.year,style:{flex:1,height:`${maxMonthVal>0?(v/maxMonthVal)*100:0}%`,background:isHov?colors[i%colors.length]:(colors[i%colors.length]+"bb"),borderRadius:"3px 3px 0 0",minHeight:v>0?3:0,transition:"background .15s"}});
+            })
+          ),
+          h("div",{style:{fontSize:9,color:isHov?P.text:P.text3,fontWeight:isHov?700:400,textTransform:"uppercase"}},MONTH_NAMES[m].slice(0,3))
+        );
+      })
+    ),
+    h("div",{style:{display:"flex",gap:16,marginTop:14,fontSize:11,color:P.text3,justifyContent:"center",flexWrap:"wrap"}},
+      yoyData.map((d,i)=>h("div",{key:d.year,style:{display:"flex",alignItems:"center",gap:6}},
+        h("span",{style:{width:10,height:10,borderRadius:2,background:colors[i%colors.length],display:"inline-block"}}),
+        String(d.year)
+      ))
+    )
+  );
+}
+
+function FaturamentoPorDia({yoyData,axisDays,maxDayVal,colors,fmtCurr}){
+  const h=createElement;
+  const[hov,setHov]=useState(null);
+  return h("div",null,
+    h("div",{style:{display:"flex",alignItems:"flex-end",gap:3,height:130,overflowX:"auto"}},
+      Array.from({length:axisDays},(_,i)=>{
+        const day=i+1;
+        const isHov=hov===day;
+        const anyVal=yoyData.some(d=>{const dd=d.byDay.find(x=>x.day===day);return dd&&dd.rec>0;});
+        return h("div",{key:day,style:{flex:"1 0 auto",minWidth:9,display:"flex",flexDirection:"column",alignItems:"center",gap:3,cursor:"pointer",position:"relative"},
+          onMouseEnter:()=>setHov(day),onMouseLeave:()=>setHov(null)},
+          isHov&&anyVal&&h("div",{style:{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",background:P.text,color:P.accent3,borderRadius:8,padding:"8px 12px",fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",pointerEvents:"none",marginBottom:6}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:5,opacity:.85}},"Dia "+day),
+            yoyData.map((d,i)=>{
+              const dd=d.byDay.find(x=>x.day===day);
+              const v=dd?dd.rec:0;
+              return h("div",{key:d.year,style:{display:"flex",justifyContent:"space-between",gap:12,marginBottom:2}},
+                h("span",{style:{color:colors[i%colors.length],fontWeight:600}},String(d.year)),
+                h("span",{style:{fontWeight:600}},fmtCurr(v))
+              );
+            })
+          ),
+          h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",gap:1,width:"100%"}},
+            yoyData.map((d,i2)=>{
+              const dd=d.byDay.find(x=>x.day===day);
+              const v=dd?dd.rec:0;
+              return h("div",{key:d.year,style:{flex:1,height:`${maxDayVal>0?(v/maxDayVal)*100:0}%`,background:isHov?colors[i2%colors.length]:(colors[i2%colors.length]+"bb"),borderRadius:"2px 2px 0 0",minHeight:v>0?2:0,transition:"background .15s"}});
+            })
+          ),
+          h("div",{style:{fontSize:8,color:isHov?P.text:P.text3,fontWeight:isHov?700:400}},day)
+        );
+      })
+    ),
+    h("div",{style:{display:"flex",gap:16,marginTop:14,fontSize:11,color:P.text3,justifyContent:"center",flexWrap:"wrap"}},
+      yoyData.map((d,i)=>h("div",{key:d.year,style:{display:"flex",alignItems:"center",gap:6}},
+        h("span",{style:{width:10,height:10,borderRadius:2,background:colors[i%colors.length],display:"inline-block"}}),
+        String(d.year)
+      ))
+    )
+  );
+}
+
+function HeatmapHorarios({matrix,HM_HOURS,DOW_LABELS,hmMetric,maxCount,maxRevenue,fmtCurr}){
+  const h=createElement;
+  const[hov,setHov]=useState(null);
+  return h("div",{style:{minWidth:760}},
+    h("div",{style:{display:"grid",gridTemplateColumns:`56px repeat(${HM_HOURS.length},1fr)`,gap:3,marginBottom:4}},
+      h("div",null),
+      HM_HOURS.map(hr=>h("div",{key:hr,style:{textAlign:"center",fontSize:10,color:P.text3}},hr+"h"))
+    ),
+    DOW_LABELS.map((label,dow)=>h("div",{key:dow,style:{display:"grid",gridTemplateColumns:`56px repeat(${HM_HOURS.length},1fr)`,gap:3,marginBottom:3}},
+      h("div",{style:{fontSize:11,color:P.text2,display:"flex",alignItems:"center",fontWeight:500}},label),
+      HM_HOURS.map(hr=>{
+        const cell=matrix[dow][hr];
+        const max=hmMetric==="receita"?maxRevenue:maxCount;
+        const val=hmMetric==="receita"?cell.revenue:cell.count;
+        const intensity=max>0?val/max:0;
+        const baseColor=hmMetric==="receita"?"196,169,106":"92,31,50";
+        const bg=val>0?`rgba(${baseColor},${(0.12+intensity*0.78).toFixed(2)})`:P.bg3;
+        const isBest=max>0&&val===max&&val>0;
+        const isHov=hov&&hov.dow===dow&&hov.hr===hr;
+        return h("div",{key:hr,
+          onMouseEnter:()=>setHov({dow,hr}),onMouseLeave:()=>setHov(null),
+          style:{height:30,borderRadius:5,background:bg,border:isHov?`1px solid ${P.accent}`:(isBest?`1px solid ${P.accent3}`:"1px solid transparent"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9.5,color:intensity>0.45?P.bg:P.text3,fontWeight:intensity>0.45?700:400,cursor:val>0?"pointer":"default",position:"relative"}},
+          val>0?(hmMetric==="receita"?(val>=1000?Math.round(val/1000)+"k":String(Math.round(val))):String(val)):"",
+          isHov&&val>0&&h("div",{style:{position:"absolute",bottom:"110%",left:"50%",transform:"translateX(-50%)",background:P.text,color:P.accent3,borderRadius:8,padding:"8px 11px",fontSize:11,whiteSpace:"nowrap",zIndex:40,boxShadow:"0 6px 20px rgba(0,0,0,.35)",pointerEvents:"none"}},
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:5,opacity:.85}},label+" · "+hr+"h"),
+            h("div",{style:{display:"flex",justifyContent:"space-between",gap:12,marginBottom:2}},
+              h("span",{style:{opacity:.7}},"Atendimentos"),h("span",{style:{fontWeight:600}},cell.count)
+            ),
+            h("div",{style:{display:"flex",justifyContent:"space-between",gap:12}},
+              h("span",{style:{opacity:.7}},"Receita"),h("span",{style:{color:"#9fd9af",fontWeight:600}},fmtCurr(cell.revenue))
+            )
+          )
+        );
+      })
+    )),
+    h("div",{style:{display:"flex",alignItems:"center",gap:10,marginTop:14,fontSize:10,color:P.text3,flexWrap:"wrap"}},
+      h("span",null,"Menos"),
+      h("div",{style:{display:"flex",gap:2}},[0.12,0.3,0.5,0.7,0.9].map((op,i)=>h("span",{key:i,style:{width:16,height:10,borderRadius:2,display:"inline-block",background:`rgba(${hmMetric==="receita"?"196,169,106":"92,31,50"},${op})`}}))),
+      h("span",null,"Mais"),
+      h("span",{style:{marginLeft:"auto",fontStyle:"italic"}},hmMetric==="receita"?"Receita considera apenas atendimentos com status Realizado":"Atendimentos = agendamentos não cancelados no período")
+    )
+  );
+}
+
+function NovasPacientesChart({newPerMonth,maxNovas}){
+  const h=createElement;
+  const[hov,setHov]=useState(null);
+  return h("div",{style:{display:"flex",alignItems:"flex-end",gap:10,height:80,marginBottom:8}},
+    newPerMonth.map((m,i)=>{
+      const h2=maxNovas>0?Math.max((m.novas/maxNovas)*100,m.novas>0?10:0):0;
+      const isHov=hov===i;
+      return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer",position:"relative"},
+        onMouseEnter:()=>setHov(i),onMouseLeave:()=>setHov(null)},
+        isHov&&m.novas>0&&h("div",{style:{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",background:P.text,color:P.accent3,borderRadius:8,padding:"7px 11px",fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",pointerEvents:"none",marginBottom:6}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:3,opacity:.85}},m.label),
+          h("div",{style:{display:"flex",justifyContent:"space-between",gap:10}},
+            h("span",{style:{opacity:.7}},"Novas pacientes"),h("span",{style:{color:P.rose,fontWeight:700}},String(m.novas))
+          )
+        ),
+        h("div",{style:{fontSize:10,color:isHov?P.rose:P.text3,fontWeight:isHov?700:400}},m.novas>0?m.novas:"—"),
+        h("div",{style:{width:"100%",height:66,display:"flex",alignItems:"flex-end"}},
+          h("div",{style:{flex:1,height:h2+"%",background:isHov?`linear-gradient(to top,${P.rose},${P.gold})`:`linear-gradient(to top,${P.rose2},rgba(92,31,50,.3))`,borderRadius:"3px 3px 0 0",transition:"background .2s"}})
+        ),
+        h("div",{style:{fontSize:9,color:isHov?P.text:P.text3,fontWeight:isHov?700:400}},m.label)
+      );
+    })
+  );
+}
+
 // ─── GRÁFICOS DE RELATÓRIOS (componentes separados para respeitar regras de Hooks) ─
 function BarChart6m({monthlyData,maxRec,fmtCurr}){
   const h=createElement;
@@ -9650,33 +9793,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
           h("div",{style:{color:P.text3,fontSize:14}},"Nenhum agendamento registrado no período selecionado.")
         ):
         h(Card,{style:{marginBottom:22,overflowX:"auto"}},
-          h("div",{style:{minWidth:760}},
-            h("div",{style:{display:"grid",gridTemplateColumns:`56px repeat(${HM_HOURS.length},1fr)`,gap:3,marginBottom:4}},
-              h("div",null),
-              HM_HOURS.map(hr=>h("div",{key:hr,style:{textAlign:"center",fontSize:10,color:P.text3}},hr+"h"))
-            ),
-            DOW_LABELS.map((label,dow)=>h("div",{key:dow,style:{display:"grid",gridTemplateColumns:`56px repeat(${HM_HOURS.length},1fr)`,gap:3,marginBottom:3}},
-              h("div",{style:{fontSize:11,color:P.text2,display:"flex",alignItems:"center",fontWeight:500}},label),
-              HM_HOURS.map(hr=>{
-                const cell=matrix[dow][hr];
-                const max=hmMetric==="receita"?maxRevenue:maxCount;
-                const val=hmMetric==="receita"?cell.revenue:cell.count;
-                const intensity=max>0?val/max:0;
-                const baseColor=hmMetric==="receita"?"196,169,106":"92,31,50";
-                const bg=val>0?`rgba(${baseColor},${(0.12+intensity*0.78).toFixed(2)})`:P.bg3;
-                const isBest=max>0&&val===max&&val>0;
-                return h("div",{key:hr,title:`${label} ${hr}h — ${cell.count} atendimento(s) · ${fmtCurr(cell.revenue)}`,style:{height:30,borderRadius:5,background:bg,border:isBest?`1px solid ${P.accent3}`:"1px solid transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9.5,color:intensity>0.45?P.bg:P.text3,fontWeight:intensity>0.45?700:400}},
-                  val>0?(hmMetric==="receita"?(val>=1000?Math.round(val/1000)+"k":String(Math.round(val))):String(val)):""
-                );
-              })
-            )),
-            h("div",{style:{display:"flex",alignItems:"center",gap:10,marginTop:14,fontSize:10,color:P.text3,flexWrap:"wrap"}},
-              h("span",null,"Menos"),
-              h("div",{style:{display:"flex",gap:2}},[0.12,0.3,0.5,0.7,0.9].map((op,i)=>h("span",{key:i,style:{width:16,height:10,borderRadius:2,display:"inline-block",background:`rgba(${hmMetric==="receita"?"196,169,106":"92,31,50"},${op})`}}))),
-              h("span",null,"Mais"),
-              h("span",{style:{marginLeft:"auto",fontStyle:"italic"}},hmMetric==="receita"?"Receita considera apenas atendimentos com status Realizado":"Atendimentos = agendamentos não cancelados no período")
-            )
-          )
+          h(HeatmapHorarios,{matrix,HM_HOURS,DOW_LABELS,hmMetric,maxCount,maxRevenue,fmtCurr})
         ),
         h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
           h(Card,null,
@@ -9850,18 +9967,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
         // Gráfico de novas por mês
         h(Card,{style:{marginBottom:18}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Novas Pacientes — Últimos 6 Meses"),
-          h("div",{style:{display:"flex",alignItems:"flex-end",gap:10,height:80,marginBottom:8}},
-            newPerMonth.map((m,i)=>{
-              const h2=maxNovas>0?Math.max((m.novas/maxNovas)*100,m.novas>0?10:0):0;
-              return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}},
-                h("div",{style:{fontSize:10,color:P.text3}},m.novas>0?m.novas:"—"),
-                h("div",{style:{width:"100%",height:66,display:"flex",alignItems:"flex-end"}},
-                  h("div",{style:{flex:1,height:h2+"%",background:`linear-gradient(to top,${P.rose2},rgba(92,31,50,.3))`,borderRadius:"3px 3px 0 0"}})
-                ),
-                h("div",{style:{fontSize:9,color:P.text3}},m.label)
-              );
-            })
-          )
+          h(NovasPacientesChart,{newPerMonth,maxNovas})
         ),
         // Pacientes em risco — ação prioritária
         risco.length>0&&h(Card,{style:{marginBottom:18,border:`1px solid ${P.yellow}44`}},
@@ -10176,41 +10282,11 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
         // ── Gráfico: mês a mês (ano completo) ou dia a dia (mês específico) ──
         yoyMode==="ano"?h(Card,{style:{marginBottom:18}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Faturamento Mês a Mês"),
-          h("div",{style:{display:"flex",alignItems:"flex-end",gap:10,height:130}},
-            Array.from({length:12},(_,m)=>h("div",{key:m,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}},
-              h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",gap:2,width:"100%"}},
-                yoyData.map((d,i)=>{
-                  const v=d.byMonth[m].rec;
-                  return h("div",{key:d.year,title:`${d.year}: ${fmtCurr(v)}`,style:{flex:1,height:`${(v/maxMonthVal)*100}%`,background:colors[i%colors.length],borderRadius:"3px 3px 0 0",minHeight:v>0?3:0}});
-                })
-              ),
-              h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase"}},MONTH_NAMES[m].slice(0,3))
-            ))
-          ),
-          h("div",{style:{display:"flex",gap:16,marginTop:14,fontSize:11,color:P.text3,justifyContent:"center",flexWrap:"wrap"}},
-            yoyData.map((d,i)=>h("div",{key:d.year,style:{display:"flex",alignItems:"center",gap:6}},h("span",{style:{width:10,height:10,borderRadius:2,background:colors[i%colors.length],display:"inline-block"}}),String(d.year)))
-          )
+          h(FaturamentoMesAMes,{yoyData,maxMonthVal,colors,fmtCurr})
         ):h(Card,{style:{marginBottom:18}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:4}},`Faturamento por Dia — ${MONTH_NAMES[yoyMonth]}`),
           h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},"Mesmo dia do mês, comparado entre os anos selecionados"),
-          h("div",{style:{display:"flex",alignItems:"flex-end",gap:3,height:130,overflowX:"auto"}},
-            Array.from({length:axisDays},(_,i)=>{
-              const day=i+1;
-              return h("div",{key:day,style:{flex:"1 0 auto",minWidth:9,display:"flex",flexDirection:"column",alignItems:"center",gap:3}},
-                h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",gap:1,width:"100%"}},
-                  yoyData.map((d,i2)=>{
-                    const dd=d.byDay.find(x=>x.day===day);
-                    const v=dd?dd.rec:0;
-                    return h("div",{key:d.year,title:`${d.year} dia ${day}: ${fmtCurr(v)}`,style:{flex:1,height:`${(v/maxDayVal)*100}%`,background:colors[i2%colors.length],borderRadius:"2px 2px 0 0",minHeight:v>0?2:0}});
-                  })
-                ),
-                h("div",{style:{fontSize:8,color:P.text3}},day)
-              );
-            })
-          ),
-          h("div",{style:{display:"flex",gap:16,marginTop:14,fontSize:11,color:P.text3,justifyContent:"center",flexWrap:"wrap"}},
-            yoyData.map((d,i)=>h("div",{key:d.year,style:{display:"flex",alignItems:"center",gap:6}},h("span",{style:{width:10,height:10,borderRadius:2,background:colors[i%colors.length],display:"inline-block"}}),String(d.year)))
-          )
+          h(FaturamentoPorDia,{yoyData,axisDays,maxDayVal,colors,fmtCurr,yoyMonth})
         ),
         // ── Ranking de procedimentos: crescimento/queda entre o primeiro e o último ano selecionados ──
         yoyData.length<2?h(Card,{style:{textAlign:"center",padding:24,color:P.text3,fontSize:13}},"Selecione ao menos 2 anos para ver o ranking de procedimentos em crescimento e queda."):
