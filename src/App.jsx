@@ -5949,10 +5949,10 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           graves:all.filter(ic=>["Grave","Emergencial"].includes(icSeverityOf(ic))).length
         };
         return h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}},
-          [{l:"Total",v:all.length,c:P.rose},{l:"Em Acompanhamento",v:stats.acomp,c:"#7aaed4"},{l:"Resolvidas",v:stats.resolv,c:P.green},{l:"Graves/Emergenciais",v:stats.graves,c:P.red}].map(s=>
-            h("div",{key:s.l,style:{textAlign:"center",padding:14,borderRadius:12,background:s.c}},
-              h("div",{style:{fontSize:9.5,color:"rgba(255,255,255,.85)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:5}},s.l),
-              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:"#fff"}},s.v)
+          [{l:"Total",v:all.length,c:P.statusPurple},{l:"Em Acompanhamento",v:stats.acomp,c:P.statusBlue},{l:"Resolvidas",v:stats.resolv,c:P.statusGreen},{l:"Graves/Emergenciais",v:stats.graves,c:P.statusRed}].map(s=>
+            h(Card,{key:s.l,style:{...kpiCardStyle(s.c),padding:14}},
+              h("div",{style:{fontSize:9.5,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:5}},s.l),
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:s.c}},s.v)
             )
           )
         );
@@ -11848,10 +11848,10 @@ function IntercorrenciasGlobal({patients,setPatients,onSelectPatient,onNav,proce
   return h("div",null,
     h(SectionHeader,{title:"Intercorrências",sub:"Painel clínico de intercorrências da clínica"}),
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:18}},
-      [{l:"Total Registradas",v:stats.total,c:P.rose},{l:"Em Acompanhamento",v:stats.acomp,c:"#7aaed4"},{l:"Resolvidas",v:stats.resolv,c:P.green},{l:"Graves / Emergenciais",v:stats.graves,c:P.red}].map(s=>
-        h("div",{key:s.l,style:{textAlign:"center",padding:20,borderRadius:12,background:s.c}},
-          h("div",{style:{fontSize:10,color:"rgba(255,255,255,.85)",textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},s.l),
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:"#fff"}},s.v)
+      [{l:"Total Registradas",v:stats.total,c:P.statusPurple},{l:"Em Acompanhamento",v:stats.acomp,c:P.statusBlue},{l:"Resolvidas",v:stats.resolv,c:P.statusGreen},{l:"Graves / Emergenciais",v:stats.graves,c:P.statusRed}].map(s=>
+        h(Card,{key:s.l,style:kpiCardStyle(s.c)},
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},s.l),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:s.c}},s.v)
         )
       )
     ),
