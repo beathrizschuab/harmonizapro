@@ -376,7 +376,7 @@ const addMinToTime=(time,mins)=>{
 };
 // Retorna a hora final de um agendamento dado time + duration
 const apptEndTime=a=>a&&a.time?addMinToTime(a.time,durationToMin(a.duration)):"";
-const parseDMY=s=>{if(!s)return null;const[d,m,y]=s.split("/");return new Date(`${y}-${m}-${d}`);};
+const parseDMY=s=>parseAnyDate(s); // unificado: usa a mesma lógica de parseAnyDate (ver definição mais abaixo, função hoisted)
 const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
 const todayISO=()=>new Date().toISOString().slice(0,10);
 const dmyToISO=s=>{const d=parseDMY(s);return d?d.toISOString().slice(0,10):"";};
