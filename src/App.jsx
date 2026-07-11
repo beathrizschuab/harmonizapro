@@ -4258,64 +4258,17 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
           );
         })
       ),
-      // Grade horária com blocos visuais
+      // Grade horária — reaproveita o mesmo componente da view Dia (clique para criar, clique no card para editar, drag & drop)
       h("div",{style:{display:"grid",gridTemplateColumns:"56px repeat(7,1fr)",maxHeight:520,overflowY:"auto"}},
         h("div",{style:{borderRight:`0.5px solid ${P.border}`}},
-          HOURS.map(hr=>h("div",{key:hr,style:{height:56,borderBottom:`0.5px solid ${P.border}`,display:"flex",alignItems:"flex-start",justifyContent:"flex-end",paddingRight:8,paddingTop:4,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,color:P.text3}},`${String(hr).padStart(2,"0")}h`))
+          HOURS.map(hr=>h("div",{key:hr,style:{height:64,borderBottom:`0.5px solid ${P.border}`,display:"flex",alignItems:"flex-start",justifyContent:"flex-end",paddingRight:8,paddingTop:4,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,color:P.text3}},`${String(hr).padStart(2,"0")}h`))
         ),
-        weekDays.map((ds,di)=>{
-          const dayAppts=agenda.filter(a=>a.date===ds&&!a.blocked);
+        weekDays.map(ds=>{
           const isToday=ds===todayISO();
-          // Paleta de cores por procedimento (hash consistente)
-          function procColor(proc){
-            const colors=["#5C1F32","#855954","#9D7761","#3a6aa0","#2a7a80","#6a3a90","#3d8a58","#9a6e10"];
-            let h2=0;for(let i=0;i<(proc||"").length;i++)h2=(h2*31+proc.charCodeAt(i))&0xffff;
-            return colors[h2%colors.length];
-          }
           return h("div",{key:ds,style:{borderRight:`0.5px solid ${P.border}`,position:"relative",background:isToday?"rgba(157,119,97,.03)":"transparent"}},
-            // Linhas de hora de fundo
-            HOURS.map(hr=>h("div",{key:hr,style:{position:"absolute",top:(hr-HOURS[0])*56,left:0,right:0,height:56,borderBottom:`0.5px solid ${P.border}`,pointerEvents:"none"}})),
-            // Blocos de agendamento
-            dayAppts.map((a,ai)=>{
-              const[hh,mm]=(a.time||"08:00").split(":").map(Number);
-              const topMin=(hh-HOURS[0])*60+mm;
-              const durMin=Number((a.duration||"1 hora").split(" ")[0].replace("h",""))*(a.duration&&a.duration.includes("hora")?60:1)||60;
-              const top=topMin/60*56;
-              const height=Math.max(durMin/60*56,24);
-              const color=procColor(a.procedure);
-              const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
-              const statusColor=dark?sc.colorDark:sc.color;
-              // Detectar colisões simples para offset
-              const cols=dayAppts.filter(b=>{
-                const[bh,bm]=(b.time||"08:00").split(":").map(Number);
-                const bTop=(bh-HOURS[0])*60+bm;
-                const bDur=Number((b.duration||"1 hora").split(" ")[0].replace("h",""))*(b.duration&&b.duration.includes("hora")?60:1)||60;
-                return b.id!==a.id&&bTop<topMin+durMin&&bTop+bDur>topMin;
-              });
-              const colIdx=cols.length>0?ai%2:0;
-              const w=cols.length>0?"50%":"calc(100% - 4px)";
-              return h("div",{key:a.id,
-                onClick:()=>{setSelDate(ds);setViewMode("day");},
-                title:`${a.time} · ${a.patientName} · ${a.procedure}`,
-                style:{
-                  position:"absolute",top:top+1,left:colIdx===0?2:"50%",
-                  width:w,height:height-2,
-                  background:color+"22",
-                  borderLeft:`3px solid ${color}`,
-                  borderRadius:"0 6px 6px 0",
-                  padding:"3px 5px",overflow:"hidden",
-                  cursor:"pointer",zIndex:1+ai,
-                  transition:"opacity .15s,filter .15s",
-                },
-                onMouseEnter:e=>{e.currentTarget.style.opacity=".85";e.currentTarget.style.filter="brightness(1.1)";},
-                onMouseLeave:e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.filter="none";}},
-                h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:9.5,color:color,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.patientName),
-                height>30&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:8.5,color:color,opacity:.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:1}},a.procedure),
-                h("div",{style:{width:5,height:5,borderRadius:"50%",background:statusColor,position:"absolute",top:3,right:3}})
-              );
-            }),
+            h(HourSlots,{date:ds,appts:agenda.filter(a=>a.date===ds&&!a.blocked)}),
             // Linha de hora atual
-            isToday&&h("div",{style:{position:"absolute",left:0,right:0,top:(new Date().getHours()-HOURS[0])*56+new Date().getMinutes()/60*56,height:1.5,background:"#5C1F32",zIndex:10,pointerEvents:"none"}},
+            isToday&&h("div",{style:{position:"absolute",left:0,right:0,top:(new Date().getHours()-HOURS[0])*64+new Date().getMinutes()/60*64,height:1.5,background:"#5C1F32",zIndex:10,pointerEvents:"none"}},
               h("div",{style:{position:"absolute",left:-3,top:-3,width:8,height:8,borderRadius:"50%",background:"#5C1F32"}})
             )
           );
