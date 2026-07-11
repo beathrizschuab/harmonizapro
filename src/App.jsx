@@ -3480,7 +3480,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
   const dark=!!(settings&&settings.darkMode);
   // Alertas automáticos
   const alertas=[];
-  const critStock=products.filter(p=>p.status==="critical"||(Array.isArray(p.lotes)&&p.lotes.some(l=>{if(!l.validade)return false;const d=parseMY?parseMY(l.validade):null;return d&&d<=new Date(Date.now()+30*864e5);})));
+  const critStock=products.filter(p=>p.status==="critical"||(Array.isArray(p.lotes)&&p.lotes.some(l=>{if(!l.validade)return false;let d=null;try{const[m,y]=String(l.validade).split("/");d=new Date(Number(y),Number(m)-1,1);}catch{d=null;}return d&&d<=new Date(Date.now()+30*864e5);})));
   if(critStock.length)alertas.push({icon:"ti-alert-triangle",color:P.statusAmber,bg:dark?"rgba(154,110,16,.12)":"rgba(154,110,16,.08)",title:"Estoque crítico",sub:`${critStock.length} item${critStock.length>1?"s":""} requer${critStock.length>1?"em":""} atenção`,action:()=>onNav("estoque")});
   const retAtrasados=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);});
   if(retAtrasados.length)alertas.push({icon:"ti-clock-hour-4",color:P.statusBlue,bg:dark?"rgba(58,106,160,.12)":"rgba(58,106,160,.08)",title:"Retornos em atraso",sub:`${retAtrasados.length} paciente${retAtrasados.length>1?"s":""} sem visita além do prazo`,action:()=>onNav("retornos")});
@@ -3968,7 +3968,7 @@ function AgendaHourSlotsBase({date,appts,step,dragOver,setDragOver,dragIdRef,onC
   );
 }
 
-function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,proceduresFull,locations,prefill,onConsumePrefill}){
+function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,proceduresFull,locations,prefill,onConsumePrefill,dark=false}){
   const[selDate,setSelDate]=useState(todayISO());
   const[viewMonth,setViewMonth]=useState(()=>{const t=new Date();return{y:t.getFullYear(),m:t.getMonth()};});
   const[viewMode,setViewMode]=useState("month");
@@ -4766,7 +4766,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   );
 }
 // ─── AGENDA APPT ROW (usado na aba Agenda do prontuário) ─────────────────────
-function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations}){
+function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations,dark=false}){
   const h=createElement;
   const[open,setOpen]=useState(false);
   const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
@@ -4986,6 +4986,7 @@ function getPatientPhotoGallery(patient){
   return list;
 }
 function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings,agenda,setAgenda,setAgendaLog,maquininhas=[]}){
+  const dark=!!(clinicSettings&&clinicSettings.darkMode);
   const _vTemplates=Array.isArray(voucherTemplates)&&voucherTemplates.length?voucherTemplates:DEFAULT_VOUCHER_TEMPLATES;
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
@@ -6232,7 +6233,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       function ApptRow(a){
         const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
         const hasHistory=(a.rescheduleHistory||[]).length>0;
-        return h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations});
+        return h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations,dark});
       }
 
       const statsStyle={background:P.bg3,borderRadius:10,padding:"10px 14px",border:`1px solid ${P.border}`,textAlign:"center",flex:"1 1 80px"};
@@ -6266,7 +6267,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             h("div",{style:{width:3,height:14,background:"#7aaed4",borderRadius:2}}),
             "Próximas Consultas"
           ),
-          upcoming.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations}))
+          upcoming.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations,dark}))
         ),
         // ── Histórico ──
         h("div",null,
@@ -6276,7 +6277,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           ),
           past.length===0
             ?h("div",{style:{color:P.text3,fontSize:13,padding:"20px 0"}})
-            :past.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations}))
+            :past.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations,dark}))
         ),
         patAppts.length===0&&h(Card,{style:{textAlign:"center",padding:40}},
           h("div",{style:{fontSize:32,marginBottom:12}},"📅"),
@@ -12552,7 +12553,7 @@ function AppInner({ session, onLogout }) {
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn}),
             page==="pacientes_risco"&&h(PacientesEmRisco,{patients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav}),
-            page==="agenda"&&h(Agenda,{patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null)}),
+            page==="agenda"&&h(Agenda,{patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null),dark}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,setAgendaLog,maquininhas}),
