@@ -2771,10 +2771,16 @@ function GlobalSearch({patients,agenda,onSelectPatient,onNav}){
   );
 }
 // ─── RETORNOS PENDENTES ───────────────────────────────────────────────────────
-function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onScheduleReturn,mini=false}){
+function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onScheduleReturn,mini=false,agenda=[]}){
   const h=createElement;
   const today=new Date();
+  const todayStr=today.toISOString().slice(0,10);
   const[filter,setFilter]=useState("todos"); // todos | urgente | proximo | ok
+  // ── Aba ativa na página completa: "retorno" (protocolo agendado) ou "risco" (score de abandono) ──
+  const[tab,setTab]=useState("retorno");
+  const[riscoFilter,setRiscoFilter]=useState("todos");
+  const[riscoSort,setRiscoSort]=useState("urgencia");
+  const dark=false;
 
   // Para cada paciente, pega a sessão mais recente e calcula o retorno esperado
   const retornos=useMemo(()=>{
@@ -2813,6 +2819,42 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
     });
     return list.sort((a,b)=>a.diasRestantes-b.diasRestantes);
   },[patients,returnRules]);
+
+  // ── Risco de abandono: score baseado em dias sem visita + cancelamentos + falta de protocolo ──
+  // (lógica movida de PacientesEmRisco — agora vive junto de Retornos, já que respondem à mesma
+  // pergunta no fim das contas: "quais pacientes eu preciso contatar?")
+  const risco=useMemo(()=>{
+    return patients.map(p=>{
+      const sessions=(p.sessions||[]);
+      const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];
+      const lastDate=last?parseDMY(last.date):null;
+      const diasSemVisita=lastDate?daysBetween(lastDate,today):null;
+      const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;
+      const semProtocolo=sessions.length>0&&!sessions.some(s=>s.protocol||s.returnReminderDays);
+      const hasUpcoming=agenda.some(a=>a.patientName===p.name&&a.date>=todayStr&&a.status!=="Cancelado");
+      let score=0;
+      if(diasSemVisita!=null){
+        if(diasSemVisita>180)score+=40;
+        else if(diasSemVisita>90)score+=25;
+        else if(diasSemVisita>60)score+=10;
+      }
+      if(cancelamentos>=3)score+=30;
+      else if(cancelamentos>=2)score+=15;
+      if(semProtocolo)score+=10;
+      if(hasUpcoming)score=Math.max(0,score-20);
+      const motivos=[];
+      if(diasSemVisita!=null&&diasSemVisita>60)motivos.push({label:`${diasSemVisita}d sem visita`,color:diasSemVisita>180?P.statusRed:diasSemVisita>90?P.statusAmber:P.text3});
+      if(cancelamentos>=2)motivos.push({label:`${cancelamentos} cancelamentos`,color:cancelamentos>=3?P.statusRed:P.statusAmber});
+      if(semProtocolo)motivos.push({label:"Sem protocolo",color:P.text3});
+      if(hasUpcoming)motivos.push({label:"Agendada",color:P.statusGreen});
+      const nivel=score>=40?"alto":score>=20?"medio":"baixo";
+      return{...p,_score:score,_nivel:nivel,_diasSemVisita:diasSemVisita,_cancelamentos:cancelamentos,_semProtocolo:semProtocolo,_hasUpcoming:hasUpcoming,_motivos:motivos,_lastProc:last?.procedure,_lastDate:last?.date};
+    })
+    .filter(p=>p._score>5)
+    .sort((a,b)=>riscoSort==="urgencia"?b._score-a._score:riscoSort==="dias"?(b._diasSemVisita||0)-(a._diasSemVisita||0):(b._cancelamentos-a._cancelamentos));
+  },[patients,agenda,riscoSort]);
+  const riscoFiltered=riscoFilter==="alto"?risco.filter(p=>p._nivel==="alto"):riscoFilter==="medio"?risco.filter(p=>p._nivel==="medio"):risco;
+  const nivelCfg={alto:{color:P.statusRed,bg:dark?"rgba(160,48,48,.12)":"rgba(160,48,48,.08)",label:"Alto risco"},medio:{color:P.statusAmber,bg:dark?"rgba(154,110,16,.12)":"rgba(154,110,16,.08)",label:"Atenção"},baixo:{color:P.text3,bg:"transparent",label:"Monitorar"}};
 
   const countUrgente=retornos.filter(r=>r.urgencia===0).length;
   const countProximo=retornos.filter(r=>r.urgencia===1||r.urgencia===2).length;
@@ -2858,74 +2900,143 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
     );
   }
 
-  // MODO COMPLETO: página dedicada
+  // MODO COMPLETO: página dedicada (com abas — Retorno de Protocolo · Risco de Abandono)
   return h("div",null,
-    h(SectionHeader,{title:"Retornos Pendentes",sub:"Pacientes que precisam voltar para manutenção ou revisão"}),
-    // Resumo em cards
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
-      [{l:"Atrasadas",v:retornos.filter(r=>r.urgencia===0).length,c:KPI.red,icon:"🔴",f:"urgente"},
-       {l:"Esta semana",v:retornos.filter(r=>r.urgencia===1).length,c:KPI.yellow,icon:"🟡",f:"proximo"},
-       {l:"Este mês",v:retornos.filter(r=>r.urgencia===2).length,c:KPI.blue,icon:"🔵",f:"proximo"},
-       {l:"Em dia",v:retornos.filter(r=>r.urgencia===3).length,c:KPI.green,icon:"🟢",f:"ok"}
-      ].map(k=>h(Card,{key:k.l,onClick:()=>setFilter(f=>f===k.f?"todos":k.f),style:{cursor:"pointer",textAlign:"center",background:`${k.c}1A`,border:`1px solid ${filter===k.f?k.c:k.c+"40"}`,transition:"all .15s"}},
-        h("div",{style:{fontSize:22,marginBottom:6}},k.icon),
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:34,color:k.c,lineHeight:1}},k.v),
-        h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.l)
-      ))
-    ),
-    // Filtros
-    h("div",{style:{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}},
-      [{k:"todos",l:"Todas ("+retornos.length+")"},{k:"urgente",l:"🔴 Atrasadas"},{k:"proximo",l:"⏳ Próximas"},{k:"ok",l:"🟢 Em dia"}].map(f=>
-        h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l)
+    h(SectionHeader,{title:"Retornos & Risco",sub:"Pacientes que precisam de atenção — retorno de protocolo programado ou risco de abandonar o tratamento"}),
+    // Abas
+    h("div",{style:{display:"flex",gap:8,marginBottom:20}},
+      [["retorno",`📅 Retorno de Protocolo${retornos.length?" ("+retornos.length+")":""}`],["risco",`💔 Risco de Abandono${risco.length?" ("+risco.length+")":""}`]].map(([k,l])=>
+        h("button",{key:k,onClick:()=>setTab(k),style:{padding:"8px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",fontWeight:tab===k?600:400,background:tab===k?P.rose:"transparent",border:`1px solid ${tab===k?P.rose:P.border}`,color:tab===k?P.accent3:P.text2,transition:"all .15s"}},l)
       )
     ),
-    // Lista
-    retornos.length===0
-      ?h(Card,{style:{textAlign:"center",padding:40}},h("div",{style:{fontSize:32,marginBottom:12}},"✅"),h("div",{style:{color:P.text3,fontSize:14}},"Nenhum retorno pendente no momento."))
-      :filtered.length===0
-        ?h(Card,{style:{textAlign:"center",padding:32}},h("div",{style:{fontSize:24,marginBottom:8}},"🔍"),h("div",{style:{color:P.text3,fontSize:13}},"Nenhuma paciente nesta categoria."))
-        :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-          filtered.map(r=>{
-            const phone=(r.patient.phone||"").replace(/\D/g,"");
-            const waMsg=encodeURIComponent(`Olá ${r.patient.name.split(" ")[0]}! 🌸 Passando para lembrar que está na hora do seu retorno pós ${r.last.procedure}. Que tal marcarmos um horário? 😊`);
-            const retornoFormatted=r.retornoData.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"});
-            return h(Card,{key:r.patient.id,style:{border:`1px solid ${r.urgColor}33`,background:r.urgBg}},
-              h("div",{style:{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}},
-                // Avatar + info principal
-                h("div",{onClick:()=>{onSelectPatient(r.patient);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:200,cursor:"pointer"}},
-                  h("div",{style:{position:"relative"}},
-                    h(Avatar,{name:r.patient.name,size:44,src:r.patient.profilePhoto}),
-                    h("div",{style:{position:"absolute",bottom:-2,right:-2,width:14,height:14,borderRadius:"50%",background:r.urgColor,border:`2px solid ${P.bg2}`}})
-                  ),
-                  h("div",null,
-                    h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},r.patient.name),
-                    h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`Último: ${r.last.procedure} em ${r.last.date}`)
-                  )
-                ),
-                // Badges de status
-                h("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
-                  h("span",{style:{fontSize:11,padding:"4px 10px",borderRadius:12,background:r.urgColor+"18",color:r.urgColor,fontWeight:600,border:`1px solid ${r.urgColor}44`}},
-                    `${r.urgLabel}`
-                  ),
-                  h("div",{style:{textAlign:"center",minWidth:80}},
-                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:r.urgColor,lineHeight:1}},
-                      r.diasRestantes<0?`+${Math.abs(r.diasRestantes)}d`:r.diasRestantes===0?"Hoje":`${r.diasRestantes}d`
-                    ),
-                    h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},r.diasRestantes<0?"de atraso":"para o retorno")
-                  ),
-                  h("div",{style:{fontSize:11,color:P.text3,minWidth:100,textAlign:"center"}},
-                    h("div",{style:{color:P.text2}},`Retorno previsto`),
-                    h("div",{style:{color:P.text,fontWeight:500,fontSize:12,marginTop:2}},retornoFormatted)
-                  ),
-                  // Ações
-                  onScheduleReturn&&h("button",{onClick:()=>onScheduleReturn(r),style:{padding:"7px 14px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"'Jost',system-ui,sans-serif"}},"📅 Agendar agora"),
-                  phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",background:"rgba(106,196,130,.13)",border:"1px solid rgba(106,196,130,.3)",borderRadius:8,color:"#7aad8a",fontSize:12,fontWeight:600,textDecoration:"none",cursor:"pointer",flexShrink:0}},"💬 WhatsApp"),
-                  h("button",{onClick:()=>{onSelectPatient(r.patient);onNav("prontuario");},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,fontSize:12,cursor:"pointer"}},"Ver Prontuário")
-                )
-              )
-            );
-          })
+
+    // ─── ABA: RETORNO DE PROTOCOLO ────────────────────────────────────────────
+    tab==="retorno"&&h(Fragment,null,
+      // Resumo em cards
+      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
+        [{l:"Atrasadas",v:retornos.filter(r=>r.urgencia===0).length,c:KPI.red,icon:"🔴",f:"urgente"},
+         {l:"Esta semana",v:retornos.filter(r=>r.urgencia===1).length,c:KPI.yellow,icon:"🟡",f:"proximo"},
+         {l:"Este mês",v:retornos.filter(r=>r.urgencia===2).length,c:KPI.blue,icon:"🔵",f:"proximo"},
+         {l:"Em dia",v:retornos.filter(r=>r.urgencia===3).length,c:KPI.green,icon:"🟢",f:"ok"}
+        ].map(k=>h(Card,{key:k.l,onClick:()=>setFilter(f=>f===k.f?"todos":k.f),style:{cursor:"pointer",textAlign:"center",background:`${k.c}1A`,border:`1px solid ${filter===k.f?k.c:k.c+"40"}`,transition:"all .15s"}},
+          h("div",{style:{fontSize:22,marginBottom:6}},k.icon),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:34,color:k.c,lineHeight:1}},k.v),
+          h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.l)
+        ))
+      ),
+      // Filtros
+      h("div",{style:{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}},
+        [{k:"todos",l:"Todas ("+retornos.length+")"},{k:"urgente",l:"🔴 Atrasadas"},{k:"proximo",l:"⏳ Próximas"},{k:"ok",l:"🟢 Em dia"}].map(f=>
+          h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l)
         )
+      ),
+      // Lista
+      retornos.length===0
+        ?h(Card,{style:{textAlign:"center",padding:40}},h("div",{style:{fontSize:32,marginBottom:12}},"✅"),h("div",{style:{color:P.text3,fontSize:14}},"Nenhum retorno pendente no momento."))
+        :filtered.length===0
+          ?h(Card,{style:{textAlign:"center",padding:32}},h("div",{style:{fontSize:24,marginBottom:8}},"🔍"),h("div",{style:{color:P.text3,fontSize:13}},"Nenhuma paciente nesta categoria."))
+          :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+            filtered.map(r=>{
+              const phone=(r.patient.phone||"").replace(/\D/g,"");
+              const waMsg=encodeURIComponent(`Olá ${r.patient.name.split(" ")[0]}! 🌸 Passando para lembrar que está na hora do seu retorno pós ${r.last.procedure}. Que tal marcarmos um horário? 😊`);
+              const retornoFormatted=r.retornoData.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"});
+              return h(Card,{key:r.patient.id,style:{border:`1px solid ${r.urgColor}33`,background:r.urgBg}},
+                h("div",{style:{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}},
+                  // Avatar + info principal
+                  h("div",{onClick:()=>{onSelectPatient(r.patient);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:200,cursor:"pointer"}},
+                    h("div",{style:{position:"relative"}},
+                      h(Avatar,{name:r.patient.name,size:44,src:r.patient.profilePhoto}),
+                      h("div",{style:{position:"absolute",bottom:-2,right:-2,width:14,height:14,borderRadius:"50%",background:r.urgColor,border:`2px solid ${P.bg2}`}})
+                    ),
+                    h("div",null,
+                      h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},r.patient.name),
+                      h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`Último: ${r.last.procedure} em ${r.last.date}`)
+                    )
+                  ),
+                  // Badges de status
+                  h("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
+                    h("span",{style:{fontSize:11,padding:"4px 10px",borderRadius:12,background:r.urgColor+"18",color:r.urgColor,fontWeight:600,border:`1px solid ${r.urgColor}44`}},
+                      `${r.urgLabel}`
+                    ),
+                    h("div",{style:{textAlign:"center",minWidth:80}},
+                      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:r.urgColor,lineHeight:1}},
+                        r.diasRestantes<0?`+${Math.abs(r.diasRestantes)}d`:r.diasRestantes===0?"Hoje":`${r.diasRestantes}d`
+                      ),
+                      h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},r.diasRestantes<0?"de atraso":"para o retorno")
+                    ),
+                    h("div",{style:{fontSize:11,color:P.text3,minWidth:100,textAlign:"center"}},
+                      h("div",{style:{color:P.text2}},`Retorno previsto`),
+                      h("div",{style:{color:P.text,fontWeight:500,fontSize:12,marginTop:2}},retornoFormatted)
+                    ),
+                    // Ações
+                    onScheduleReturn&&h("button",{onClick:()=>onScheduleReturn(r),style:{padding:"7px 14px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"'Jost',system-ui,sans-serif"}},"📅 Agendar agora"),
+                    phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",background:"rgba(106,196,130,.13)",border:"1px solid rgba(106,196,130,.3)",borderRadius:8,color:"#7aad8a",fontSize:12,fontWeight:600,textDecoration:"none",cursor:"pointer",flexShrink:0}},"💬 WhatsApp"),
+                    h("button",{onClick:()=>{onSelectPatient(r.patient);onNav("prontuario");},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,fontSize:12,cursor:"pointer"}},"Ver Prontuário")
+                  )
+                )
+              );
+            })
+          )
+    ),
+
+    // ─── ABA: RISCO DE ABANDONO ───────────────────────────────────────────────
+    tab==="risco"&&h(Fragment,null,
+      h("div",{style:{display:"flex",justifyContent:"flex-end",marginBottom:16,flexWrap:"wrap",gap:8}},
+        [["todos","Todos"],["alto","Alto risco"],["medio","Atenção"]].map(([k,l])=>h("button",{key:k,onClick:()=>setRiscoFilter(k),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,padding:"5px 13px",borderRadius:20,border:`0.5px solid ${riscoFilter===k?"#5C1F32":P.border}`,background:riscoFilter===k?"#5C1F32":"transparent",color:riscoFilter===k?"#E1D2C6":P.text3,cursor:"pointer",transition:"all .15s"}},l)),
+        h("select",{value:riscoSort,onChange:e=>setRiscoSort(e.target.value),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,padding:"5px 10px",borderRadius:9,border:`0.5px solid ${P.border}`,background:P.bg2,color:P.text,cursor:"pointer"}},
+          h("option",{value:"urgencia"},"Ordenar: Urgência"),
+          h("option",{value:"dias"},"Ordenar: Dias sem visita"),
+          h("option",{value:"cancelamentos"},"Ordenar: Cancelamentos")
+        )
+      ),
+      // Resumo cards
+      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}},
+        [{label:"Alto risco",value:risco.filter(p=>p._nivel==="alto").length,icon:"ti-user-off",color:P.statusRed,bg:dark?"rgba(160,48,48,.1)":"rgba(160,48,48,.07)"},
+         {label:"Atenção",value:risco.filter(p=>p._nivel==="medio").length,icon:"ti-clock-hour-4",color:P.statusAmber,bg:dark?"rgba(154,110,16,.1)":"rgba(154,110,16,.07)"},
+         {label:"Sem agendamento futuro",value:risco.filter(p=>!p._hasUpcoming).length,icon:"ti-calendar-off",color:P.text3,bg:P.bg3||P.bg2}
+        ].map((k,i)=>h("div",{key:i,style:{background:k.bg,border:`0.5px solid ${k.color}22`,borderRadius:12,padding:"14px 16px"}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:6}},
+            h("i",{className:`ti ${k.icon}`,style:{fontSize:16,color:k.color}}),
+            h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:k.color}},k.label)
+          ),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:28,color:P.text}},k.value)
+        ))
+      ),
+      // Lista
+      riscoFiltered.length===0
+        ?h("div",{style:{textAlign:"center",padding:40,color:P.text3,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:13}},"Nenhuma paciente em risco nesta categoria 🌿")
+        :riscoFiltered.map(p=>{
+          const nc=nivelCfg[p._nivel];
+          const phone=(p.phone||"").replace(/\D/g,"");
+          const waMsg=encodeURIComponent(`Olá ${p.name.split(" ")[0]}! Tudo bem? Sentimos sua falta na clínica. Que tal agendarmos sua próxima sessão? 🌸`);
+          return h("div",{key:p.id,style:{background:P.card,border:`0.5px solid ${P.border}`,borderLeft:`3px solid ${nc.color}`,borderRadius:"0 11px 11px 0",padding:"13px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",transition:"box-shadow .18s"},
+            onMouseEnter:e=>e.currentTarget.style.boxShadow="0 2px 14px rgba(92,31,50,.08)",
+            onMouseLeave:e=>e.currentTarget.style.boxShadow="none"},
+            // Avatar
+            h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{cursor:"pointer",flexShrink:0}},
+              h(Avatar,{name:p.name,size:38,src:p.profilePhoto})
+            ),
+            // Info
+            h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{flex:1,minWidth:160,cursor:"pointer"}},
+              h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:3}},
+                h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:13,color:P.text}},p.name),
+                h("span",{style:{fontSize:9,padding:"2px 8px",borderRadius:20,background:nc.bg,color:nc.color,fontFamily:"'Jost',sans-serif",fontWeight:400,textTransform:"uppercase",letterSpacing:".05em"}},nc.label)
+              ),
+              h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+                p._motivos.map((m,mi)=>h("span",{key:mi,style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:m.color}},m.label+(mi<p._motivos.length-1?" ·":"")))
+              ),
+              p._lastProc&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:2}},`Último: ${p._lastProc}${p._lastDate?" · "+p._lastDate:""}`)
+            ),
+            // Ações
+            h("div",{style:{display:"flex",gap:7,flexShrink:0,alignItems:"center"}},
+              h("button",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.text3,background:"transparent",border:`0.5px solid ${P.border}`,borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>{e.currentTarget.style.color=P.text;e.currentTarget.style.borderColor=P.text3;},onMouseLeave:e=>{e.currentTarget.style.color=P.text3;e.currentTarget.style.borderColor=P.border;}},"Ver prontuário"),
+              h("button",{onClick:()=>{onSelectPatient(p);onNav("agenda");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#9D7761",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background="rgba(157,119,97,.18)",onMouseLeave:e=>e.currentTarget.style.background="rgba(157,119,97,.1)"},"Agendar"),
+              phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"inline-flex",alignItems:"center",gap:5,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.statusGreen,background:P.statusGreenBg,border:`0.5px solid ${P.statusGreen}44`,borderRadius:8,padding:"5px 11px",textDecoration:"none",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background=P.statusGreenBg.replace(".12",".2"),onMouseLeave:e=>e.currentTarget.style.background=P.statusGreenBg},
+                h("i",{className:"ti ti-brand-whatsapp",style:{fontSize:13}}),"WhatsApp")
+            )
+          );
+        })
+    )
   );
 }
 // ─── ANIVERSARIANTES ─────────────────────────────────────────────────────────
@@ -12321,7 +12432,7 @@ function AppInner({ session, onLogout }) {
     handleNav("agenda");
   }
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos Pendentes",pacientes_risco:"Pacientes em Risco",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
+  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
   const settings = settingsData;
 
   const dark=!!(settingsData&&settingsData.darkMode);
@@ -12331,8 +12442,7 @@ function AppInner({ session, onLogout }) {
       {k:"agenda",l:"Agenda",ti:"ti-calendar",badge:todayApptCount||null,badgeColor:P.statusBlue},
       {k:"pacientes",l:"Pacientes",ti:"ti-users"},
       {k:"aniversariantes",l:"Aniversariantes",ti:"ti-cake",badge:(()=>{const t=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===t.getMonth()&&bd.getDate()===t.getDate();}).length||null;})(),badgeColor:P.statusAmber},
-      {k:"retornos",l:"Retornos",ti:"ti-clock-hour-4",badge:(()=>{const today=new Date();return patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length||null;})(),badgeColor:P.statusRed},
-      {k:"pacientes_risco",l:"Em Risco",ti:"ti-heart-broken",badge:(()=>{return patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length||null;})(),badgeColor:P.statusRed},
+      {k:"retornos",l:"Retornos & Risco",ti:"ti-clock-hour-4",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
     ]},
     {label:"Clínica",items:[
       {k:"estoque",l:"Estoque",ti:"ti-package",badge:criticalStock||null,badgeColor:P.statusRed},
@@ -12504,8 +12614,7 @@ function AppInner({ session, onLogout }) {
           h(ErrorBoundary,{key:page},
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,onScheduleReturn:handleScheduleReturn,procedures:procedureNames,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses,products}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
-            page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn}),
-            page==="pacientes_risco"&&h(PacientesEmRisco,{patients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav}),
+            page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn,agenda}),
             page==="agenda"&&h(Agenda,{patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null),dark}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
@@ -12524,113 +12633,5 @@ function AppInner({ session, onLogout }) {
   );
 }
 
-// ─── PACIENTES EM RISCO ───────────────────────────────────────────────────────
-function PacientesEmRisco({patients,agenda,onSelectPatient,onNav}){
-  const h=createElement;
-  const today=new Date();
-  const todayStr=today.toISOString().slice(0,10);
-  const[filter,setFilter]=useState("todos");
-  const[sort,setSort]=useState("urgencia");
-  const dark=false;
-  const risco=useMemo(()=>{
-    return patients.map(p=>{
-      const sessions=(p.sessions||[]);
-      const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];
-      const lastDate=last?parseDMY(last.date):null;
-      const diasSemVisita=lastDate?daysBetween(lastDate,today):null;
-      const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;
-      const totalAppts=agenda.filter(a=>a.patientName===p.name).length;
-      const txCancel=totalAppts>0?cancelamentos/totalAppts:0;
-      const semProtocolo=sessions.length>0&&!sessions.some(s=>s.protocol||s.returnReminderDays);
-      const hasUpcoming=agenda.some(a=>a.patientName===p.name&&a.date>=todayStr&&a.status!=="Cancelado");
-      // Score de risco (maior = mais urgente)
-      let score=0;
-      if(diasSemVisita!=null){
-        if(diasSemVisita>180)score+=40;
-        else if(diasSemVisita>90)score+=25;
-        else if(diasSemVisita>60)score+=10;
-      }
-      if(cancelamentos>=3)score+=30;
-      else if(cancelamentos>=2)score+=15;
-      if(semProtocolo)score+=10;
-      if(hasUpcoming)score=Math.max(0,score-20);
-      // Motivos
-      const motivos=[];
-      if(diasSemVisita!=null&&diasSemVisita>60)motivos.push({label:`${diasSemVisita}d sem visita`,color:diasSemVisita>180?P.statusRed:diasSemVisita>90?P.statusAmber:P.text3});
-      if(cancelamentos>=2)motivos.push({label:`${cancelamentos} cancelamentos`,color:cancelamentos>=3?P.statusRed:P.statusAmber});
-      if(semProtocolo)motivos.push({label:"Sem protocolo",color:P.text3});
-      if(hasUpcoming)motivos.push({label:"Agendada",color:P.statusGreen});
-      const nivel=score>=40?"alto":score>=20?"medio":"baixo";
-      return{...p,_score:score,_nivel:nivel,_diasSemVisita:diasSemVisita,_cancelamentos:cancelamentos,_semProtocolo:semProtocolo,_hasUpcoming:hasUpcoming,_motivos:motivos,_lastProc:last?.procedure,_lastDate:last?.date};
-    })
-    .filter(p=>p._score>5)
-    .sort((a,b)=>sort==="urgencia"?b._score-a._score:sort==="dias"?(b._diasSemVisita||0)-(a._diasSemVisita||0):(b._cancelamentos-a._cancelamentos));
-  },[patients,agenda,sort]);
-  const filtered=filter==="alto"?risco.filter(p=>p._nivel==="alto"):filter==="medio"?risco.filter(p=>p._nivel==="medio"):risco;
-  const nivelCfg={alto:{color:P.statusRed,bg:dark?"rgba(160,48,48,.12)":"rgba(160,48,48,.08)",label:"Alto risco"},medio:{color:P.statusAmber,bg:dark?"rgba(154,110,16,.12)":"rgba(154,110,16,.08)",label:"Atenção"},baixo:{color:P.text3,bg:"transparent",label:"Monitorar"}};
-  return h("div",null,
-    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}},
-      h("div",null,
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:300,fontSize:26,color:P.text}},"Pacientes em Risco"),
-        h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,color:P.text3,marginTop:3}},`${risco.filter(p=>p._nivel==="alto").length} alto risco · ${risco.filter(p=>p._nivel==="medio").length} atenção`)
-      ),
-      h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-        [["todos","Todos"],["alto","Alto risco"],["medio","Atenção"]].map(([k,l])=>h("button",{key:k,onClick:()=>setFilter(k),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,padding:"5px 13px",borderRadius:20,border:`0.5px solid ${filter===k?"#5C1F32":P.border}`,background:filter===k?"#5C1F32":"transparent",color:filter===k?"#E1D2C6":P.text3,cursor:"pointer",transition:"all .15s"}},l)),
-        h("select",{value:sort,onChange:e=>setSort(e.target.value),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,padding:"5px 10px",borderRadius:9,border:`0.5px solid ${P.border}`,background:P.bg2,color:P.text,cursor:"pointer"}},
-          h("option",{value:"urgencia"},"Ordenar: Urgência"),
-          h("option",{value:"dias"},"Ordenar: Dias sem visita"),
-          h("option",{value:"cancelamentos"},"Ordenar: Cancelamentos")
-        )
-      )
-    ),
-    // Resumo cards
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}},
-      [{label:"Alto risco",value:risco.filter(p=>p._nivel==="alto").length,icon:"ti-user-off",color:P.statusRed,bg:dark?"rgba(160,48,48,.1)":"rgba(160,48,48,.07)"},
-       {label:"Atenção",value:risco.filter(p=>p._nivel==="medio").length,icon:"ti-clock-hour-4",color:P.statusAmber,bg:dark?"rgba(154,110,16,.1)":"rgba(154,110,16,.07)"},
-       {label:"Sem agendamento futuro",value:risco.filter(p=>!p._hasUpcoming).length,icon:"ti-calendar-off",color:P.text3,bg:P.bg3||P.bg2}
-      ].map((k,i)=>h("div",{key:i,style:{background:k.bg,border:`0.5px solid ${k.color}22`,borderRadius:12,padding:"14px 16px"}},
-        h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:6}},
-          h("i",{className:`ti ${k.icon}`,style:{fontSize:16,color:k.color}}),
-          h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:k.color}},k.label)
-        ),
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:28,color:P.text}},k.value)
-      ))
-    ),
-    // Lista
-    filtered.length===0
-      ?h("div",{style:{textAlign:"center",padding:40,color:P.text3,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:13}},"Nenhuma paciente em risco nesta categoria 🌿")
-      :filtered.map(p=>{
-        const nc=nivelCfg[p._nivel];
-        const phone=(p.phone||"").replace(/\D/g,"");
-        const waMsg=encodeURIComponent(`Olá ${p.name.split(" ")[0]}! Tudo bem? Sentimos sua falta na clínica. Que tal agendarmos sua próxima sessão? 🌸`);
-        return h("div",{key:p.id,style:{background:P.card,border:`0.5px solid ${P.border}`,borderLeft:`3px solid ${nc.color}`,borderRadius:"0 11px 11px 0",padding:"13px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",transition:"box-shadow .18s"},
-          onMouseEnter:e=>e.currentTarget.style.boxShadow="0 2px 14px rgba(92,31,50,.08)",
-          onMouseLeave:e=>e.currentTarget.style.boxShadow="none"},
-          // Avatar
-          h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{cursor:"pointer",flexShrink:0}},
-            h(Avatar,{name:p.name,size:38,src:p.profilePhoto})
-          ),
-          // Info
-          h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{flex:1,minWidth:160,cursor:"pointer"}},
-            h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:3}},
-              h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:13,color:P.text}},p.name),
-              h("span",{style:{fontSize:9,padding:"2px 8px",borderRadius:20,background:nc.bg,color:nc.color,fontFamily:"'Jost',sans-serif",fontWeight:400,textTransform:"uppercase",letterSpacing:".05em"}},nc.label)
-            ),
-            h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
-              p._motivos.map((m,mi)=>h("span",{key:mi,style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:m.color}},m.label+(mi<p._motivos.length-1?" ·":"")))
-            ),
-            p._lastProc&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:2}},`Último: ${p._lastProc}${p._lastDate?" · "+p._lastDate:""}`)
-          ),
-          // Ações
-          h("div",{style:{display:"flex",gap:7,flexShrink:0,alignItems:"center"}},
-            h("button",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.text3,background:"transparent",border:`0.5px solid ${P.border}`,borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>{e.currentTarget.style.color=P.text;e.currentTarget.style.borderColor=P.text3;},onMouseLeave:e=>{e.currentTarget.style.color=P.text3;e.currentTarget.style.borderColor=P.border;}},"Ver prontuário"),
-            h("button",{onClick:()=>{onSelectPatient(p);onNav("agenda");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#9D7761",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background="rgba(157,119,97,.18)",onMouseLeave:e=>e.currentTarget.style.background="rgba(157,119,97,.1)"},"Agendar"),
-            phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"inline-flex",alignItems:"center",gap:5,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.statusGreen,background:P.statusGreenBg,border:`0.5px solid ${P.statusGreen}44`,borderRadius:8,padding:"5px 11px",textDecoration:"none",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background=P.statusGreenBg.replace(".12",".2"),onMouseLeave:e=>e.currentTarget.style.background=P.statusGreenBg},
-              h("i",{className:"ti ti-brand-whatsapp",style:{fontSize:13}}),"WhatsApp")
-          )
-        );
-      })
-  );
-}
 
 export default App;
