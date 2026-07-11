@@ -80,9 +80,30 @@ const PREF_CONTATO=["WhatsApp","Ligação","E-mail","WhatsApp e Ligação","Sem 
 const PREF_FOTOS=["Autoriza fotos para redes sociais","Autoriza somente para prontuário","Não autoriza fotos"];
 const INTERCORRENCIA_TYPES=["Edema","Hematoma","Assimetria","Dor","Infecção","Nódulo","Alergia","Necrose","Migração","Outro"];
 const IC_SEVERITY=["Leve","Moderada","Grave","Emergencial"];
-const IC_SEVERITY_CFG={Leve:{color:"#7aad8a",bg:"rgba(122,173,138,.14)"},Moderada:{color:"#c4a96a",bg:"rgba(196,169,106,.14)"},Grave:{color:"#c07070",bg:"rgba(192,112,112,.16)"},Emergencial:{color:"#ff6b6b",bg:"rgba(255,107,107,.18)"}};
+const IC_SEVERITY_CFG={
+  Leve:{color:"#3d8a58",colorDark:"#6dbf8a",bg:"rgba(61,138,88,.12)",bgDark:"rgba(109,191,138,.12)"},
+  Moderada:{color:"#9a6e10",colorDark:"#e0b840",bg:"rgba(154,110,16,.12)",bgDark:"rgba(224,184,64,.12)"},
+  Grave:{color:"#a03030",colorDark:"#e07070",bg:"rgba(160,48,48,.12)",bgDark:"rgba(224,112,112,.12)"},
+  // Emergencial = tom mais intenso de vermelho, para se destacar de "Grave" mesmo não havendo um token de "crítico" na paleta
+  Emergencial:{color:"#7a1010",colorDark:"#ff6b6b",bg:"rgba(122,16,16,.16)",bgDark:"rgba(255,107,107,.18)"},
+};
+// helper para pegar cor de gravidade considerando tema atual (mesmo padrão de getApptColor)
+function getICSeverityColor(sev,dark=false){
+  const c=IC_SEVERITY_CFG[sev]||IC_SEVERITY_CFG.Leve;
+  return{color:dark?c.colorDark:c.color,bg:dark?c.bgDark:c.bg};
+}
 const IC_STATUS_LIST=["Em Acompanhamento","Resolvida","Não Resolvida","Encaminhada"];
-const IC_STATUS_CFG={"Em Acompanhamento":{color:"#7aaed4",bg:"rgba(122,174,212,.14)"},"Resolvida":{color:"#7aad8a",bg:"rgba(122,173,138,.14)"},"Não Resolvida":{color:"#c07070",bg:"rgba(192,112,112,.14)"},"Encaminhada":{color:"#9b7aad",bg:"rgba(155,122,173,.14)"}};
+const IC_STATUS_CFG={
+  "Em Acompanhamento":{color:"#3a6aa0",colorDark:"#7aaed4",bg:"rgba(58,106,160,.12)",bgDark:"rgba(122,174,212,.12)"},
+  "Resolvida":{color:"#3d8a58",colorDark:"#6dbf8a",bg:"rgba(61,138,88,.12)",bgDark:"rgba(109,191,138,.12)"},
+  "Não Resolvida":{color:"#a03030",colorDark:"#e07070",bg:"rgba(160,48,48,.12)",bgDark:"rgba(224,112,112,.12)"},
+  "Encaminhada":{color:"#6a3a90",colorDark:"#b07ad4",bg:"rgba(106,58,144,.12)",bgDark:"rgba(176,122,212,.12)"},
+};
+// helper para pegar cor de status de intercorrência considerando tema atual
+function getICStatusColor(status,dark=false){
+  const c=IC_STATUS_CFG[status]||IC_STATUS_CFG["Em Acompanhamento"];
+  return{color:dark?c.colorDark:c.color,bg:dark?c.bgDark:c.bg};
+}
 const icSeverityOf=ic=>ic.severity||"Leve";
 const icStatusOf=ic=>ic.status||"Em Acompanhamento";
 const icConductsOf=ic=>(ic.conducts&&ic.conducts.length)?ic.conducts:(ic.conduct?[{id:"legacy_c",date:ic.date,text:ic.conduct}]:[]);
@@ -104,11 +125,6 @@ const CANAIS_AQUISICAO=[
 ];
 // Sub-canais de campanha paga (usado quando canal inclui anúncio pago)
 const CAMPAIGN_CHANNELS=["Instagram","TikTok","Facebook/Meta Ads","Google Ads","Site","WhatsApp","Indicação Direta (boca a boca)","Influencer/Parceria","Evento","Outro"];
-// Paleta vibrante para cards de KPI com fundo colorido (vouchers, pacotes, estoque, aniversariantes, retornos, dashboard)
-const KPI={
-  purple:"#8B5CF6", blue:"#3B82F6", green:"#22C55E", red:"#EF4444", yellow:"#EAB308",
-  orange:"#F97316", teal:"#14B8A6", pink:"#EC4899",
-};
 // Gera estilo de card com fundo colorido translúcido + borda na mesma cor
 const kpiCardStyle=color=>({textAlign:"center",background:`${color}1A`,border:`1px solid ${color}40`});
 const PAY_METHODS=["Pix","Cartão Crédito","Cartão Débito","Dinheiro","Transferência","Pendente"];
@@ -2914,10 +2930,10 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
     tab==="retorno"&&h(Fragment,null,
       // Resumo em cards
       h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
-        [{l:"Atrasadas",v:retornos.filter(r=>r.urgencia===0).length,c:KPI.red,icon:"🔴",f:"urgente"},
-         {l:"Esta semana",v:retornos.filter(r=>r.urgencia===1).length,c:KPI.yellow,icon:"🟡",f:"proximo"},
-         {l:"Este mês",v:retornos.filter(r=>r.urgencia===2).length,c:KPI.blue,icon:"🔵",f:"proximo"},
-         {l:"Em dia",v:retornos.filter(r=>r.urgencia===3).length,c:KPI.green,icon:"🟢",f:"ok"}
+        [{l:"Atrasadas",v:retornos.filter(r=>r.urgencia===0).length,c:P.statusRed,icon:"🔴",f:"urgente"},
+         {l:"Esta semana",v:retornos.filter(r=>r.urgencia===1).length,c:P.statusAmber,icon:"🟡",f:"proximo"},
+         {l:"Este mês",v:retornos.filter(r=>r.urgencia===2).length,c:P.statusBlue,icon:"🔵",f:"proximo"},
+         {l:"Em dia",v:retornos.filter(r=>r.urgencia===3).length,c:P.statusGreen,icon:"🟢",f:"ok"}
         ].map(k=>h(Card,{key:k.l,onClick:()=>setFilter(f=>f===k.f?"todos":k.f),style:{cursor:"pointer",textAlign:"center",background:`${k.c}1A`,border:`1px solid ${filter===k.f?k.c:k.c+"40"}`,transition:"all .15s"}},
           h("div",{style:{fontSize:22,marginBottom:6}},k.icon),
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:34,color:k.c,lineHeight:1}},k.v),
@@ -3086,7 +3102,7 @@ function Aniversariantes({patients,onSelectPatient,onNav}){
   return h("div",null,
     h(SectionHeader,{title:"Aniversariantes",sub:"Idades calculadas automaticamente pela data de nascimento"}),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
-      [{icon:"🎂",label:"Hoje",value:todayList.length,color:KPI.yellow},{icon:"🗓️",label:"Esta semana",value:weekList.length,color:KPI.blue},{icon:"📅",label:"Este mês",value:withBday.filter(p=>p._month===today.getMonth()).length,color:KPI.green},{icon:"📊",label:"Com data cadastrada",value:withBday.length,color:KPI.purple}]
+      [{icon:"🎂",label:"Hoje",value:todayList.length,color:P.statusAmber},{icon:"🗓️",label:"Esta semana",value:weekList.length,color:P.statusBlue},{icon:"📅",label:"Este mês",value:withBday.filter(p=>p._month===today.getMonth()).length,color:P.statusGreen},{icon:"📊",label:"Com data cadastrada",value:withBday.length,color:P.statusPurple}]
       .map(k=>h(Card,{key:k.label,style:kpiCardStyle(k.color)},h("div",{style:{fontSize:24,marginBottom:6}},k.icon),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:36,color:k.color,lineHeight:1}},k.value),h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.label)))
     ),
     todayList.length>0&&h("div",{style:{marginBottom:24}},
@@ -5656,7 +5672,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
               h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
                 orc.status!=="aprovado"&&orc.status!=="recusado"&&h(Btn,{variant:"ghost",onClick:()=>updateOrcStatus(orc.id,"aprovado"),style:{fontSize:11,padding:"5px 10px",color:P.green,border:`1px solid ${P.green}44`}},"🟢 Aprovar"),
                 orc.status!=="recusado"&&h(Btn,{variant:"ghost",onClick:()=>updateOrcStatus(orc.id,"recusado"),style:{fontSize:11,padding:"5px 10px",color:P.red,border:`1px solid ${P.red}44`}},"🔴 Recusar"),
-                orc.status==="aprovado"&&!orc.fullyConvertedAt&&(orc.items||[]).length>(orc.linkedProcs||[]).length&&h(Btn,{onClick:()=>converterEmTratamento(orc),style:{fontSize:11,padding:"5px 12px",background:`linear-gradient(135deg,${P.green},#5aad7a)`}},(orc.linkedProcs||[]).length>0?"⚡ Lançar Procedimentos Restantes":"⚡ Converter em Tratamento"),
+                orc.status==="aprovado"&&!orc.fullyConvertedAt&&(orc.items||[]).length>(orc.linkedProcs||[]).length&&h(Btn,{onClick:()=>converterEmTratamento(orc),style:{fontSize:11,padding:"5px 12px",background:`linear-gradient(135deg,${P.green},${P.statusGreen})`}},(orc.linkedProcs||[]).length>0?"⚡ Lançar Procedimentos Restantes":"⚡ Converter em Tratamento"),
                 h(Btn,{variant:"ghost",onClick:()=>{setEditOrc(orc);setOrcForm({...orc,value:String(orc.value),items:[...orc.items]});setShowOrc(true);},style:{fontSize:11,padding:"5px 10px"}},"✎"),
                 h(Btn,{variant:"danger",onClick:()=>deleteOrcamento(orc.id),style:{fontSize:11,padding:"5px 10px"}},"🗑")
               )
@@ -6154,7 +6170,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
               h("span",{style:{fontSize:12,color:done?P.green:P.accent,fontWeight:600}},pct+"%")
             ),
             h("div",{style:{height:10,borderRadius:5,background:P.bg3,overflow:"hidden"}},
-              h("div",{style:{height:"100%",width:pct+"%",background:done?"linear-gradient(90deg,"+P.green+",#5aad7a)":"linear-gradient(90deg,"+P.rose+","+P.gold+")",borderRadius:5,transition:"width .5s ease"}})
+              h("div",{style:{height:"100%",width:pct+"%",background:done?"linear-gradient(90deg,"+P.green+","+P.statusGreen+")":"linear-gradient(90deg,"+P.rose+","+P.gold+")",borderRadius:5,transition:"width .5s ease"}})
             )
           ),
           h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
@@ -6869,7 +6885,7 @@ function Estoque({products,setProducts,stockCats,setStockCats}){
 
     subTab==="injetaveis"?h(Fragment,null,
       h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
-        [{l:"Nível Crítico",v:critical,c:KPI.red},{l:"Produtos",v:injetaveis.length,c:KPI.blue},{l:"Valor em Estoque",v:fmtCurr(totalVal),c:KPI.green}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
+        [{l:"Nível Crítico",v:critical,c:P.statusRed},{l:"Produtos",v:injetaveis.length,c:P.statusBlue},{l:"Valor em Estoque",v:fmtCurr(totalVal),c:P.statusGreen}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
       ),
       h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
 
@@ -6994,7 +7010,7 @@ function Estoque({products,setProducts,stockCats,setStockCats}){
     ):h(Fragment,null,
       // ── SUB-ABA INSUMOS/DESCARTÁVEIS: cadastro simplificado, sem lotes/validade ──
       h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
-        [{l:"Nível Crítico",v:criticalInsumos,c:KPI.red},{l:"Insumos",v:insumos.length,c:KPI.teal},{l:"Valor em Estoque",v:fmtCurr(totalValInsumos),c:KPI.green}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
+        [{l:"Nível Crítico",v:criticalInsumos,c:P.statusRed},{l:"Insumos",v:insumos.length,c:P.statusTeal},{l:"Valor em Estoque",v:fmtCurr(totalValInsumos),c:P.statusGreen}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
       ),
       h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
       h("div",{style:{fontSize:11,color:P.text3,marginBottom:14}},"Itens de consumo (agulhas, luvas, gaze, anestésico tópico, etc). Cadastro simples — sem controle de lote ou validade."),
@@ -9693,7 +9709,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const procMap={};
   monthSessions.forEach(s=>{if(!s.procedure)return;if(!procMap[s.procedure])procMap[s.procedure]={count:0,total:0,paid:0,pending:0,cost:0};procMap[s.procedure].count++;procMap[s.procedure].total+=(Number(s.value)||0);if(s.paid){procMap[s.procedure].paid+=(Number(s.value)||0);procMap[s.procedure].cost+=sessionCost(s,products);}else procMap[s.procedure].pending+=(Number(s.value)||0);});
   const procList=Object.entries(procMap).map(([proc,data])=>[proc,{...data,margem:data.paid-data.cost,margemPct:data.paid>0?Math.round(((data.paid-data.cost)/data.paid)*100):0}]).sort((a,b)=>b[1].total-a[1].total);
-  const colors=[P.rose,P.gold,P.accent,"#7aaed4","#7aad8a","#9b7aad","#8a5c7a","#5a8a7a"];
+  const colors=[P.rose,P.gold,P.accent,P.statusBlue,P.statusGreen,P.statusPurple,P.statusTeal,P.statusAmber];
   // donut categorias
   const catMap={};
   // Categoriza usando procedimentos cadastrados (dinâmico) ou fallback no CAT_MAP_GLOBAL
@@ -11749,7 +11765,7 @@ function PacotesGlobal({patients,setPatients,onSelectPatient,onNav}){
   return h("div",null,
     h(SectionHeader,{title:"Pacotes",sub:"Todos os pacotes de sessões da clínica"}),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
-      [{l:"Total",v:stats.total,c:KPI.purple},{l:"Em Andamento",v:stats.andamento,c:KPI.orange},{l:"Concluídos",v:stats.concluido,c:KPI.green},{l:"Novos",v:stats.novo,c:KPI.blue}].map(s=>
+      [{l:"Total",v:stats.total,c:P.statusPurple},{l:"Em Andamento",v:stats.andamento,c:P.gold},{l:"Concluídos",v:stats.concluido,c:P.statusGreen},{l:"Novos",v:stats.novo,c:P.statusBlue}].map(s=>
         h(Card,{key:s.l,style:kpiCardStyle(s.c)},
           h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},s.l),
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:s.c}},s.v)
@@ -11787,7 +11803,7 @@ function PacotesGlobal({patients,setPatients,onSelectPatient,onNav}){
               h("span",{style:{fontSize:11,color:done?P.green:P.accent,fontWeight:600}},pct+"%")
             ),
             h("div",{style:{height:8,borderRadius:4,background:P.bg3,overflow:"hidden"}},
-              h("div",{style:{height:"100%",width:pct+"%",background:done?"linear-gradient(90deg,"+P.green+",#5aad7a)":"linear-gradient(90deg,"+P.rose+","+P.gold+")",borderRadius:4,transition:"width .4s ease"}})
+              h("div",{style:{height:"100%",width:pct+"%",background:done?"linear-gradient(90deg,"+P.green+","+P.statusGreen+")":"linear-gradient(90deg,"+P.rose+","+P.gold+")",borderRadius:4,transition:"width .4s ease"}})
             )
           ),
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
@@ -12090,7 +12106,7 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav,voucherTe
     )}),
 
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
-      [{l:"Total Emitidos",v:stats.total,c:KPI.purple},{l:"Ativos",v:stats.ativos,c:KPI.green},{l:"Utilizados",v:stats.usados,c:KPI.blue},{l:"Em Circulação",v:fmtCurr(stats.valorEmCirculacao),c:KPI.yellow}].map(k=>
+      [{l:"Total Emitidos",v:stats.total,c:P.statusPurple},{l:"Ativos",v:stats.ativos,c:P.statusGreen},{l:"Utilizados",v:stats.usados,c:P.statusBlue},{l:"Em Circulação",v:fmtCurr(stats.valorEmCirculacao),c:P.statusAmber}].map(k=>
         h(Card,{key:k.l,style:kpiCardStyle(k.c)},
           h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:k.c}},k.v)
