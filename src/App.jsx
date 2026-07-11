@@ -48,55 +48,29 @@ const P_DARK={
 };
 const P={...P_LIGHT};
 function setTheme(dark){const src=dark?P_DARK:P_LIGHT;Object.keys(src).forEach(k=>{P[k]=src[k];});}
-// ─── PALETA SEMÂNTICA ÚNICA (STATUS_TONE) ────────────────────────────────────
-// Toda cor "de significado" (positivo/atenção/crítico/etc) do sistema inteiro
-// nasce daqui. Como lê P.status* em tempo de acesso (não guarda valor fixo),
-// muda sozinha com o tema light/dark. Nenhum outro lugar do código deve
-// escrever um hex/rgba na mão para representar status — usar um destes tons.
-const STATUS_TONE={
-  green:()=>({color:P.statusGreen,bg:P.statusGreenBg}),   // positivo / concluído / em dia
-  blue:()=>({color:P.statusBlue,bg:P.statusBlueBg}),      // informativo / em andamento
-  amber:()=>({color:P.statusAmber,bg:P.statusAmberBg}),   // atenção / pendente
-  red:()=>({color:P.statusRed,bg:P.statusRedBg}),         // crítico / atrasado / cancelado
-  purple:()=>({color:P.statusPurple,bg:P.statusPurpleBg}),// especial / encaminhado / VIP
-  teal:()=>({color:P.statusTeal,bg:P.statusTealBg}),      // neutro extra (categorias)
-};
-function tone(name){return(STATUS_TONE[name]||STATUS_TONE.teal)();}
-// Fábrica de "configs de status" (ex: status de agendamento, de paciente...).
-// Recebe metadados estáticos (label, tone) e devolve um objeto cujas chaves
-// resolvem color/bg *ao vivo* via getter — troca de tema atualiza sozinho,
-// sem precisar tocar em nenhum dos lugares que já leem cfg[status].color/.bg.
-function makeStatusCfg(map){
-  const out={};
-  Object.keys(map).forEach(k=>{
-    const meta=map[k];
-    Object.defineProperty(out,k,{enumerable:true,get(){return{...meta,...tone(meta.tone)};}});
-  });
-  return out;
-}
 const MONTH_NAMES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const APPT_STATUS=["Confirmado","Aguardando","Realizado","Cancelado","Faltou","Reagendado"];
-const APPT_STATUS_CFG=makeStatusCfg({
-  Confirmado:{tone:"green"},
-  Aguardando:{tone:"blue"},
-  Realizado:{tone:"green"},
-  Cancelado:{tone:"red"},
-  Faltou:{tone:"red"},
-  Reagendado:{tone:"purple"},
-});
-// helper para pegar cor do status (mantido por compatibilidade; APPT_STATUS_CFG já é reativo ao tema)
-function getApptColor(status){
-  const c=APPT_STATUS_CFG[status]||tone("teal");
-  return{color:c.color,bg:c.bg};
+const APPT_STATUS_CFG={
+  Confirmado:{color:"#3d8a58",colorDark:"#6dbf8a",bg:"rgba(61,138,88,.12)",bgDark:"rgba(109,191,138,.12)"},
+  Aguardando:{color:"#3a6aa0",colorDark:"#7aaed4",bg:"rgba(58,106,160,.12)",bgDark:"rgba(122,174,212,.12)"},
+  Realizado:{color:"#3d8a58",colorDark:"#6dbf8a",bg:"rgba(61,138,88,.12)",bgDark:"rgba(109,191,138,.12)"},
+  Cancelado:{color:"#a03030",colorDark:"#e07070",bg:"rgba(160,48,48,.12)",bgDark:"rgba(224,112,112,.12)"},
+  Faltou:{color:"#a03030",colorDark:"#e07070",bg:"rgba(160,48,48,.1)",bgDark:"rgba(224,112,112,.1)"},
+  Reagendado:{color:"#6a3a90",colorDark:"#b07ad4",bg:"rgba(106,58,144,.12)",bgDark:"rgba(176,122,212,.12)"},
+};
+// helper para pegar cor do status considerando tema atual
+function getApptColor(status,dark=false){
+  const c=APPT_STATUS_CFG[status]||{color:"#9F8475",colorDark:"#9F8475",bg:"rgba(159,132,117,.12)",bgDark:"rgba(159,132,117,.12)"};
+  return{color:dark?c.colorDark:c.color,bg:dark?c.bgDark:c.bg};
 }
-const PAT_STATUS_CFG=makeStatusCfg({
-  vip:{label:"VIP ✦",tone:"amber"},
-  active:{label:"Ativa",tone:"green"},
-  treatment:{label:"Em Tratamento",tone:"blue"},
-  return:{label:"Retorno Pendente",tone:"amber"},
-  inactive:{label:"Inativa",tone:"red"},
-  new:{label:"Nova",tone:"purple"},
-});
+const PAT_STATUS_CFG={
+  vip:{label:"VIP ✦",color:"#9a6e10",colorDark:"#e0b840",bg:"rgba(154,110,16,.12)",bgDark:"rgba(224,184,64,.12)"},
+  active:{label:"Ativa",color:"#3d8a58",colorDark:"#6dbf8a",bg:"rgba(61,138,88,.12)",bgDark:"rgba(109,191,138,.12)"},
+  treatment:{label:"Em Tratamento",color:"#3a6aa0",colorDark:"#7aaed4",bg:"rgba(58,106,160,.12)",bgDark:"rgba(122,174,212,.12)"},
+  return:{label:"Retorno Pendente",color:"#9a6e10",colorDark:"#e0b840",bg:"rgba(154,110,16,.12)",bgDark:"rgba(224,184,64,.12)"},
+  inactive:{label:"Inativa",color:"#a03030",colorDark:"#e07070",bg:"rgba(160,48,48,.12)",bgDark:"rgba(224,112,112,.12)"},
+  new:{label:"Nova",color:"#6a3a90",colorDark:"#b07ad4",bg:"rgba(106,58,144,.12)",bgDark:"rgba(176,122,212,.12)"},
+};
 const BLOOD_TYPES=["A+","A-","B+","B-","AB+","AB-","O+","O-"];
 const SKIN_TYPES=["Normal","Seca","Oleosa","Mista","Sensível"];
 const FITZPATRICK=["I","II","III","IV","V","VI"];
@@ -106,19 +80,9 @@ const PREF_CONTATO=["WhatsApp","Ligação","E-mail","WhatsApp e Ligação","Sem 
 const PREF_FOTOS=["Autoriza fotos para redes sociais","Autoriza somente para prontuário","Não autoriza fotos"];
 const INTERCORRENCIA_TYPES=["Edema","Hematoma","Assimetria","Dor","Infecção","Nódulo","Alergia","Necrose","Migração","Outro"];
 const IC_SEVERITY=["Leve","Moderada","Grave","Emergencial"];
-const IC_SEVERITY_CFG=makeStatusCfg({
-  Leve:{tone:"green"},
-  Moderada:{tone:"amber"},
-  Grave:{tone:"red"},
-  Emergencial:{tone:"purple"}, // acima de "Grave" na hierarquia de urgência → tom de escalonamento
-});
+const IC_SEVERITY_CFG={Leve:{color:"#7aad8a",bg:"rgba(122,173,138,.14)"},Moderada:{color:"#c4a96a",bg:"rgba(196,169,106,.14)"},Grave:{color:"#c07070",bg:"rgba(192,112,112,.16)"},Emergencial:{color:"#ff6b6b",bg:"rgba(255,107,107,.18)"}};
 const IC_STATUS_LIST=["Em Acompanhamento","Resolvida","Não Resolvida","Encaminhada"];
-const IC_STATUS_CFG=makeStatusCfg({
-  "Em Acompanhamento":{tone:"blue"},
-  "Resolvida":{tone:"green"},
-  "Não Resolvida":{tone:"red"},
-  "Encaminhada":{tone:"purple"},
-});
+const IC_STATUS_CFG={"Em Acompanhamento":{color:"#7aaed4",bg:"rgba(122,174,212,.14)"},"Resolvida":{color:"#7aad8a",bg:"rgba(122,173,138,.14)"},"Não Resolvida":{color:"#c07070",bg:"rgba(192,112,112,.14)"},"Encaminhada":{color:"#9b7aad",bg:"rgba(155,122,173,.14)"}};
 const icSeverityOf=ic=>ic.severity||"Leve";
 const icStatusOf=ic=>ic.status||"Em Acompanhamento";
 const icConductsOf=ic=>(ic.conducts&&ic.conducts.length)?ic.conducts:(ic.conduct?[{id:"legacy_c",date:ic.date,text:ic.conduct}]:[]);
@@ -140,14 +104,10 @@ const CANAIS_AQUISICAO=[
 ];
 // Sub-canais de campanha paga (usado quando canal inclui anúncio pago)
 const CAMPAIGN_CHANNELS=["Instagram","TikTok","Facebook/Meta Ads","Google Ads","Site","WhatsApp","Indicação Direta (boca a boca)","Influencer/Parceria","Evento","Outro"];
-// Cards de KPI com fundo colorido (vouchers, pacotes, estoque, aniversariantes, retornos, dashboard).
-// Antes era uma paleta saturada própria (roxo/azul/verde "genéricos") que destoava
-// do resto do app. Agora só aponta pros mesmos tons semânticos oficiais — reativo a light/dark.
+// Paleta vibrante para cards de KPI com fundo colorido (vouchers, pacotes, estoque, aniversariantes, retornos, dashboard)
 const KPI={
-  get purple(){return P.statusPurple;}, get blue(){return P.statusBlue;},
-  get green(){return P.statusGreen;}, get red(){return P.statusRed;},
-  get yellow(){return P.statusAmber;}, get orange(){return P.statusAmber;},
-  get teal(){return P.statusTeal;}, get pink(){return P.statusPurple;},
+  purple:"#8B5CF6", blue:"#3B82F6", green:"#22C55E", red:"#EF4444", yellow:"#EAB308",
+  orange:"#F97316", teal:"#14B8A6", pink:"#EC4899",
 };
 // Gera estilo de card com fundo colorido translúcido + borda na mesma cor
 const kpiCardStyle=color=>({textAlign:"center",background:`${color}1A`,border:`1px solid ${color}40`});
@@ -416,7 +376,7 @@ const addMinToTime=(time,mins)=>{
 };
 // Retorna a hora final de um agendamento dado time + duration
 const apptEndTime=a=>a&&a.time?addMinToTime(a.time,durationToMin(a.duration)):"";
-const parseDMY=s=>{if(!s)return null;const[d,m,y]=s.split("/");return new Date(`${y}-${m}-${d}`);};
+const parseDMY=s=>parseAnyDate(s); // unificado: usa a mesma lógica de parseAnyDate (ver definição mais abaixo, função hoisted)
 const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
 const todayISO=()=>new Date().toISOString().slice(0,10);
 const dmyToISO=s=>{const d=parseDMY(s);return d?d.toISOString().slice(0,10):"";};
@@ -1579,20 +1539,13 @@ function Card({children,style:s,onClick,className}){
   const el=createElement("div",{onClick,className,style:{background:P.card,border:`0.5px solid ${P.border}`,borderRadius:13,padding:18,transition:"all .18s ease",cursor:onClick?"pointer":"default",...s}},children);
   return el;
 }
-// ─── BADGE — pílula de status padrão do sistema ──────────────────────────────
-// Uso 1 (via cfg centralizado): h(Badge,{cfg:APPT_STATUS_CFG,status:a.status})
-// Uso 2 (tom direto, sem cfg):  h(Badge,{tone:"red",label:"Atrasada"})
-// size: "xs" (badges compactos em listas densas) | "sm" (padrão) | "md" (pill maior/legível)
-function Badge({cfg,status,tone:toneName,label,size="sm",style}){
+// Pill de status semântico
+function StatusPill({status,cfg,dark}){
   const h=createElement;
-  const resolved=cfg?(cfg[status]||null):(toneName?tone(toneName):null);
-  if(!resolved)return null;
-  const sizes={
-    xs:{fontSize:9,padding:"1px 7px",borderRadius:8},
-    sm:{fontSize:10,padding:"3px 9px",borderRadius:12},
-    md:{fontSize:11,padding:"3px 10px",borderRadius:20},
-  };
-  return h("span",{style:{display:"inline-block",fontWeight:600,whiteSpace:"nowrap",fontFamily:"'Jost',system-ui,sans-serif",...sizes[size],background:resolved.bg,color:resolved.color,...style}},label||resolved.label||status);
+  if(!cfg)return null;
+  const color=dark&&cfg.colorDark?cfg.colorDark:cfg.color;
+  const bg=dark&&cfg.bgDark?cfg.bgDark:cfg.bg;
+  return h("span",{style:{display:"inline-flex",alignItems:"center",padding:"3px 10px",borderRadius:20,background:bg,color,fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:11,letterSpacing:".04em",whiteSpace:"nowrap"}},cfg.label||status);
 }
 function Modal({open,onClose,title,children,width=520}){
   if(!open)return null;
@@ -2818,10 +2771,16 @@ function GlobalSearch({patients,agenda,onSelectPatient,onNav}){
   );
 }
 // ─── RETORNOS PENDENTES ───────────────────────────────────────────────────────
-function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onScheduleReturn,mini=false}){
+function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onScheduleReturn,mini=false,agenda=[]}){
   const h=createElement;
   const today=new Date();
+  const todayStr=today.toISOString().slice(0,10);
   const[filter,setFilter]=useState("todos"); // todos | urgente | proximo | ok
+  // ── Aba ativa na página completa: "retorno" (protocolo agendado) ou "risco" (score de abandono) ──
+  const[tab,setTab]=useState("retorno");
+  const[riscoFilter,setRiscoFilter]=useState("todos");
+  const[riscoSort,setRiscoSort]=useState("urgencia");
+  const dark=false;
 
   // Para cada paciente, pega a sessão mais recente e calcula o retorno esperado
   const retornos=useMemo(()=>{
@@ -2847,19 +2806,55 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
       // urgência
       let urgencia,urgLabel,urgColor,urgBg;
       if(diasRestantes<0){
-        urgencia=0;urgLabel="Atrasada";({color:urgColor,bg:urgBg}=tone("red"));
+        urgencia=0;urgLabel="Atrasada";urgColor=P.red;urgBg="rgba(192,112,112,.10)";
       }else if(diasRestantes<=7){
-        urgencia=1;urgLabel="Esta semana";({color:urgColor,bg:urgBg}=tone("amber"));
+        urgencia=1;urgLabel="Esta semana";urgColor="#c4a96a";urgBg="rgba(196,169,106,.10)";
       }else if(diasRestantes<=30){
-        urgencia=2;urgLabel="Este mês";({color:urgColor,bg:urgBg}=tone("blue"));
+        urgencia=2;urgLabel="Este mês";urgColor="#7aaed4";urgBg="rgba(122,174,212,.10)";
       }else{
-        urgencia=3;urgLabel="Em dia";({color:urgColor,bg:urgBg}=tone("green"));
+        urgencia=3;urgLabel="Em dia";urgColor=P.green;urgBg="rgba(122,173,138,.08)";
       }
 
       list.push({patient:p,last,diasDesde,diasRestantes,retornoData,urgencia,urgLabel,urgColor,urgBg,returnDays});
     });
     return list.sort((a,b)=>a.diasRestantes-b.diasRestantes);
   },[patients,returnRules]);
+
+  // ── Risco de abandono: score baseado em dias sem visita + cancelamentos + falta de protocolo ──
+  // (lógica movida de PacientesEmRisco — agora vive junto de Retornos, já que respondem à mesma
+  // pergunta no fim das contas: "quais pacientes eu preciso contatar?")
+  const risco=useMemo(()=>{
+    return patients.map(p=>{
+      const sessions=(p.sessions||[]);
+      const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];
+      const lastDate=last?parseDMY(last.date):null;
+      const diasSemVisita=lastDate?daysBetween(lastDate,today):null;
+      const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;
+      const semProtocolo=sessions.length>0&&!sessions.some(s=>s.protocol||s.returnReminderDays);
+      const hasUpcoming=agenda.some(a=>a.patientName===p.name&&a.date>=todayStr&&a.status!=="Cancelado");
+      let score=0;
+      if(diasSemVisita!=null){
+        if(diasSemVisita>180)score+=40;
+        else if(diasSemVisita>90)score+=25;
+        else if(diasSemVisita>60)score+=10;
+      }
+      if(cancelamentos>=3)score+=30;
+      else if(cancelamentos>=2)score+=15;
+      if(semProtocolo)score+=10;
+      if(hasUpcoming)score=Math.max(0,score-20);
+      const motivos=[];
+      if(diasSemVisita!=null&&diasSemVisita>60)motivos.push({label:`${diasSemVisita}d sem visita`,color:diasSemVisita>180?P.statusRed:diasSemVisita>90?P.statusAmber:P.text3});
+      if(cancelamentos>=2)motivos.push({label:`${cancelamentos} cancelamentos`,color:cancelamentos>=3?P.statusRed:P.statusAmber});
+      if(semProtocolo)motivos.push({label:"Sem protocolo",color:P.text3});
+      if(hasUpcoming)motivos.push({label:"Agendada",color:P.statusGreen});
+      const nivel=score>=40?"alto":score>=20?"medio":"baixo";
+      return{...p,_score:score,_nivel:nivel,_diasSemVisita:diasSemVisita,_cancelamentos:cancelamentos,_semProtocolo:semProtocolo,_hasUpcoming:hasUpcoming,_motivos:motivos,_lastProc:last?.procedure,_lastDate:last?.date};
+    })
+    .filter(p=>p._score>5)
+    .sort((a,b)=>riscoSort==="urgencia"?b._score-a._score:riscoSort==="dias"?(b._diasSemVisita||0)-(a._diasSemVisita||0):(b._cancelamentos-a._cancelamentos));
+  },[patients,agenda,riscoSort]);
+  const riscoFiltered=riscoFilter==="alto"?risco.filter(p=>p._nivel==="alto"):riscoFilter==="medio"?risco.filter(p=>p._nivel==="medio"):risco;
+  const nivelCfg={alto:{color:P.statusRed,bg:dark?"rgba(160,48,48,.12)":"rgba(160,48,48,.08)",label:"Alto risco"},medio:{color:P.statusAmber,bg:dark?"rgba(154,110,16,.12)":"rgba(154,110,16,.08)",label:"Atenção"},baixo:{color:P.text3,bg:"transparent",label:"Monitorar"}};
 
   const countUrgente=retornos.filter(r=>r.urgencia===0).length;
   const countProximo=retornos.filter(r=>r.urgencia===1||r.urgencia===2).length;
@@ -2905,74 +2900,143 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
     );
   }
 
-  // MODO COMPLETO: página dedicada
+  // MODO COMPLETO: página dedicada (com abas — Retorno de Protocolo · Risco de Abandono)
   return h("div",null,
-    h(SectionHeader,{title:"Retornos Pendentes",sub:"Pacientes que precisam voltar para manutenção ou revisão"}),
-    // Resumo em cards
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
-      [{l:"Atrasadas",v:retornos.filter(r=>r.urgencia===0).length,c:KPI.red,icon:"🔴",f:"urgente"},
-       {l:"Esta semana",v:retornos.filter(r=>r.urgencia===1).length,c:KPI.yellow,icon:"🟡",f:"proximo"},
-       {l:"Este mês",v:retornos.filter(r=>r.urgencia===2).length,c:KPI.blue,icon:"🔵",f:"proximo"},
-       {l:"Em dia",v:retornos.filter(r=>r.urgencia===3).length,c:KPI.green,icon:"🟢",f:"ok"}
-      ].map(k=>h(Card,{key:k.l,onClick:()=>setFilter(f=>f===k.f?"todos":k.f),style:{cursor:"pointer",textAlign:"center",background:`${k.c}1A`,border:`1px solid ${filter===k.f?k.c:k.c+"40"}`,transition:"all .15s"}},
-        h("div",{style:{fontSize:22,marginBottom:6}},k.icon),
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:34,color:k.c,lineHeight:1}},k.v),
-        h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.l)
-      ))
-    ),
-    // Filtros
-    h("div",{style:{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}},
-      [{k:"todos",l:"Todas ("+retornos.length+")"},{k:"urgente",l:"🔴 Atrasadas"},{k:"proximo",l:"⏳ Próximas"},{k:"ok",l:"🟢 Em dia"}].map(f=>
-        h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l)
+    h(SectionHeader,{title:"Retornos & Risco",sub:"Pacientes que precisam de atenção — retorno de protocolo programado ou risco de abandonar o tratamento"}),
+    // Abas
+    h("div",{style:{display:"flex",gap:8,marginBottom:20}},
+      [["retorno",`📅 Retorno de Protocolo${retornos.length?" ("+retornos.length+")":""}`],["risco",`💔 Risco de Abandono${risco.length?" ("+risco.length+")":""}`]].map(([k,l])=>
+        h("button",{key:k,onClick:()=>setTab(k),style:{padding:"8px 16px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",fontWeight:tab===k?600:400,background:tab===k?P.rose:"transparent",border:`1px solid ${tab===k?P.rose:P.border}`,color:tab===k?P.accent3:P.text2,transition:"all .15s"}},l)
       )
     ),
-    // Lista
-    retornos.length===0
-      ?h(Card,{style:{textAlign:"center",padding:40}},h("div",{style:{fontSize:32,marginBottom:12}},"✅"),h("div",{style:{color:P.text3,fontSize:14}},"Nenhum retorno pendente no momento."))
-      :filtered.length===0
-        ?h(Card,{style:{textAlign:"center",padding:32}},h("div",{style:{fontSize:24,marginBottom:8}},"🔍"),h("div",{style:{color:P.text3,fontSize:13}},"Nenhuma paciente nesta categoria."))
-        :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-          filtered.map(r=>{
-            const phone=(r.patient.phone||"").replace(/\D/g,"");
-            const waMsg=encodeURIComponent(`Olá ${r.patient.name.split(" ")[0]}! 🌸 Passando para lembrar que está na hora do seu retorno pós ${r.last.procedure}. Que tal marcarmos um horário? 😊`);
-            const retornoFormatted=r.retornoData.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"});
-            return h(Card,{key:r.patient.id,style:{border:`1px solid ${r.urgColor}33`,background:r.urgBg}},
-              h("div",{style:{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}},
-                // Avatar + info principal
-                h("div",{onClick:()=>{onSelectPatient(r.patient);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:200,cursor:"pointer"}},
-                  h("div",{style:{position:"relative"}},
-                    h(Avatar,{name:r.patient.name,size:44,src:r.patient.profilePhoto}),
-                    h("div",{style:{position:"absolute",bottom:-2,right:-2,width:14,height:14,borderRadius:"50%",background:r.urgColor,border:`2px solid ${P.bg2}`}})
-                  ),
-                  h("div",null,
-                    h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},r.patient.name),
-                    h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`Último: ${r.last.procedure} em ${r.last.date}`)
-                  )
-                ),
-                // Badges de status
-                h("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
-                  h("span",{style:{fontSize:11,padding:"4px 10px",borderRadius:12,background:r.urgColor+"18",color:r.urgColor,fontWeight:600,border:`1px solid ${r.urgColor}44`}},
-                    `${r.urgLabel}`
-                  ),
-                  h("div",{style:{textAlign:"center",minWidth:80}},
-                    h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:r.urgColor,lineHeight:1}},
-                      r.diasRestantes<0?`+${Math.abs(r.diasRestantes)}d`:r.diasRestantes===0?"Hoje":`${r.diasRestantes}d`
-                    ),
-                    h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},r.diasRestantes<0?"de atraso":"para o retorno")
-                  ),
-                  h("div",{style:{fontSize:11,color:P.text3,minWidth:100,textAlign:"center"}},
-                    h("div",{style:{color:P.text2}},`Retorno previsto`),
-                    h("div",{style:{color:P.text,fontWeight:500,fontSize:12,marginTop:2}},retornoFormatted)
-                  ),
-                  // Ações
-                  onScheduleReturn&&h("button",{onClick:()=>onScheduleReturn(r),style:{padding:"7px 14px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"'Jost',system-ui,sans-serif"}},"📅 Agendar agora"),
-                  phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",background:"rgba(106,196,130,.13)",border:"1px solid rgba(106,196,130,.3)",borderRadius:8,color:"#7aad8a",fontSize:12,fontWeight:600,textDecoration:"none",cursor:"pointer",flexShrink:0}},"💬 WhatsApp"),
-                  h("button",{onClick:()=>{onSelectPatient(r.patient);onNav("prontuario");},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,fontSize:12,cursor:"pointer"}},"Ver Prontuário")
-                )
-              )
-            );
-          })
+
+    // ─── ABA: RETORNO DE PROTOCOLO ────────────────────────────────────────────
+    tab==="retorno"&&h(Fragment,null,
+      // Resumo em cards
+      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
+        [{l:"Atrasadas",v:retornos.filter(r=>r.urgencia===0).length,c:KPI.red,icon:"🔴",f:"urgente"},
+         {l:"Esta semana",v:retornos.filter(r=>r.urgencia===1).length,c:KPI.yellow,icon:"🟡",f:"proximo"},
+         {l:"Este mês",v:retornos.filter(r=>r.urgencia===2).length,c:KPI.blue,icon:"🔵",f:"proximo"},
+         {l:"Em dia",v:retornos.filter(r=>r.urgencia===3).length,c:KPI.green,icon:"🟢",f:"ok"}
+        ].map(k=>h(Card,{key:k.l,onClick:()=>setFilter(f=>f===k.f?"todos":k.f),style:{cursor:"pointer",textAlign:"center",background:`${k.c}1A`,border:`1px solid ${filter===k.f?k.c:k.c+"40"}`,transition:"all .15s"}},
+          h("div",{style:{fontSize:22,marginBottom:6}},k.icon),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:34,color:k.c,lineHeight:1}},k.v),
+          h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.l)
+        ))
+      ),
+      // Filtros
+      h("div",{style:{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}},
+        [{k:"todos",l:"Todas ("+retornos.length+")"},{k:"urgente",l:"🔴 Atrasadas"},{k:"proximo",l:"⏳ Próximas"},{k:"ok",l:"🟢 Em dia"}].map(f=>
+          h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l)
         )
+      ),
+      // Lista
+      retornos.length===0
+        ?h(Card,{style:{textAlign:"center",padding:40}},h("div",{style:{fontSize:32,marginBottom:12}},"✅"),h("div",{style:{color:P.text3,fontSize:14}},"Nenhum retorno pendente no momento."))
+        :filtered.length===0
+          ?h(Card,{style:{textAlign:"center",padding:32}},h("div",{style:{fontSize:24,marginBottom:8}},"🔍"),h("div",{style:{color:P.text3,fontSize:13}},"Nenhuma paciente nesta categoria."))
+          :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+            filtered.map(r=>{
+              const phone=(r.patient.phone||"").replace(/\D/g,"");
+              const waMsg=encodeURIComponent(`Olá ${r.patient.name.split(" ")[0]}! 🌸 Passando para lembrar que está na hora do seu retorno pós ${r.last.procedure}. Que tal marcarmos um horário? 😊`);
+              const retornoFormatted=r.retornoData.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"});
+              return h(Card,{key:r.patient.id,style:{border:`1px solid ${r.urgColor}33`,background:r.urgBg}},
+                h("div",{style:{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}},
+                  // Avatar + info principal
+                  h("div",{onClick:()=>{onSelectPatient(r.patient);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:200,cursor:"pointer"}},
+                    h("div",{style:{position:"relative"}},
+                      h(Avatar,{name:r.patient.name,size:44,src:r.patient.profilePhoto}),
+                      h("div",{style:{position:"absolute",bottom:-2,right:-2,width:14,height:14,borderRadius:"50%",background:r.urgColor,border:`2px solid ${P.bg2}`}})
+                    ),
+                    h("div",null,
+                      h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},r.patient.name),
+                      h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},`Último: ${r.last.procedure} em ${r.last.date}`)
+                    )
+                  ),
+                  // Badges de status
+                  h("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
+                    h("span",{style:{fontSize:11,padding:"4px 10px",borderRadius:12,background:r.urgColor+"18",color:r.urgColor,fontWeight:600,border:`1px solid ${r.urgColor}44`}},
+                      `${r.urgLabel}`
+                    ),
+                    h("div",{style:{textAlign:"center",minWidth:80}},
+                      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:r.urgColor,lineHeight:1}},
+                        r.diasRestantes<0?`+${Math.abs(r.diasRestantes)}d`:r.diasRestantes===0?"Hoje":`${r.diasRestantes}d`
+                      ),
+                      h("div",{style:{fontSize:9,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},r.diasRestantes<0?"de atraso":"para o retorno")
+                    ),
+                    h("div",{style:{fontSize:11,color:P.text3,minWidth:100,textAlign:"center"}},
+                      h("div",{style:{color:P.text2}},`Retorno previsto`),
+                      h("div",{style:{color:P.text,fontWeight:500,fontSize:12,marginTop:2}},retornoFormatted)
+                    ),
+                    // Ações
+                    onScheduleReturn&&h("button",{onClick:()=>onScheduleReturn(r),style:{padding:"7px 14px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"'Jost',system-ui,sans-serif"}},"📅 Agendar agora"),
+                    phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",background:"rgba(106,196,130,.13)",border:"1px solid rgba(106,196,130,.3)",borderRadius:8,color:"#7aad8a",fontSize:12,fontWeight:600,textDecoration:"none",cursor:"pointer",flexShrink:0}},"💬 WhatsApp"),
+                    h("button",{onClick:()=>{onSelectPatient(r.patient);onNav("prontuario");},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,fontSize:12,cursor:"pointer"}},"Ver Prontuário")
+                  )
+                )
+              );
+            })
+          )
+    ),
+
+    // ─── ABA: RISCO DE ABANDONO ───────────────────────────────────────────────
+    tab==="risco"&&h(Fragment,null,
+      h("div",{style:{display:"flex",justifyContent:"flex-end",marginBottom:16,flexWrap:"wrap",gap:8}},
+        [["todos","Todos"],["alto","Alto risco"],["medio","Atenção"]].map(([k,l])=>h("button",{key:k,onClick:()=>setRiscoFilter(k),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,padding:"5px 13px",borderRadius:20,border:`0.5px solid ${riscoFilter===k?"#5C1F32":P.border}`,background:riscoFilter===k?"#5C1F32":"transparent",color:riscoFilter===k?"#E1D2C6":P.text3,cursor:"pointer",transition:"all .15s"}},l)),
+        h("select",{value:riscoSort,onChange:e=>setRiscoSort(e.target.value),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,padding:"5px 10px",borderRadius:9,border:`0.5px solid ${P.border}`,background:P.bg2,color:P.text,cursor:"pointer"}},
+          h("option",{value:"urgencia"},"Ordenar: Urgência"),
+          h("option",{value:"dias"},"Ordenar: Dias sem visita"),
+          h("option",{value:"cancelamentos"},"Ordenar: Cancelamentos")
+        )
+      ),
+      // Resumo cards
+      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}},
+        [{label:"Alto risco",value:risco.filter(p=>p._nivel==="alto").length,icon:"ti-user-off",color:P.statusRed,bg:dark?"rgba(160,48,48,.1)":"rgba(160,48,48,.07)"},
+         {label:"Atenção",value:risco.filter(p=>p._nivel==="medio").length,icon:"ti-clock-hour-4",color:P.statusAmber,bg:dark?"rgba(154,110,16,.1)":"rgba(154,110,16,.07)"},
+         {label:"Sem agendamento futuro",value:risco.filter(p=>!p._hasUpcoming).length,icon:"ti-calendar-off",color:P.text3,bg:P.bg3||P.bg2}
+        ].map((k,i)=>h("div",{key:i,style:{background:k.bg,border:`0.5px solid ${k.color}22`,borderRadius:12,padding:"14px 16px"}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:6}},
+            h("i",{className:`ti ${k.icon}`,style:{fontSize:16,color:k.color}}),
+            h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:k.color}},k.label)
+          ),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:28,color:P.text}},k.value)
+        ))
+      ),
+      // Lista
+      riscoFiltered.length===0
+        ?h("div",{style:{textAlign:"center",padding:40,color:P.text3,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:13}},"Nenhuma paciente em risco nesta categoria 🌿")
+        :riscoFiltered.map(p=>{
+          const nc=nivelCfg[p._nivel];
+          const phone=(p.phone||"").replace(/\D/g,"");
+          const waMsg=encodeURIComponent(`Olá ${p.name.split(" ")[0]}! Tudo bem? Sentimos sua falta na clínica. Que tal agendarmos sua próxima sessão? 🌸`);
+          return h("div",{key:p.id,style:{background:P.card,border:`0.5px solid ${P.border}`,borderLeft:`3px solid ${nc.color}`,borderRadius:"0 11px 11px 0",padding:"13px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",transition:"box-shadow .18s"},
+            onMouseEnter:e=>e.currentTarget.style.boxShadow="0 2px 14px rgba(92,31,50,.08)",
+            onMouseLeave:e=>e.currentTarget.style.boxShadow="none"},
+            // Avatar
+            h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{cursor:"pointer",flexShrink:0}},
+              h(Avatar,{name:p.name,size:38,src:p.profilePhoto})
+            ),
+            // Info
+            h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{flex:1,minWidth:160,cursor:"pointer"}},
+              h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:3}},
+                h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:13,color:P.text}},p.name),
+                h("span",{style:{fontSize:9,padding:"2px 8px",borderRadius:20,background:nc.bg,color:nc.color,fontFamily:"'Jost',sans-serif",fontWeight:400,textTransform:"uppercase",letterSpacing:".05em"}},nc.label)
+              ),
+              h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+                p._motivos.map((m,mi)=>h("span",{key:mi,style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:m.color}},m.label+(mi<p._motivos.length-1?" ·":"")))
+              ),
+              p._lastProc&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:2}},`Último: ${p._lastProc}${p._lastDate?" · "+p._lastDate:""}`)
+            ),
+            // Ações
+            h("div",{style:{display:"flex",gap:7,flexShrink:0,alignItems:"center"}},
+              h("button",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.text3,background:"transparent",border:`0.5px solid ${P.border}`,borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>{e.currentTarget.style.color=P.text;e.currentTarget.style.borderColor=P.text3;},onMouseLeave:e=>{e.currentTarget.style.color=P.text3;e.currentTarget.style.borderColor=P.border;}},"Ver prontuário"),
+              h("button",{onClick:()=>{onSelectPatient(p);onNav("agenda");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#9D7761",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background="rgba(157,119,97,.18)",onMouseLeave:e=>e.currentTarget.style.background="rgba(157,119,97,.1)"},"Agendar"),
+              phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"inline-flex",alignItems:"center",gap:5,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.statusGreen,background:P.statusGreenBg,border:`0.5px solid ${P.statusGreen}44`,borderRadius:8,padding:"5px 11px",textDecoration:"none",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background=P.statusGreenBg.replace(".12",".2"),onMouseLeave:e=>e.currentTarget.style.background=P.statusGreenBg},
+                h("i",{className:"ti ti-brand-whatsapp",style:{fontSize:13}}),"WhatsApp")
+            )
+          );
+        })
+    )
   );
 }
 // ─── ANIVERSARIANTES ─────────────────────────────────────────────────────────
@@ -3527,7 +3591,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
   const dark=!!(settings&&settings.darkMode);
   // Alertas automáticos
   const alertas=[];
-  const critStock=products.filter(p=>p.status==="critical"||(Array.isArray(p.lotes)&&p.lotes.some(l=>{if(!l.validade)return false;const d=parseMY?parseMY(l.validade):null;return d&&d<=new Date(Date.now()+30*864e5);})));
+  const critStock=products.filter(p=>p.status==="critical"||(Array.isArray(p.lotes)&&p.lotes.some(l=>{if(!l.validade)return false;let d=null;try{const[m,y]=String(l.validade).split("/");d=new Date(Number(y),Number(m)-1,1);}catch{d=null;}return d&&d<=new Date(Date.now()+30*864e5);})));
   if(critStock.length)alertas.push({icon:"ti-alert-triangle",color:P.statusAmber,bg:dark?"rgba(154,110,16,.12)":"rgba(154,110,16,.08)",title:"Estoque crítico",sub:`${critStock.length} item${critStock.length>1?"s":""} requer${critStock.length>1?"em":""} atenção`,action:()=>onNav("estoque")});
   const retAtrasados=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);});
   if(retAtrasados.length)alertas.push({icon:"ti-clock-hour-4",color:P.statusBlue,bg:dark?"rgba(58,106,160,.12)":"rgba(58,106,160,.08)",title:"Retornos em atraso",sub:`${retAtrasados.length} paciente${retAtrasados.length>1?"s":""} sem visita além do prazo`,action:()=>onNav("retornos")});
@@ -3617,8 +3681,8 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
               h("div",{style:{position:"absolute",left:3,top:8,bottom:8,width:1,background:`linear-gradient(to bottom,#5C1F32,rgba(92,31,50,.06))`}}),
               todayAppts.map((a,i)=>{
                 const cfg=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
-                const color=cfg.color;
-                const bg=cfg.bg;
+                const color=dark?cfg.colorDark:cfg.color;
+                const bg=dark?cfg.bgDark:cfg.bg;
                 const isNext=proxAppt&&a===proxAppt;
                 return h("div",{key:i,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 0",position:"relative",borderBottom:i<todayAppts.length-1?`0.5px solid ${P.border}`:"none"}},
                   h("div",{style:{width:9,height:9,borderRadius:"50%",background:color,flexShrink:0,position:"absolute",left:-11,border:`1.5px solid ${P.card}`}}),
@@ -3655,8 +3719,8 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
             Object.entries(APPT_STATUS_CFG).map(([st,cfg])=>{
               const n=todayAppts.filter(a=>a.status===st).length;
               if(!n)return null;
-              const color=cfg.color;
-              const bg=cfg.bg;
+              const color=dark?cfg.colorDark:cfg.color;
+              const bg=dark?cfg.bgDark:cfg.bg;
               return h("div",{key:st,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:`0.5px solid ${P.border}`}},
                 h("span",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,color:P.text2}},st),
                 h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color}},n)
@@ -4015,7 +4079,7 @@ function AgendaHourSlotsBase({date,appts,step,dragOver,setDragOver,dragIdRef,onC
   );
 }
 
-function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,proceduresFull,locations,prefill,onConsumePrefill}){
+function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,proceduresFull,locations,prefill,onConsumePrefill,dark=false}){
   const[selDate,setSelDate]=useState(todayISO());
   const[viewMonth,setViewMonth]=useState(()=>{const t=new Date();return{y:t.getFullYear(),m:t.getMonth()};});
   const[viewMode,setViewMode]=useState("month");
@@ -4305,64 +4369,17 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
           );
         })
       ),
-      // Grade horária com blocos visuais
+      // Grade horária — reaproveita o mesmo componente da view Dia (clique para criar, clique no card para editar, drag & drop)
       h("div",{style:{display:"grid",gridTemplateColumns:"56px repeat(7,1fr)",maxHeight:520,overflowY:"auto"}},
         h("div",{style:{borderRight:`0.5px solid ${P.border}`}},
-          HOURS.map(hr=>h("div",{key:hr,style:{height:56,borderBottom:`0.5px solid ${P.border}`,display:"flex",alignItems:"flex-start",justifyContent:"flex-end",paddingRight:8,paddingTop:4,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,color:P.text3}},`${String(hr).padStart(2,"0")}h`))
+          HOURS.map(hr=>h("div",{key:hr,style:{height:64,borderBottom:`0.5px solid ${P.border}`,display:"flex",alignItems:"flex-start",justifyContent:"flex-end",paddingRight:8,paddingTop:4,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,color:P.text3}},`${String(hr).padStart(2,"0")}h`))
         ),
-        weekDays.map((ds,di)=>{
-          const dayAppts=agenda.filter(a=>a.date===ds&&!a.blocked);
+        weekDays.map(ds=>{
           const isToday=ds===todayISO();
-          // Paleta de cores por procedimento (hash consistente)
-          function procColor(proc){
-            const colors=["#5C1F32","#855954","#9D7761","#3a6aa0","#2a7a80","#6a3a90","#3d8a58","#9a6e10"];
-            let h2=0;for(let i=0;i<(proc||"").length;i++)h2=(h2*31+proc.charCodeAt(i))&0xffff;
-            return colors[h2%colors.length];
-          }
           return h("div",{key:ds,style:{borderRight:`0.5px solid ${P.border}`,position:"relative",background:isToday?"rgba(157,119,97,.03)":"transparent"}},
-            // Linhas de hora de fundo
-            HOURS.map(hr=>h("div",{key:hr,style:{position:"absolute",top:(hr-HOURS[0])*56,left:0,right:0,height:56,borderBottom:`0.5px solid ${P.border}`,pointerEvents:"none"}})),
-            // Blocos de agendamento
-            dayAppts.map((a,ai)=>{
-              const[hh,mm]=(a.time||"08:00").split(":").map(Number);
-              const topMin=(hh-HOURS[0])*60+mm;
-              const durMin=Number((a.duration||"1 hora").split(" ")[0].replace("h",""))*(a.duration&&a.duration.includes("hora")?60:1)||60;
-              const top=topMin/60*56;
-              const height=Math.max(durMin/60*56,24);
-              const color=procColor(a.procedure);
-              const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
-              const statusColor=sc.color;
-              // Detectar colisões simples para offset
-              const cols=dayAppts.filter(b=>{
-                const[bh,bm]=(b.time||"08:00").split(":").map(Number);
-                const bTop=(bh-HOURS[0])*60+bm;
-                const bDur=Number((b.duration||"1 hora").split(" ")[0].replace("h",""))*(b.duration&&b.duration.includes("hora")?60:1)||60;
-                return b.id!==a.id&&bTop<topMin+durMin&&bTop+bDur>topMin;
-              });
-              const colIdx=cols.length>0?ai%2:0;
-              const w=cols.length>0?"50%":"calc(100% - 4px)";
-              return h("div",{key:a.id,
-                onClick:()=>{setSelDate(ds);setViewMode("day");},
-                title:`${a.time} · ${a.patientName} · ${a.procedure}`,
-                style:{
-                  position:"absolute",top:top+1,left:colIdx===0?2:"50%",
-                  width:w,height:height-2,
-                  background:color+"22",
-                  borderLeft:`3px solid ${color}`,
-                  borderRadius:"0 6px 6px 0",
-                  padding:"3px 5px",overflow:"hidden",
-                  cursor:"pointer",zIndex:1+ai,
-                  transition:"opacity .15s,filter .15s",
-                },
-                onMouseEnter:e=>{e.currentTarget.style.opacity=".85";e.currentTarget.style.filter="brightness(1.1)";},
-                onMouseLeave:e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.filter="none";}},
-                h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:9.5,color:color,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.patientName),
-                height>30&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:8.5,color:color,opacity:.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:1}},a.procedure),
-                h("div",{style:{width:5,height:5,borderRadius:"50%",background:statusColor,position:"absolute",top:3,right:3}})
-              );
-            }),
+            h(HourSlots,{date:ds,appts:agenda.filter(a=>a.date===ds&&!a.blocked)}),
             // Linha de hora atual
-            isToday&&h("div",{style:{position:"absolute",left:0,right:0,top:(new Date().getHours()-HOURS[0])*56+new Date().getMinutes()/60*56,height:1.5,background:"#5C1F32",zIndex:10,pointerEvents:"none"}},
+            isToday&&h("div",{style:{position:"absolute",left:0,right:0,top:(new Date().getHours()-HOURS[0])*64+new Date().getMinutes()/60*64,height:1.5,background:"#5C1F32",zIndex:10,pointerEvents:"none"}},
               h("div",{style:{position:"absolute",left:-3,top:-3,width:8,height:8,borderRadius:"50%",background:"#5C1F32"}})
             )
           );
@@ -4605,7 +4622,7 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},ic.type)
       ),
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
-        h(Badge,{cfg:IC_SEVERITY_CFG,status:icSeverityOf(ic)}),
+        h("span",{style:{fontSize:10,padding:"3px 9px",borderRadius:12,background:sevCfg.bg,color:sevCfg.color,fontWeight:600}},icSeverityOf(ic)),
         h("select",{value:icStatusOf(ic),onChange:e=>changeStatus(e.target.value),style:{fontSize:10.5,padding:"3px 8px",borderRadius:12,background:stCfg.bg,color:stCfg.color,border:`1px solid ${stCfg.color}55`,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},IC_STATUS_LIST.map(st=>h("option",{key:st,value:st},st)))
       )
     ),
@@ -4813,7 +4830,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   );
 }
 // ─── AGENDA APPT ROW (usado na aba Agenda do prontuário) ─────────────────────
-function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations}){
+function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations,dark=false}){
   const h=createElement;
   const[open,setOpen]=useState(false);
   const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
@@ -5033,6 +5050,7 @@ function getPatientPhotoGallery(patient){
   return list;
 }
 function PatientDetail({patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings,agenda,setAgenda,setAgendaLog,maquininhas=[]}){
+  const dark=!!(clinicSettings&&clinicSettings.darkMode);
   const _vTemplates=Array.isArray(voucherTemplates)&&voucherTemplates.length?voucherTemplates:DEFAULT_VOUCHER_TEMPLATES;
   const[tab,setTab]=useState("prontuario");
   const[showNewS,setShowNewS]=useState(false);
@@ -5771,9 +5789,9 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           return h("div",{onClick:()=>openMapForSession(s),style:{padding:"8px 12px",background:"transparent",border:`1px dashed ${P.border}`,borderRadius:8,marginBottom:8,cursor:"pointer",fontSize:11.5,color:P.text3,textAlign:"center"}},"🗺 Mapa facial (com foto) ainda não preenchido — clique para registrar");
         })(),
         (s.intercorrencias||[]).length>0&&h("div",{style:{marginBottom:8,padding:"8px 12px",background:"rgba(192,112,112,.06)",borderRadius:8,border:"1px solid rgba(192,112,112,.18)"}},h("div",{style:{fontSize:10,color:P.red,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"⚠ Intercorrências"),(s.intercorrencias||[]).map((ic,i)=>h("div",{key:ic.id||i,style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",fontSize:12,color:P.text2,marginBottom:3}},
-          h(Badge,{cfg:IC_SEVERITY_CFG,status:icSeverityOf(ic),size:"xs"}),
+          h("span",{style:{fontSize:9,padding:"1px 7px",borderRadius:8,background:(IC_SEVERITY_CFG[icSeverityOf(ic)]||IC_SEVERITY_CFG.Leve).bg,color:(IC_SEVERITY_CFG[icSeverityOf(ic)]||IC_SEVERITY_CFG.Leve).color,fontWeight:600}},icSeverityOf(ic)),
           h("span",null,`${isoToBR(ic.date)||ic.date} · ${ic.type}: ${ic.notes}`),
-          h(Badge,{cfg:IC_STATUS_CFG,status:icStatusOf(ic),size:"xs"})
+          h("span",{style:{fontSize:9,padding:"1px 7px",borderRadius:8,background:(IC_STATUS_CFG[icStatusOf(ic)]||IC_STATUS_CFG["Em Acompanhamento"]).bg,color:(IC_STATUS_CFG[icStatusOf(ic)]||IC_STATUS_CFG["Em Acompanhamento"]).color}},icStatusOf(ic))
         ))),
         (s.photos||[]).length>0&&h("div",{style:{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}},(s.photos||[]).slice(0,4).map(ph=>h("img",{key:ph.id,src:ph.url,alt:ph.name,style:{width:58,height:58,objectFit:"cover",borderRadius:6,border:`1px solid ${P.border}`}})),(s.photos||[]).length>4&&h("div",{style:{width:58,height:58,borderRadius:6,background:P.card2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:P.text3}},`+${(s.photos||[]).length-4}`)),
         h("div",{style:{display:"flex",gap:8,marginTop:10}},
@@ -6279,7 +6297,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       function ApptRow(a){
         const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
         const hasHistory=(a.rescheduleHistory||[]).length>0;
-        return h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations});
+        return h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations,dark});
       }
 
       const statsStyle={background:P.bg3,borderRadius:10,padding:"10px 14px",border:`1px solid ${P.border}`,textAlign:"center",flex:"1 1 80px"};
@@ -6313,7 +6331,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             h("div",{style:{width:3,height:14,background:"#7aaed4",borderRadius:2}}),
             "Próximas Consultas"
           ),
-          upcoming.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations}))
+          upcoming.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations,dark}))
         ),
         // ── Histórico ──
         h("div",null,
@@ -6323,7 +6341,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           ),
           past.length===0
             ?h("div",{style:{color:P.text3,fontSize:13,padding:"20px 0"}})
-            :past.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations}))
+            :past.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations,dark}))
         ),
         patAppts.length===0&&h(Card,{style:{textAlign:"center",padding:40}},
           h("div",{style:{fontSize:32,marginBottom:12}},"📅"),
@@ -9675,7 +9693,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const procMap={};
   monthSessions.forEach(s=>{if(!s.procedure)return;if(!procMap[s.procedure])procMap[s.procedure]={count:0,total:0,paid:0,pending:0,cost:0};procMap[s.procedure].count++;procMap[s.procedure].total+=(Number(s.value)||0);if(s.paid){procMap[s.procedure].paid+=(Number(s.value)||0);procMap[s.procedure].cost+=sessionCost(s,products);}else procMap[s.procedure].pending+=(Number(s.value)||0);});
   const procList=Object.entries(procMap).map(([proc,data])=>[proc,{...data,margem:data.paid-data.cost,margemPct:data.paid>0?Math.round(((data.paid-data.cost)/data.paid)*100):0}]).sort((a,b)=>b[1].total-a[1].total);
-  const colors=[P.rose,P.gold,P.accent,P.statusBlue,P.statusGreen,P.statusPurple,P.statusAmber,P.statusTeal];
+  const colors=[P.rose,P.gold,P.accent,"#7aaed4","#7aad8a","#9b7aad","#8a5c7a","#5a8a7a"];
   // donut categorias
   const catMap={};
   // Categoriza usando procedimentos cadastrados (dinâmico) ou fallback no CAT_MAP_GLOBAL
@@ -11760,7 +11778,7 @@ function PacotesGlobal({patients,setPatients,onSelectPatient,onNav}){
               h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},pkg.procedure+" · "+pkg.done+"/"+pkg.total+" sessões")
             ),
             done
-              ?h(Badge,{tone:"green",label:"✓ Concluído",style:{flexShrink:0}})
+              ?h("span",{style:{fontSize:11,padding:"3px 9px",borderRadius:12,background:"rgba(122,173,138,.15)",color:P.green,border:"1px solid rgba(122,173,138,.3)",flexShrink:0}},"✓ Concluído")
               :h("button",{onClick:()=>checkPkg(pkg.patientId,pkg.id),style:{padding:"5px 12px",borderRadius:8,background:P.rose,border:"none",color:P.accent3,cursor:"pointer",fontSize:11,flexShrink:0}},"✓ Check")
           ),
           h("div",{style:{marginBottom:8}},
@@ -12370,6 +12388,7 @@ function AppInner({ session, onLogout }) {
   const h=createElement;
   const todayStr=new Date().toISOString().slice(0,10);
   const todayApptCount=agenda.filter(a=>a.date===todayStr).length;
+  const todayAppts=agenda.filter(a=>a.date===todayStr);
   const criticalStock=products.filter(p=>p.status==="critical").length;
 
   // ── Responsive state ──────────────────────────────────────────────────────
@@ -12413,7 +12432,7 @@ function AppInner({ session, onLogout }) {
     handleNav("agenda");
   }
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos Pendentes",pacientes_risco:"Pacientes em Risco",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
+  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
   const settings = settingsData;
 
   const dark=!!(settingsData&&settingsData.darkMode);
@@ -12423,8 +12442,7 @@ function AppInner({ session, onLogout }) {
       {k:"agenda",l:"Agenda",ti:"ti-calendar",badge:todayApptCount||null,badgeColor:P.statusBlue},
       {k:"pacientes",l:"Pacientes",ti:"ti-users"},
       {k:"aniversariantes",l:"Aniversariantes",ti:"ti-cake",badge:(()=>{const t=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===t.getMonth()&&bd.getDate()===t.getDate();}).length||null;})(),badgeColor:P.statusAmber},
-      {k:"retornos",l:"Retornos",ti:"ti-clock-hour-4",badge:(()=>{const today=new Date();return patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length||null;})(),badgeColor:P.statusRed},
-      {k:"pacientes_risco",l:"Em Risco",ti:"ti-heart-broken",badge:(()=>{return patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length||null;})(),badgeColor:P.statusRed},
+      {k:"retornos",l:"Retornos & Risco",ti:"ti-clock-hour-4",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
     ]},
     {label:"Clínica",items:[
       {k:"estoque",l:"Estoque",ti:"ti-package",badge:criticalStock||null,badgeColor:P.statusRed},
@@ -12517,7 +12535,7 @@ function AppInner({ session, onLogout }) {
         : h("div",{style:{display:"flex",alignItems:"center",gap:10,padding:"9px 11px",borderRadius:9,background:dark?"rgba(133,89,84,.06)":"rgba(133,89,84,.05)",border:`0.5px solid ${P.border}`,cursor:"pointer",transition:"background .18s"},onMouseEnter:e=>e.currentTarget.style.background=dark?"rgba(133,89,84,.1)":"rgba(133,89,84,.08)",onMouseLeave:e=>e.currentTarget.style.background=dark?"rgba(133,89,84,.06)":"rgba(133,89,84,.05)"},
         h("div",{style:{position:"relative",flexShrink:0}},
             h("div",{style:{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#5C1F32,#9D7761)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontFamily:"'Cormorant Garamond',serif",fontWeight:400}},initials(settings.doctorName||"Dra Sofia")),
-            h("div",{title:agenda.filter(a=>a.date===todayStr).some(a=>a.status==="Realizado")?"Em atendimento":"Disponível",style:{position:"absolute",bottom:1,right:1,width:9,height:9,borderRadius:"50%",background:agenda.filter(a=>a.date===todayStr).some(a=>{const[hh,mm]=(a.time||"00:00").split(":").map(Number);const end=hh*60+mm+(Number(a.duration?.split(" ")[0])||60);const now=new Date();return a.status==="Confirmado"&&now.getHours()*60+now.getMinutes()>=hh*60+mm&&now.getHours()*60+now.getMinutes()<=end;})?"#4a9668":"#9F8475",border:`1.5px solid ${dark?"#1a0c0e":"#FDFAF7"}`,transition:"background .3s"}})
+            h("div",{title:todayAppts.some(a=>a.status==="Realizado")?"Em atendimento":"Disponível",style:{position:"absolute",bottom:1,right:1,width:9,height:9,borderRadius:"50%",background:todayAppts.some(a=>{const[hh,mm]=(a.time||"00:00").split(":").map(Number);const end=hh*60+mm+(Number(a.duration?.split(" ")[0])||60);const now=new Date();return a.status==="Confirmado"&&now.getHours()*60+now.getMinutes()>=hh*60+mm&&now.getHours()*60+now.getMinutes()<=end;})?"#4a9668":"#9F8475",border:`1.5px solid ${dark?"#1a0c0e":"#FDFAF7"}`,transition:"background .3s"}})
           ),
             h("div",{style:{flex:1,minWidth:0}},
               h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12.5,color:P.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},settings.doctorName||"Dra. Sofia"),
@@ -12596,9 +12614,8 @@ function AppInner({ session, onLogout }) {
           h(ErrorBoundary,{key:page},
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,onScheduleReturn:handleScheduleReturn,procedures:procedureNames,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses,products}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
-            page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn}),
-            page==="pacientes_risco"&&h(PacientesEmRisco,{patients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav}),
-            page==="agenda"&&h(Agenda,{patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null)}),
+            page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn,agenda}),
+            page==="agenda"&&h(Agenda,{patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null),dark}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,setAgendaLog,maquininhas}),
@@ -12616,113 +12633,5 @@ function AppInner({ session, onLogout }) {
   );
 }
 
-// ─── PACIENTES EM RISCO ───────────────────────────────────────────────────────
-function PacientesEmRisco({patients,agenda,onSelectPatient,onNav}){
-  const h=createElement;
-  const today=new Date();
-  const todayStr=today.toISOString().slice(0,10);
-  const[filter,setFilter]=useState("todos");
-  const[sort,setSort]=useState("urgencia");
-  const dark=false;
-  const risco=useMemo(()=>{
-    return patients.map(p=>{
-      const sessions=(p.sessions||[]);
-      const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];
-      const lastDate=last?parseDMY(last.date):null;
-      const diasSemVisita=lastDate?daysBetween(lastDate,today):null;
-      const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;
-      const totalAppts=agenda.filter(a=>a.patientName===p.name).length;
-      const txCancel=totalAppts>0?cancelamentos/totalAppts:0;
-      const semProtocolo=sessions.length>0&&!sessions.some(s=>s.protocol||s.returnReminderDays);
-      const hasUpcoming=agenda.some(a=>a.patientName===p.name&&a.date>=todayStr&&a.status!=="Cancelado");
-      // Score de risco (maior = mais urgente)
-      let score=0;
-      if(diasSemVisita!=null){
-        if(diasSemVisita>180)score+=40;
-        else if(diasSemVisita>90)score+=25;
-        else if(diasSemVisita>60)score+=10;
-      }
-      if(cancelamentos>=3)score+=30;
-      else if(cancelamentos>=2)score+=15;
-      if(semProtocolo)score+=10;
-      if(hasUpcoming)score=Math.max(0,score-20);
-      // Motivos
-      const motivos=[];
-      if(diasSemVisita!=null&&diasSemVisita>60)motivos.push({label:`${diasSemVisita}d sem visita`,color:diasSemVisita>180?P.statusRed:diasSemVisita>90?P.statusAmber:P.text3});
-      if(cancelamentos>=2)motivos.push({label:`${cancelamentos} cancelamentos`,color:cancelamentos>=3?P.statusRed:P.statusAmber});
-      if(semProtocolo)motivos.push({label:"Sem protocolo",color:P.text3});
-      if(hasUpcoming)motivos.push({label:"Agendada",color:P.statusGreen});
-      const nivel=score>=40?"alto":score>=20?"medio":"baixo";
-      return{...p,_score:score,_nivel:nivel,_diasSemVisita:diasSemVisita,_cancelamentos:cancelamentos,_semProtocolo:semProtocolo,_hasUpcoming:hasUpcoming,_motivos:motivos,_lastProc:last?.procedure,_lastDate:last?.date};
-    })
-    .filter(p=>p._score>5)
-    .sort((a,b)=>sort==="urgencia"?b._score-a._score:sort==="dias"?(b._diasSemVisita||0)-(a._diasSemVisita||0):(b._cancelamentos-a._cancelamentos));
-  },[patients,agenda,sort]);
-  const filtered=filter==="alto"?risco.filter(p=>p._nivel==="alto"):filter==="medio"?risco.filter(p=>p._nivel==="medio"):risco;
-  const nivelCfg={alto:{color:P.statusRed,bg:dark?"rgba(160,48,48,.12)":"rgba(160,48,48,.08)",label:"Alto risco"},medio:{color:P.statusAmber,bg:dark?"rgba(154,110,16,.12)":"rgba(154,110,16,.08)",label:"Atenção"},baixo:{color:P.text3,bg:"transparent",label:"Monitorar"}};
-  return h("div",null,
-    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}},
-      h("div",null,
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:300,fontSize:26,color:P.text}},"Pacientes em Risco"),
-        h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,color:P.text3,marginTop:3}},`${risco.filter(p=>p._nivel==="alto").length} alto risco · ${risco.filter(p=>p._nivel==="medio").length} atenção`)
-      ),
-      h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-        [["todos","Todos"],["alto","Alto risco"],["medio","Atenção"]].map(([k,l])=>h("button",{key:k,onClick:()=>setFilter(k),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,padding:"5px 13px",borderRadius:20,border:`0.5px solid ${filter===k?"#5C1F32":P.border}`,background:filter===k?"#5C1F32":"transparent",color:filter===k?"#E1D2C6":P.text3,cursor:"pointer",transition:"all .15s"}},l)),
-        h("select",{value:sort,onChange:e=>setSort(e.target.value),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,padding:"5px 10px",borderRadius:9,border:`0.5px solid ${P.border}`,background:P.bg2,color:P.text,cursor:"pointer"}},
-          h("option",{value:"urgencia"},"Ordenar: Urgência"),
-          h("option",{value:"dias"},"Ordenar: Dias sem visita"),
-          h("option",{value:"cancelamentos"},"Ordenar: Cancelamentos")
-        )
-      )
-    ),
-    // Resumo cards
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}},
-      [{label:"Alto risco",value:risco.filter(p=>p._nivel==="alto").length,icon:"ti-user-off",color:P.statusRed,bg:dark?"rgba(160,48,48,.1)":"rgba(160,48,48,.07)"},
-       {label:"Atenção",value:risco.filter(p=>p._nivel==="medio").length,icon:"ti-clock-hour-4",color:P.statusAmber,bg:dark?"rgba(154,110,16,.1)":"rgba(154,110,16,.07)"},
-       {label:"Sem agendamento futuro",value:risco.filter(p=>!p._hasUpcoming).length,icon:"ti-calendar-off",color:P.text3,bg:P.bg3||P.bg2}
-      ].map((k,i)=>h("div",{key:i,style:{background:k.bg,border:`0.5px solid ${k.color}22`,borderRadius:12,padding:"14px 16px"}},
-        h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:6}},
-          h("i",{className:`ti ${k.icon}`,style:{fontSize:16,color:k.color}}),
-          h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:k.color}},k.label)
-        ),
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:28,color:P.text}},k.value)
-      ))
-    ),
-    // Lista
-    filtered.length===0
-      ?h("div",{style:{textAlign:"center",padding:40,color:P.text3,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:13}},"Nenhuma paciente em risco nesta categoria 🌿")
-      :filtered.map(p=>{
-        const nc=nivelCfg[p._nivel];
-        const phone=(p.phone||"").replace(/\D/g,"");
-        const waMsg=encodeURIComponent(`Olá ${p.name.split(" ")[0]}! Tudo bem? Sentimos sua falta na clínica. Que tal agendarmos sua próxima sessão? 🌸`);
-        return h("div",{key:p.id,style:{background:P.card,border:`0.5px solid ${P.border}`,borderLeft:`3px solid ${nc.color}`,borderRadius:"0 11px 11px 0",padding:"13px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",transition:"box-shadow .18s"},
-          onMouseEnter:e=>e.currentTarget.style.boxShadow="0 2px 14px rgba(92,31,50,.08)",
-          onMouseLeave:e=>e.currentTarget.style.boxShadow="none"},
-          // Avatar
-          h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{cursor:"pointer",flexShrink:0}},
-            h(Avatar,{name:p.name,size:38,src:p.profilePhoto})
-          ),
-          // Info
-          h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{flex:1,minWidth:160,cursor:"pointer"}},
-            h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:3}},
-              h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:13,color:P.text}},p.name),
-              h("span",{style:{fontSize:9,padding:"2px 8px",borderRadius:20,background:nc.bg,color:nc.color,fontFamily:"'Jost',sans-serif",fontWeight:400,textTransform:"uppercase",letterSpacing:".05em"}},nc.label)
-            ),
-            h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
-              p._motivos.map((m,mi)=>h("span",{key:mi,style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:m.color}},m.label+(mi<p._motivos.length-1?" ·":"")))
-            ),
-            p._lastProc&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:2}},`Último: ${p._lastProc}${p._lastDate?" · "+p._lastDate:""}`)
-          ),
-          // Ações
-          h("div",{style:{display:"flex",gap:7,flexShrink:0,alignItems:"center"}},
-            h("button",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.text3,background:"transparent",border:`0.5px solid ${P.border}`,borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>{e.currentTarget.style.color=P.text;e.currentTarget.style.borderColor=P.text3;},onMouseLeave:e=>{e.currentTarget.style.color=P.text3;e.currentTarget.style.borderColor=P.border;}},"Ver prontuário"),
-            h("button",{onClick:()=>{onSelectPatient(p);onNav("agenda");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#9D7761",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background="rgba(157,119,97,.18)",onMouseLeave:e=>e.currentTarget.style.background="rgba(157,119,97,.1)"},"Agendar"),
-            phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"inline-flex",alignItems:"center",gap:5,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.statusGreen,background:P.statusGreenBg,border:`0.5px solid ${P.statusGreen}44`,borderRadius:8,padding:"5px 11px",textDecoration:"none",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background=P.statusGreenBg.replace(".12",".2"),onMouseLeave:e=>e.currentTarget.style.background=P.statusGreenBg},
-              h("i",{className:"ti ti-brand-whatsapp",style:{fontSize:13}}),"WhatsApp")
-          )
-        );
-      })
-  );
-}
 
 export default App;
