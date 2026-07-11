@@ -6,15 +6,71 @@ const SUPA_URL = "https://syxapyqgqrkqkensbbqj.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5eGFweXFncXJrcWtlbnNiYnFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzNDAxMzEsImV4cCI6MjA5NTkxNjEzMX0.3ZBSQS1fvWZn-uXCgDkvn7xRgpEWJiAIb_gH7cmO34s";
 const supabase = createClient(SUPA_URL, SUPA_KEY);
 // ─── CONSTANTS & PALETTE ─────────────────────────────────────────────────────
-const P_LIGHT={bg:"#FAF6F4",bg2:"#FFFFFF",bg3:"#F2EAE6",card:"#FFFFFF",card2:"#FBF0EC",border:"#E8DDD9",accent:"#9D6F56",accent2:"#8C6F61",accent3:"#FBF3EF",rose:"#7A2840",rose2:"#9F415C",text:"#2B1A1C",text2:"#6B5450",text3:"#9C8682",green:"#4F9C68",red:"#C2555F",yellow:"#D9A441",gold:"#B98B6A"};
-const P_DARK={bg:"#16100F",bg2:"#1F1614",bg3:"#2A1D1A",card:"#231918",card2:"#2C1F1C",border:"#3D2A27",accent:"#C49070",accent2:"#B08070",accent3:"#F5E8DF",rose:"#C46080",rose2:"#D47090",text:"#F0E4DF",text2:"#C4A89E",text3:"#8A706A",green:"#5DBF7A",red:"#E06070",yellow:"#E0B050",gold:"#D4A070"};
-// P é um objeto mutável — setTheme() copia as cores certas nele sem quebrar as referências existentes
+// ─── PALETA OFICIAL ───────────────────────────────────────────────────────────
+// Noite #221112 · Vinho #5C1F32 · Escuro #472325 · Rosa Sec #855954
+// Terracota #9D7761 · Cacau #9F8475 · Nude #E1D2C6
+const P_LIGHT={
+  bg:"#F2EDE8",bg2:"#FDFAF7",bg3:"#EDE6DF",
+  card:"#FDFAF7",card2:"#F7F1EC",
+  border:"rgba(133,89,84,.12)",border2:"rgba(133,89,84,.07)",
+  accent:"#5C1F32",accent2:"#855954",accent3:"#F7F1EC",
+  rose:"#855954",rose2:"#9D7761",
+  text:"#221112",text2:"#472325",text3:"#9F8475",
+  green:"#3d8a58",red:"#a03030",yellow:"#9a6e10",gold:"#9D7761",
+  // status colors (light)
+  statusGreen:"#3d8a58",statusGreenBg:"rgba(61,138,88,.1)",
+  statusBlue:"#3a6aa0",statusBlueBg:"rgba(58,106,160,.1)",
+  statusAmber:"#9a6e10",statusAmberBg:"rgba(154,110,16,.1)",
+  statusRed:"#a03030",statusRedBg:"rgba(160,48,48,.1)",
+  statusPurple:"#6a3a90",statusPurpleBg:"rgba(106,58,144,.1)",
+  statusTeal:"#2a7a80",statusTealBg:"rgba(42,122,128,.1)",
+  // font
+  fontTitle:"'Cormorant Garamond',Georgia,serif",
+  fontBody:"'Jost',system-ui,sans-serif",
+};
+const P_DARK={
+  bg:"#1c0e10",bg2:"#251215",bg3:"#2d1518",
+  card:"#251215",card2:"#2d1518",
+  border:"rgba(133,89,84,.15)",border2:"rgba(133,89,84,.08)",
+  accent:"#9D7761",accent2:"#855954",accent3:"#F7F1EC",
+  rose:"#855954",rose2:"#9D7761",
+  text:"#E1D2C6",text2:"#9F8475",text3:"#5a3a3e",
+  green:"#6dbf8a",red:"#e07070",yellow:"#e0b840",gold:"#c4a96a",
+  // status colors (dark)
+  statusGreen:"#6dbf8a",statusGreenBg:"rgba(109,191,138,.12)",
+  statusBlue:"#7aaed4",statusBlueBg:"rgba(122,174,212,.12)",
+  statusAmber:"#e0b840",statusAmberBg:"rgba(224,184,64,.12)",
+  statusRed:"#e07070",statusRedBg:"rgba(224,112,112,.12)",
+  statusPurple:"#b07ad4",statusPurpleBg:"rgba(176,122,212,.12)",
+  statusTeal:"#5dc4ca",statusTealBg:"rgba(93,196,202,.12)",
+  fontTitle:"'Cormorant Garamond',Georgia,serif",
+  fontBody:"'Jost',system-ui,sans-serif",
+};
 const P={...P_LIGHT};
 function setTheme(dark){const src=dark?P_DARK:P_LIGHT;Object.keys(src).forEach(k=>{P[k]=src[k];});}
 const MONTH_NAMES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const APPT_STATUS=["Confirmado","Aguardando","Realizado","Cancelado","Faltou","Reagendado"];
-const APPT_STATUS_CFG={Confirmado:{color:"#7aaed4",bg:"rgba(122,174,212,.14)"},Aguardando:{color:"#c4a96a",bg:"rgba(196,169,106,.14)"},Realizado:{color:"#7aad8a",bg:"rgba(122,173,138,.14)"},Cancelado:{color:"#c07070",bg:"rgba(192,112,112,.14)"},Faltou:{color:"#b07070",bg:"rgba(176,112,112,.12)"},Reagendado:{color:"#9b7aad",bg:"rgba(155,122,173,.13)"}};
-const PAT_STATUS_CFG={vip:{label:"VIP ✦",color:"#c4a96a",bg:"rgba(196,169,106,.13)"},active:{label:"Ativa",color:"#7aad8a",bg:"rgba(122,173,138,.12)"},treatment:{label:"Em Tratamento",color:"#7aaed4",bg:"rgba(122,174,212,.12)"},return:{label:"Retorno Pendente",color:"#c4a96a",bg:"rgba(196,169,106,.12)"},inactive:{label:"Inativa",color:"#c07070",bg:"rgba(192,112,112,.12)"},new:{label:"Nova",color:"#9b7aad",bg:"rgba(155,122,173,.12)"}};
+const APPT_STATUS_CFG={
+  Confirmado:{color:"#3d8a58",colorDark:"#6dbf8a",bg:"rgba(61,138,88,.12)",bgDark:"rgba(109,191,138,.12)"},
+  Aguardando:{color:"#3a6aa0",colorDark:"#7aaed4",bg:"rgba(58,106,160,.12)",bgDark:"rgba(122,174,212,.12)"},
+  Realizado:{color:"#3d8a58",colorDark:"#6dbf8a",bg:"rgba(61,138,88,.12)",bgDark:"rgba(109,191,138,.12)"},
+  Cancelado:{color:"#a03030",colorDark:"#e07070",bg:"rgba(160,48,48,.12)",bgDark:"rgba(224,112,112,.12)"},
+  Faltou:{color:"#a03030",colorDark:"#e07070",bg:"rgba(160,48,48,.1)",bgDark:"rgba(224,112,112,.1)"},
+  Reagendado:{color:"#6a3a90",colorDark:"#b07ad4",bg:"rgba(106,58,144,.12)",bgDark:"rgba(176,122,212,.12)"},
+};
+// helper para pegar cor do status considerando tema atual
+function getApptColor(status,dark=false){
+  const c=APPT_STATUS_CFG[status]||{color:"#9F8475",colorDark:"#9F8475",bg:"rgba(159,132,117,.12)",bgDark:"rgba(159,132,117,.12)"};
+  return{color:dark?c.colorDark:c.color,bg:dark?c.bgDark:c.bg};
+}
+const PAT_STATUS_CFG={
+  vip:{label:"VIP ✦",color:"#9a6e10",colorDark:"#e0b840",bg:"rgba(154,110,16,.12)",bgDark:"rgba(224,184,64,.12)"},
+  active:{label:"Ativa",color:"#3d8a58",colorDark:"#6dbf8a",bg:"rgba(61,138,88,.12)",bgDark:"rgba(109,191,138,.12)"},
+  treatment:{label:"Em Tratamento",color:"#3a6aa0",colorDark:"#7aaed4",bg:"rgba(58,106,160,.12)",bgDark:"rgba(122,174,212,.12)"},
+  return:{label:"Retorno Pendente",color:"#9a6e10",colorDark:"#e0b840",bg:"rgba(154,110,16,.12)",bgDark:"rgba(224,184,64,.12)"},
+  inactive:{label:"Inativa",color:"#a03030",colorDark:"#e07070",bg:"rgba(160,48,48,.12)",bgDark:"rgba(224,112,112,.12)"},
+  new:{label:"Nova",color:"#6a3a90",colorDark:"#b07ad4",bg:"rgba(106,58,144,.12)",bgDark:"rgba(176,122,212,.12)"},
+};
 const BLOOD_TYPES=["A+","A-","B+","B-","AB+","AB-","O+","O-"];
 const SKIN_TYPES=["Normal","Seca","Oleosa","Mista","Sensível"];
 const FITZPATRICK=["I","II","III","IV","V","VI"];
@@ -1432,7 +1488,7 @@ function LoginScreen({ onLogin }) {
   }
 
   return h(Fragment, null,
-    h("style", null, `@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{background:${P.bg};color:${P.text};font-family:'DM Sans',sans-serif;}`),
+    h("style", null, `@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{background:${P.bg};color:${P.text};font-family:'Jost',system-ui,sans-serif;}`),
     h("div", {
       style: {
         minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
@@ -1451,7 +1507,7 @@ function LoginScreen({ onLogin }) {
             onChange: e => setEmail(e.target.value),
             onKeyDown: e => e.key === "Enter" && handleLogin(),
             placeholder: "seu@email.com",
-            style: { width: "100%", background: P.bg3, border: `1px solid ${P.border}`, borderRadius: 8, padding: "11px 14px", color: P.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none" }
+            style: { width: "100%", background: P.bg3, border: `1px solid ${P.border}`, borderRadius: 8, padding: "11px 14px", color: P.text, fontSize: 14, fontFamily: "'Jost',system-ui,sans-serif", outline: "none" }
           })
         ),
         h("div", { style: { marginBottom: 24 } },
@@ -1461,13 +1517,13 @@ function LoginScreen({ onLogin }) {
             onChange: e => setPassword(e.target.value),
             onKeyDown: e => e.key === "Enter" && handleLogin(),
             placeholder: "••••••••",
-            style: { width: "100%", background: P.bg3, border: `1px solid ${P.border}`, borderRadius: 8, padding: "11px 14px", color: P.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none" }
+            style: { width: "100%", background: P.bg3, border: `1px solid ${P.border}`, borderRadius: 8, padding: "11px 14px", color: P.text, fontSize: 14, fontFamily: "'Jost',system-ui,sans-serif", outline: "none" }
           })
         ),
         error && h("div", { style: { marginBottom: 16, padding: "10px 14px", background: "rgba(192,112,112,.12)", border: "1px solid rgba(192,112,112,.3)", borderRadius: 8, fontSize: 13, color: P.red } }, error),
         h("button", {
           onClick: handleLogin, disabled: loading,
-          style: { width: "100%", padding: "13px", background: `linear-gradient(135deg,${P.rose},${P.gold})`, color: P.accent3, border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'DM Sans',sans-serif", opacity: loading ? .7 : 1, letterSpacing: ".04em" }
+          style: { width: "100%", padding: "13px", background: `linear-gradient(135deg,${P.rose},${P.gold})`, color: P.accent3, border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Jost',system-ui,sans-serif", opacity: loading ? .7 : 1, letterSpacing: ".04em" }
         }, loading ? "Entrando..." : "Entrar"),
         h("div", { style: { marginTop: 24, textAlign: "center", fontSize: 12, color: P.text3 } }, "Acesso restrito — somente usuários autorizados.")
       )
@@ -1479,7 +1535,18 @@ function Avatar({name,size=40,idx=0,src=null}){
   if(src)return createElement("img",{src,alt:name,style:{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:`2px solid ${P.border}`}});
   return createElement("div",{style:{width:size,height:size,borderRadius:"50%",background:avColors[idx%avColors.length],display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.32,fontWeight:700,color:P.text3,flexShrink:0,border:`1px solid ${P.border}`}},initials(name));
 }
-function Card({children,style:s,onClick}){return createElement("div",{onClick,style:{background:P.card,border:`1px solid ${P.border}`,borderRadius:12,padding:20,transition:"all .18s",cursor:onClick?"pointer":"default",...s}},children);}
+function Card({children,style:s,onClick,className}){
+  const el=createElement("div",{onClick,className,style:{background:P.card,border:`0.5px solid ${P.border}`,borderRadius:13,padding:18,transition:"all .18s ease",cursor:onClick?"pointer":"default",...s}},children);
+  return el;
+}
+// Pill de status semântico
+function StatusPill({status,cfg,dark}){
+  const h=createElement;
+  if(!cfg)return null;
+  const color=dark&&cfg.colorDark?cfg.colorDark:cfg.color;
+  const bg=dark&&cfg.bgDark?cfg.bgDark:cfg.bg;
+  return h("span",{style:{display:"inline-flex",alignItems:"center",padding:"3px 10px",borderRadius:20,background:bg,color,fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:11,letterSpacing:".04em",whiteSpace:"nowrap"}},cfg.label||status);
+}
 function Modal({open,onClose,title,children,width=520}){
   if(!open)return null;
   return createElement("div",{onClick:e=>{if(e.target===e.currentTarget)onClose();},style:{position:"fixed",inset:0,background:"rgba(10,5,7,.9)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}},
@@ -1491,13 +1558,13 @@ function Modal({open,onClose,title,children,width=520}){
     )
   );
 }
-const IS={width:"100%",background:P.bg3,border:`1px solid ${P.border}`,borderRadius:8,padding:"9px 12px",color:P.text,fontSize:13.5,fontFamily:"'DM Sans',sans-serif",outline:"none",boxSizing:"border-box"};
+const IS={width:"100%",background:P.bg3,border:`1px solid ${P.border}`,borderRadius:8,padding:"9px 12px",color:P.text,fontSize:13.5,fontFamily:"'Jost',system-ui,sans-serif",outline:"none",boxSizing:"border-box"};
 function Inp({value,onChange,placeholder,type="text",style:s}){return createElement("input",{value,onChange:e=>onChange(e.target.value),placeholder,type,style:{...IS,...s}});}
 function Sel({value,onChange,options}){return createElement("select",{value,onChange:e=>onChange(e.target.value),style:IS},options.map(o=>createElement("option",{key:o,value:o},o)));}
 function TA({value,onChange,placeholder,rows=3}){return createElement("textarea",{value,onChange:e=>onChange(e.target.value),placeholder,rows,style:{...IS,resize:"vertical"}});}
 function Btn({children,onClick,variant="primary",style:s,disabled=false}){
   const vs={primary:{background:`linear-gradient(135deg,${P.rose},${P.gold})`,color:P.accent3,border:"none"},ghost:{background:"transparent",color:P.text2,border:`1px solid ${P.border}`},danger:{background:"rgba(192,112,112,.1)",color:P.red,border:"1px solid rgba(192,112,112,.2)"},sm:{background:`linear-gradient(135deg,${P.rose},${P.gold})`,color:P.accent3,border:"none",padding:"5px 10px",fontSize:11}};
-  return createElement("button",{onClick,disabled,style:{padding:"9px 20px",borderRadius:8,fontSize:13,fontWeight:600,cursor:disabled?"not-allowed":"pointer",fontFamily:"'DM Sans',sans-serif",transition:"all .15s",opacity:disabled?.5:1,...vs[variant],...s}},children);
+  return createElement("button",{onClick,disabled,style:{padding:"9px 20px",borderRadius:8,fontSize:13,fontWeight:600,cursor:disabled?"not-allowed":"pointer",fontFamily:"'Jost',system-ui,sans-serif",transition:"all .15s",opacity:disabled?.5:1,...vs[variant],...s}},children);
 }
 function Field({label,children,half,third}){
   return createElement("div",{style:{marginBottom:14,flex:third?"0 0 calc(33% - 8px)":half?"0 0 calc(50% - 6px)":"1 1 100%"}},
@@ -1506,7 +1573,7 @@ function Field({label,children,half,third}){
 function TabBar({tabs,active,onChange}){
   const h=createElement;
   return h("div",{style:{display:"flex",gap:2,marginBottom:20,background:P.bg2,padding:4,borderRadius:10,border:`1px solid ${P.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch"}},
-    tabs.map(t=>h("button",{key:t.k,onClick:()=>onChange(t.k),style:{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:7,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:"none",transition:"all .15s",background:active===t.k?P.rose:"transparent",color:active===t.k?P.accent3:P.text3,whiteSpace:"nowrap",flexShrink:0}},
+    tabs.map(t=>h("button",{key:t.k,onClick:()=>onChange(t.k),style:{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:7,fontSize:12.5,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",border:"none",transition:"all .15s",background:active===t.k?P.rose:"transparent",color:active===t.k?P.accent3:P.text3,whiteSpace:"nowrap",flexShrink:0}},
       t.icon&&h(TabIcon,{name:t.icon,size:15}),
       t.l
     )));
@@ -1578,7 +1645,7 @@ function FaceMapEditor({sessionMap,onChange,readOnly=false}){
   const unit=mt==="botox"?"U":"ml";
   const h=createElement;
   return h("div",null,
-    !readOnly&&h("div",{style:{display:"flex",gap:6,marginBottom:14}},types.map(t=>h("button",{key:t.k,onClick:()=>{setMt(t.k);onChange({type:t.k,points:{}});},style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:mt===t.k?P.rose:"transparent",border:`1px solid ${mt===t.k?P.rose:P.border}`,color:mt===t.k?P.accent3:P.text3}},t.l))),
+    !readOnly&&h("div",{style:{display:"flex",gap:6,marginBottom:14}},types.map(t=>h("button",{key:t.k,onClick:()=>{setMt(t.k);onChange({type:t.k,points:{}});},style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:mt===t.k?P.rose:"transparent",border:`1px solid ${mt===t.k?P.rose:P.border}`,color:mt===t.k?P.accent3:P.text3}},t.l))),
     h("div",{style:{display:"flex",gap:20,alignItems:"flex-start",flexWrap:"wrap"}},
       h("div",{style:{paddingBottom:readOnly?0:64}},h(FaceMap,{mapType:mt,points,onChange:p=>onChange({type:mt,points:p}),readOnly})),
       h("div",{style:{flex:1,minWidth:140}},
@@ -1639,7 +1706,7 @@ function MarkerDot({m,idx,active,onClick}){
       border:`2px solid ${active?"#fff":(m.done?P.green:P.accent3)}`,
       display:"flex",alignItems:"center",justifyContent:"center",
       color:"#fff",fontSize:10.5,fontWeight:700,cursor:onClick?"pointer":"default",
-      boxShadow:"0 2px 7px rgba(0,0,0,.55)",transition:"all .12s",fontFamily:"'DM Sans',sans-serif",
+      boxShadow:"0 2px 7px rgba(0,0,0,.55)",transition:"all .12s",fontFamily:"'Jost',system-ui,sans-serif",
       zIndex:5
     }
   },idx+1);
@@ -1847,7 +1914,7 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
     // Toolbar: modo (marcador/seta/círculo) + cor do desenho
     h("div",{style:{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",padding:"8px 12px",background:P.bg2,borderRadius:10,border:`1px solid ${P.border}`,flexShrink:0}},
       h("div",{style:{display:"flex",gap:4}},
-        TOOLS.map(t=>h("button",{key:t.k,onClick:()=>setMode(t.k),title:t.label,style:{padding:"6px 12px",borderRadius:7,border:`1px solid ${mode===t.k?P.rose:P.border}`,background:mode===t.k?P.rose:"transparent",color:mode===t.k?P.accent3:P.text2,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:6,fontFamily:"'DM Sans',sans-serif"}},t.icon,t.label))
+        TOOLS.map(t=>h("button",{key:t.k,onClick:()=>setMode(t.k),title:t.label,style:{padding:"6px 12px",borderRadius:7,border:`1px solid ${mode===t.k?P.rose:P.border}`,background:mode===t.k?P.rose:"transparent",color:mode===t.k?P.accent3:P.text2,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:6,fontFamily:"'Jost',system-ui,sans-serif"}},t.icon,t.label))
       ),
       mode!=="marker"&&h(Fragment,null,
         h("div",{style:{width:1,height:22,background:P.border}}),
@@ -1916,7 +1983,7 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
                 h(TA,{value:selected.notes,onChange:v=>updateMarker(selected.id,{notes:v}),rows:2,placeholder:"Ex: técnica em leque, simetria, etc."})
               ),
               h("div",{style:{borderTop:`1px solid ${P.border}`,paddingTop:10,marginTop:2}},
-                h("button",{onClick:()=>toggleDone(selected),style:{width:"100%",padding:"7px 0",borderRadius:8,cursor:"pointer",fontSize:12,fontFamily:"'DM Sans',sans-serif",background:selected.done?P.green:"transparent",border:`1px solid ${selected.done?P.green:P.border}`,color:selected.done?"#fff":P.text2,marginBottom:selected.done?10:0}},
+                h("button",{onClick:()=>toggleDone(selected),style:{width:"100%",padding:"7px 0",borderRadius:8,cursor:"pointer",fontSize:12,fontFamily:"'Jost',system-ui,sans-serif",background:selected.done?P.green:"transparent",border:`1px solid ${selected.done?P.green:P.border}`,color:selected.done?"#fff":P.text2,marginBottom:selected.done?10:0}},
                   selected.done?"✓ Marcado como Realizado":"＋ Marcar como Realizado"
                 ),
                 selected.done&&h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
@@ -2049,7 +2116,7 @@ function PlanAnnotator({initial,onSave,onClose}){
     // Texts
     sTexts.forEach(t=>{
       const fs=Math.max(t.size*5,15);
-      ctx.font=`bold ${fs}px DM Sans,sans-serif`;ctx.fillStyle=t.color;
+      ctx.font=`bold ${fs}px Jost,sans-serif`;ctx.fillStyle=t.color;
       ctx.globalCompositeOperation="source-over";
       ctx.shadowColor="rgba(0,0,0,.85)";ctx.shadowBlur=5;
       ctx.fillText(t.text,t.x,t.y);ctx.shadowBlur=0;
@@ -2235,7 +2302,7 @@ function PlanAnnotator({initial,onSave,onClose}){
       ),
       h("div",{style:{width:1,height:26,background:P.border,margin:"0 3px"}}),
       h("div",{style:{display:"flex",gap:3}},
-        SIZES.map(s=>h("button",{key:s.v,onClick:()=>setSize(s.v),style:{width:28,height:28,borderRadius:6,fontSize:11,border:`1px solid ${size===s.v?P.rose:P.border}`,background:size===s.v?P.rose:"transparent",color:size===s.v?P.accent3:P.text2,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontWeight:700}},s.l))
+        SIZES.map(s=>h("button",{key:s.v,onClick:()=>setSize(s.v),style:{width:28,height:28,borderRadius:6,fontSize:11,border:`1px solid ${size===s.v?P.rose:P.border}`,background:size===s.v?P.rose:"transparent",color:size===s.v?P.accent3:P.text2,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",fontWeight:700}},s.l))
       ),
       h("div",{style:{width:1,height:26,background:P.border,margin:"0 3px"}}),
       h("label",{style:{display:"flex",alignItems:"center",gap:6,fontSize:12,color:P.accent,border:`1px solid rgba(157,119,97,.4)`,borderRadius:7,padding:"4px 10px",cursor:"pointer",background:"rgba(157,119,97,.06)"}},
@@ -2275,7 +2342,7 @@ function PlanAnnotator({initial,onSave,onClose}){
     showTextBox&&h("div",{style:{position:"fixed",inset:0,zIndex:4000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.6)"},onClick:()=>{setShowTextBox(false);setTextPos(null);}},
       h("div",{onClick:e=>e.stopPropagation(),style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:12,padding:20,minWidth:320,display:"flex",flexDirection:"column",gap:10}},
         h("div",{style:{fontSize:13,color:P.text2}},"✍️ Texto da anotação"),
-        h("input",{autoFocus:true,value:textInput,onChange:e=>setTextInput(e.target.value),onKeyDown:e=>e.key==="Enter"&&placeText(),placeholder:"Ex: Tratar aqui · Simetria · Volume",style:{padding:"9px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:14,outline:"none",fontFamily:"'DM Sans',sans-serif"}}),
+        h("input",{autoFocus:true,value:textInput,onChange:e=>setTextInput(e.target.value),onKeyDown:e=>e.key==="Enter"&&placeText(),placeholder:"Ex: Tratar aqui · Simetria · Volume",style:{padding:"9px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:14,outline:"none",fontFamily:"'Jost',system-ui,sans-serif"}}),
         h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
           h("button",{onClick:()=>{setShowTextBox(false);setTextPos(null);},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text3,cursor:"pointer",fontSize:13}},"Cancelar"),
           h("button",{onClick:placeText,style:{padding:"7px 16px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,cursor:"pointer",fontSize:13,fontWeight:600}},"Colocar ✓")
@@ -2435,7 +2502,7 @@ function PhotoAnnotator({photo,onSave,onClose}){
     const canvas=canvasRef.current;
     const ctx=canvas.getContext("2d");
     const fs=Math.max(size*5,16);
-    ctx.font=`bold ${fs}px DM Sans, sans-serif`;
+    ctx.font=`bold ${fs}px Jost,sans-serif`;
     ctx.fillStyle=color;
     ctx.globalCompositeOperation="source-over";
     // Shadow for readability
@@ -2494,7 +2561,7 @@ function PhotoAnnotator({photo,onSave,onClose}){
       h("div",{style:{width:1,height:28,background:P.border,margin:"0 4px"}}),
       // Size
       h("div",{style:{display:"flex",gap:4}},
-        SIZES.map(s=>h("button",{key:s.v,onClick:()=>setSize(s.v),style:{padding:"4px 10px",borderRadius:8,fontSize:11,border:`1px solid ${size===s.v?P.rose:P.border}`,background:size===s.v?P.rose:"transparent",color:size===s.v?P.accent3:P.text2,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},s.l))
+        SIZES.map(s=>h("button",{key:s.v,onClick:()=>setSize(s.v),style:{padding:"4px 10px",borderRadius:8,fontSize:11,border:`1px solid ${size===s.v?P.rose:P.border}`,background:size===s.v?P.rose:"transparent",color:size===s.v?P.accent3:P.text2,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},s.l))
       )
     ),
     // Canvas
@@ -2513,7 +2580,7 @@ function PhotoAnnotator({photo,onSave,onClose}){
     showTextInput&&h("div",{style:{position:"fixed",inset:0,zIndex:4000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.5)"},onClick:()=>{setShowTextInput(false);setTextPos(null);}},
       h("div",{onClick:e=>e.stopPropagation(),style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:10,minWidth:300}},
         h("div",{style:{fontSize:13,color:P.text2,marginBottom:4}},"Digite o texto da anotação"),
-        h("input",{autoFocus:true,value:textInput,onChange:e=>setTextInput(e.target.value),onKeyDown:e=>e.key==="Enter"&&placeText(),placeholder:"Ex: Tratar aqui · Assimetria",style:{padding:"9px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:14,outline:"none",fontFamily:"'DM Sans',sans-serif"}}),
+        h("input",{autoFocus:true,value:textInput,onChange:e=>setTextInput(e.target.value),onKeyDown:e=>e.key==="Enter"&&placeText(),placeholder:"Ex: Tratar aqui · Assimetria",style:{padding:"9px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:14,outline:"none",fontFamily:"'Jost',system-ui,sans-serif"}}),
         h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
           h("button",{onClick:()=>{setShowTextInput(false);setTextPos(null);},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text3,cursor:"pointer",fontSize:13}},"Cancelar"),
           h("button",{onClick:placeText,style:{padding:"7px 16px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,cursor:"pointer",fontSize:13,fontWeight:600}},"Colocar")
@@ -2601,33 +2668,106 @@ function SyncIndicator(){
 function GlobalSearch({patients,agenda,onSelectPatient,onNav}){
   const[q,setQ]=useState("");
   const[open,setOpen]=useState(false);
+  const[sel,setSel]=useState(0);
+  const ref=useRef();
+  const inputRef=useRef();
   const h=createElement;
+  useEffect(()=>{
+    function hc(e){if(ref.current&&!ref.current.contains(e.target)){setOpen(false);setQ("");}}
+    document.addEventListener("mousedown",hc);return()=>document.removeEventListener("mousedown",hc);
+  },[]);
   const results=useMemo(()=>{
     if(q.trim().length<2)return[];
-    const s=q.toLowerCase();
+    const s=q.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+    const norm=t=>(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
     const out=[];
+    const seen=new Set();
     patients.forEach(p=>{
-      if(p.name.toLowerCase().includes(s)||p.phone.includes(s)||p.cpf.includes(s)||p.email.toLowerCase().includes(s))out.push({type:"paciente",label:p.name,sub:p.phone,id:p.id,pat:p});
-      p.sessions?.forEach(sess=>{
-        if(sess.procedure.toLowerCase().includes(s)||sess.notes?.toLowerCase().includes(s)||sess.product?.toLowerCase().includes(s))out.push({type:"sessão",label:`${p.name} — ${sess.procedure}`,sub:sess.date,id:p.id,pat:p});
+      if(norm(p.name).includes(s)||norm(p.phone).includes(s)||norm(p.cpf).includes(s)||norm(p.email).includes(s)){
+        if(!seen.has("p"+p.id)){
+          seen.add("p"+p.id);
+          const lastSess=[...(p.sessions||[])].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];
+          const nextAppt=agenda.filter(a=>a.patientName===p.name&&a.date>=new Date().toISOString().slice(0,10)).sort((a,b)=>a.date.localeCompare(b.date))[0];
+          out.push({type:"paciente",label:p.name,sub:lastSess?`Última visita: ${lastSess.date} · ${lastSess.procedure}`:"Sem sessões",extra:nextAppt?`Próximo: ${nextAppt.date} ${nextAppt.time}`:null,status:p.status,pat:p,id:p.id});
+        }
+      }
+      (p.sessions||[]).forEach(sess=>{
+        if(norm(sess.procedure).includes(s)||norm(sess.notes).includes(s)){
+          if(!seen.has("s"+p.id+sess.date)){
+            seen.add("s"+p.id+sess.date);
+            out.push({type:"sessão",label:`${p.name}`,sub:`${sess.procedure} · ${sess.date}`,pat:p,id:p.id});
+          }
+        }
       });
     });
-    agenda.forEach(a=>{if(a.patientName.toLowerCase().includes(s)||a.procedure.toLowerCase().includes(s))out.push({type:"agenda",label:`${a.patientName} — ${a.procedure}`,sub:`${a.date} ${a.time}`,id:a.id});});
-    return out.slice(0,10);
+    agenda.forEach(a=>{
+      if(norm(a.patientName).includes(s)||norm(a.procedure).includes(s)){
+        if(!seen.has("a"+a.id)){
+          seen.add("a"+a.id);
+          const pat=patients.find(p=>p.name===a.patientName);
+          out.push({type:"agenda",label:a.patientName,sub:`${a.procedure} · ${a.date} ${a.time}`,pat,id:a.id});
+        }
+      }
+    });
+    return out.slice(0,8);
   },[q,patients,agenda]);
-  const typeColor={paciente:P.accent,sessão:P.gold,agenda:"#7aaed4"};
-  return h("div",{style:{position:"relative",flex:1,maxWidth:340}},
-    h("div",{style:{position:"relative"}},
-      h("span",{style:{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:14,color:P.text3,pointerEvents:"none"}},"🔍"),
-      h("input",{value:q,onChange:e=>{setQ(e.target.value);setOpen(true);},onFocus:()=>setOpen(true),placeholder:"Busca inteligente... paciente, CPF, procedimento",style:{...IS,paddingLeft:36,width:"100%"}})
+  useEffect(()=>setSel(0),[results]);
+  function go(r){
+    setOpen(false);setQ("");
+    if(r.pat){onSelectPatient(r.pat);onNav("prontuario");}
+    else onNav("agenda");
+  }
+  function onKey(e){
+    if(!open||!results.length)return;
+    if(e.key==="ArrowDown"){e.preventDefault();setSel(s=>Math.min(s+1,results.length-1));}
+    else if(e.key==="ArrowUp"){e.preventDefault();setSel(s=>Math.max(s-1,0));}
+    else if(e.key==="Enter"){e.preventDefault();go(results[sel]);}
+    else if(e.key==="Escape"){setOpen(false);setQ("");}
+  }
+  const typeColor={paciente:"#9D7761",sessão:P.statusBlue,agenda:P.statusGreen};
+  const typeIcon={paciente:"ti-user",sessão:"ti-needle",agenda:"ti-calendar"};
+  const statusColors={"vip":P.statusAmber,"active":P.statusGreen,"inactive":P.statusRed,"new":P.statusBlue};
+  return h("div",{ref,style:{position:"relative",flex:1,maxWidth:340}},
+    h("div",{style:{position:"relative",display:"flex",alignItems:"center"}},
+      h("i",{className:"ti ti-search",style:{position:"absolute",left:11,fontSize:13,color:P.text3,pointerEvents:"none"}}),
+      h("input",{ref:inputRef,value:q,
+        onChange:e=>{setQ(e.target.value);setOpen(true);},
+        onFocus:()=>setOpen(true),
+        onKeyDown:onKey,
+        placeholder:"Buscar paciente, CPF, procedimento...",
+        style:{width:"100%",background:P.bg3||P.bg2,border:`0.5px solid ${P.border}`,borderRadius:9,padding:"7px 12px 7px 32px",color:P.text,fontSize:12,fontFamily:"'Jost',system-ui,sans-serif",fontWeight:300,outline:"none",transition:"border-color .18s"},
+        onMouseEnter:e=>e.target.style.borderColor=P.rosa||"#855954",
+        onMouseLeave:e=>e.target.style.borderColor=P.border
+      }),
+      q&&h("button",{onClick:()=>{setQ("");setOpen(false);inputRef.current&&inputRef.current.focus();},style:{position:"absolute",right:9,background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:14,lineHeight:1,padding:2}},"✕")
     ),
-    open&&results.length>0&&h("div",{style:{position:"absolute",top:"calc(100% + 6px)",left:0,right:0,background:P.bg2,border:`1px solid ${P.border}`,borderRadius:12,zIndex:500,boxShadow:"0 8px 32px rgba(0,0,0,.5)",overflow:"hidden"}},
-      results.map((r,i)=>h("div",{key:i,onClick:()=>{setOpen(false);setQ("");if(r.pat){onSelectPatient(r.pat);onNav("prontuario");}else onNav("agenda");},style:{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${P.border}`},onMouseEnter:e=>e.currentTarget.style.background=P.card,onMouseLeave:e=>e.currentTarget.style.background="transparent"},
-        h("span",{style:{fontSize:10,padding:"2px 7px",borderRadius:10,background:typeColor[r.type]+"22",color:typeColor[r.type],fontWeight:600,minWidth:50,textAlign:"center"}},r.type),
-        h("div",null,h("div",{style:{fontSize:13,color:P.text}},r.label),h("div",{style:{fontSize:11,color:P.text3}},r.sub))
-      ))
+    open&&results.length>0&&h("div",{style:{position:"absolute",top:"calc(100% + 6px)",left:0,right:0,background:P.card,border:`0.5px solid ${P.border}`,borderRadius:12,zIndex:500,boxShadow:"0 12px 40px rgba(0,0,0,.35)",overflow:"hidden"}},
+      results.map((r,i)=>h("div",{key:i,onClick:()=>go(r),
+        style:{display:"flex",alignItems:"center",gap:10,padding:"9px 13px",cursor:"pointer",borderBottom:i<results.length-1?`0.5px solid ${P.border}`:"none",background:i===sel?(P.bg3||P.bg2):"transparent",transition:"background .12s"},
+        onMouseEnter:()=>setSel(i)},
+        r.pat
+          ?h("div",{style:{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,#5C1F32,#9D7761)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#fff",flexShrink:0,fontFamily:"'Cormorant Garamond',serif"}},initials(r.pat.name))
+          :h("div",{style:{width:30,height:30,borderRadius:"50%",background:typeColor[r.type]+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
+              h("i",{className:`ti ${typeIcon[r.type]}`,style:{fontSize:14,color:typeColor[r.type]}})
+            ),
+        h("div",{style:{flex:1,minWidth:0}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:6}},
+            h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12.5,color:P.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},r.label),
+            r.status&&r.status!=="active"&&h("span",{style:{fontSize:8.5,padding:"1px 6px",borderRadius:10,background:(statusColors[r.status]||P.text3)+"22",color:statusColors[r.status]||P.text3,fontFamily:"'Jost',sans-serif",fontWeight:400,flexShrink:0,textTransform:"uppercase"}},r.status==="vip"?"VIP ✦":r.status)
+          ),
+          h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},r.sub),
+          r.extra&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9.5,color:P.statusGreen,marginTop:1}},r.extra)
+        ),
+        h("i",{className:"ti ti-chevron-right",style:{fontSize:12,color:P.text3,opacity:.5,flexShrink:0}})
+      )),
+      h("div",{style:{padding:"6px 13px",borderTop:`0.5px solid ${P.border}`,display:"flex",alignItems:"center",gap:12}},
+        h("span",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,color:P.text3}},"↑↓ navegar · Enter selecionar · Esc fechar")
+      )
     ),
-    open&&q&&results.length===0&&h("div",{style:{position:"absolute",top:"calc(100% + 6px)",left:0,right:0,background:P.bg2,border:`1px solid ${P.border}`,borderRadius:12,zIndex:500,padding:"14px",textAlign:"center",color:P.text3,fontSize:13}},"Nenhum resultado encontrado.")
+    open&&q.trim().length>=2&&results.length===0&&h("div",{style:{position:"absolute",top:"calc(100% + 6px)",left:0,right:0,background:P.card,border:`0.5px solid ${P.border}`,borderRadius:12,zIndex:500,padding:"16px",textAlign:"center"}},
+      h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:12,color:P.text3}},"Nenhum resultado para "),
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:P.text,marginTop:4}},`"${q}"`)
+    )
   );
 }
 // ─── RETORNOS PENDENTES ───────────────────────────────────────────────────────
@@ -2710,7 +2850,7 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
                   r.diasRestantes<0?`Atrasada ${Math.abs(r.diasRestantes)} dias · ${r.last.procedure}`:`Em ${r.diasRestantes}d · ${r.last.procedure}`)
               )
             ),
-            onScheduleReturn&&h("button",{onClick:()=>onScheduleReturn(r),title:"Agendar retorno agora",style:{display:"flex",alignItems:"center",gap:4,padding:"5px 9px",background:"rgba(157,119,97,.15)",border:"1px solid rgba(157,119,97,.35)",borderRadius:7,color:P.accent,fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"'DM Sans',sans-serif"}},"📅"),
+            onScheduleReturn&&h("button",{onClick:()=>onScheduleReturn(r),title:"Agendar retorno agora",style:{display:"flex",alignItems:"center",gap:4,padding:"5px 9px",background:"rgba(157,119,97,.15)",border:"1px solid rgba(157,119,97,.35)",borderRadius:7,color:P.accent,fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"'Jost',system-ui,sans-serif"}},"📅"),
             phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",background:"rgba(106,196,130,.13)",border:"1px solid rgba(106,196,130,.3)",borderRadius:7,color:"#7aad8a",fontSize:11,fontWeight:600,textDecoration:"none",flexShrink:0}},"💬")
           );
         })
@@ -2736,7 +2876,7 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
     // Filtros
     h("div",{style:{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}},
       [{k:"todos",l:"Todas ("+retornos.length+")"},{k:"urgente",l:"🔴 Atrasadas"},{k:"proximo",l:"⏳ Próximas"},{k:"ok",l:"🟢 Em dia"}].map(f=>
-        h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l)
+        h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l)
       )
     ),
     // Lista
@@ -2778,7 +2918,7 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
                     h("div",{style:{color:P.text,fontWeight:500,fontSize:12,marginTop:2}},retornoFormatted)
                   ),
                   // Ações
-                  onScheduleReturn&&h("button",{onClick:()=>onScheduleReturn(r),style:{padding:"7px 14px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"'DM Sans',sans-serif"}},"📅 Agendar agora"),
+                  onScheduleReturn&&h("button",{onClick:()=>onScheduleReturn(r),style:{padding:"7px 14px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"'Jost',system-ui,sans-serif"}},"📅 Agendar agora"),
                   phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",background:"rgba(106,196,130,.13)",border:"1px solid rgba(106,196,130,.3)",borderRadius:8,color:"#7aad8a",fontSize:12,fontWeight:600,textDecoration:"none",cursor:"pointer",flexShrink:0}},"💬 WhatsApp"),
                   h("button",{onClick:()=>{onSelectPatient(r.patient);onNav("prontuario");},style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,fontSize:12,cursor:"pointer"}},"Ver Prontuário")
                 )
@@ -2852,7 +2992,7 @@ function Aniversariantes({patients,onSelectPatient,onNav}){
         MONTH_NAMES.map((m,i)=>{
           const cnt=withBday.filter(p=>p._month===i).length;
           const isCur=i===today.getMonth();
-          return h("button",{key:i,onClick:()=>setFilterMonth(i),style:{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filterMonth===i?P.rose:"transparent",border:"1px solid "+(filterMonth===i?P.rose:isCur?"rgba(196,169,106,.4)":P.border),color:filterMonth===i?P.accent3:isCur?P.yellow:P.text2}},
+          return h("button",{key:i,onClick:()=>setFilterMonth(i),style:{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filterMonth===i?P.rose:"transparent",border:"1px solid "+(filterMonth===i?P.rose:isCur?"rgba(196,169,106,.4)":P.border),color:filterMonth===i?P.accent3:isCur?P.yellow:P.text2}},
             m,cnt>0&&h("span",{style:{marginLeft:5,fontSize:10,fontWeight:700,color:filterMonth===i?P.accent3:P.gold,background:filterMonth===i?"rgba(255,255,255,.15)":"rgba(196,169,106,.15)",padding:"1px 5px",borderRadius:10}},cnt)
           );
         })
@@ -2921,11 +3061,11 @@ function MetaFaturamento({received,selMonth,selYear,goals,setGoals,prevMonthRece
       editing
         ?h("div",{style:{display:"flex",alignItems:"center",gap:8}},
             h("span",{style:{fontSize:12,color:P.text3}},"R$"),
-            h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:handleKeyDown,placeholder:"ex: 30000",style:{width:110,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"6px 10px",color:P.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}}),
-            h("button",{onClick:saveMeta,style:{background:P.rose,border:"none",borderRadius:8,color:P.accent3,cursor:"pointer",padding:"6px 14px",fontSize:12,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},"Salvar"),
-            h("button",{onClick:()=>setEditing(false),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text3,cursor:"pointer",padding:"6px 10px",fontSize:12,fontFamily:"'DM Sans',sans-serif"}},"✕")
+            h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:handleKeyDown,placeholder:"ex: 30000",style:{width:110,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"6px 10px",color:P.text,fontSize:13,fontFamily:"'Jost',system-ui,sans-serif",outline:"none"}}),
+            h("button",{onClick:saveMeta,style:{background:P.rose,border:"none",borderRadius:8,color:P.accent3,cursor:"pointer",padding:"6px 14px",fontSize:12,fontWeight:600,fontFamily:"'Jost',system-ui,sans-serif"}},"Salvar"),
+            h("button",{onClick:()=>setEditing(false),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text3,cursor:"pointer",padding:"6px 10px",fontSize:12,fontFamily:"'Jost',system-ui,sans-serif"}},"✕")
           )
-        :h("button",{onClick:openEdit,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.accent,cursor:"pointer",padding:"6px 14px",fontSize:11,fontFamily:"'DM Sans',sans-serif"}},meta>0?"✎ Editar meta":"＋ Definir meta")
+        :h("button",{onClick:openEdit,style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.accent,cursor:"pointer",padding:"6px 14px",fontSize:11,fontFamily:"'Jost',system-ui,sans-serif"}},meta>0?"✎ Editar meta":"＋ Definir meta")
     ),
     h("div",{style:{display:"flex",alignItems:"baseline",gap:10,marginBottom:14,flexWrap:"wrap"}},
       h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:barColor,lineHeight:1}},fmtCurr(received)),
@@ -3016,7 +3156,7 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
           h("div",{style:{fontSize:13,color:P.text,fontWeight:700}},"🎯 Meta por Procedimento"),
           h("div",{style:{fontSize:11,color:P.text3}},`${MONTH_NAMES[selMonth]} ${selYear}`)
         ),
-        onNav&&h("button",{onClick:()=>onNav("financeiro"),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid rgba(157,119,97,.3)`,borderRadius:8,padding:"4px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},"Ver tudo →")
+        onNav&&h("button",{onClick:()=>onNav("financeiro"),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid rgba(157,119,97,.3)`,borderRadius:8,padding:"4px 12px",cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},"Ver tudo →")
       ),
       h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
         rows.slice(0,3).map(r=>{
@@ -3043,7 +3183,7 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
         h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}},"🎯 Meta por Procedimento"),
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},`${MONTH_NAMES[selMonth]} ${selYear}`)
       ),
-      availableProcs.length>0&&!showAdd&&h("button",{onClick:()=>{setShowAdd(true);setAddProc(availableProcs[0]||"");},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,padding:"6px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},"＋ Adicionar")
+      availableProcs.length>0&&!showAdd&&h("button",{onClick:()=>{setShowAdd(true);setAddProc(availableProcs[0]||"");},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,padding:"6px 14px",cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},"＋ Adicionar")
     ),
     showAdd&&h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",margin:"10px 0",padding:10,background:P.bg3,borderRadius:8}},
       h("div",{style:{minWidth:220,flex:1}},h(Sel,{value:addProc,onChange:setAddProc,options:availableProcs})),
@@ -3055,10 +3195,10 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
       // Linha de edição para um procedimento novo (ainda sem meta salva)
       editingProc&&!rows.some(r=>r.proc===editingProc)&&h("div",{key:"new_"+editingProc,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:P.bg3,borderRadius:8}},
         h("div",{style:{flex:1,fontSize:13,color:P.text}},editingProc),
-        h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(editingProc);if(e.key==="Escape")setEditingProc(null);},placeholder:"ex: 10",style:{width:80,background:P.card,border:`1px solid ${P.accent}`,borderRadius:8,padding:"6px 10px",color:P.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none",textAlign:"center"}}),
+        h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(editingProc);if(e.key==="Escape")setEditingProc(null);},placeholder:"ex: 10",style:{width:80,background:P.card,border:`1px solid ${P.accent}`,borderRadius:8,padding:"6px 10px",color:P.text,fontSize:13,fontFamily:"'Jost',system-ui,sans-serif",outline:"none",textAlign:"center"}}),
         h("span",{style:{fontSize:12,color:P.text3}},"pacientes/mês"),
-        h("button",{onClick:()=>saveMeta(editingProc),style:{background:P.rose,border:"none",borderRadius:8,color:P.accent3,cursor:"pointer",padding:"6px 14px",fontSize:12,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},"Salvar"),
-        h("button",{onClick:()=>setEditingProc(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text3,cursor:"pointer",padding:"6px 10px",fontSize:12,fontFamily:"'DM Sans',sans-serif"}},"✕")
+        h("button",{onClick:()=>saveMeta(editingProc),style:{background:P.rose,border:"none",borderRadius:8,color:P.accent3,cursor:"pointer",padding:"6px 14px",fontSize:12,fontWeight:600,fontFamily:"'Jost',system-ui,sans-serif"}},"Salvar"),
+        h("button",{onClick:()=>setEditingProc(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,color:P.text3,cursor:"pointer",padding:"6px 10px",fontSize:12,fontFamily:"'Jost',system-ui,sans-serif"}},"✕")
       ),
       rows.map(r=>{
         const barColor=r.pct>=100?P.green:r.pct>=75?P.accent:r.pct>=50?P.yellow:P.red;
@@ -3068,10 +3208,10 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
             h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},r.proc),
             isEditing
               ?h("div",{style:{display:"flex",alignItems:"center",gap:6}},
-                  h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(r.proc);if(e.key==="Escape")setEditingProc(null);},style:{width:64,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"5px 8px",color:P.text,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:"none",textAlign:"center"}}),
+                  h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(r.proc);if(e.key==="Escape")setEditingProc(null);},style:{width:64,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"5px 8px",color:P.text,fontSize:12,fontFamily:"'Jost',system-ui,sans-serif",outline:"none",textAlign:"center"}}),
                   h("span",{style:{fontSize:11,color:P.text3}},"pacientes/mês"),
-                  h("button",{onClick:()=>saveMeta(r.proc),style:{background:P.rose,border:"none",borderRadius:6,color:P.accent3,cursor:"pointer",padding:"5px 10px",fontSize:11,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},"✓"),
-                  h("button",{onClick:()=>setEditingProc(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"5px 8px",fontSize:11,fontFamily:"'DM Sans',sans-serif"}},"✕")
+                  h("button",{onClick:()=>saveMeta(r.proc),style:{background:P.rose,border:"none",borderRadius:6,color:P.accent3,cursor:"pointer",padding:"5px 10px",fontSize:11,fontWeight:600,fontFamily:"'Jost',system-ui,sans-serif"}},"✓"),
+                  h("button",{onClick:()=>setEditingProc(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"5px 8px",fontSize:11,fontFamily:"'Jost',system-ui,sans-serif"}},"✕")
                 )
               :h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}},
                   h("span",{style:{fontSize:12.5,color:barColor,fontWeight:600}},`${r.received} de ${r.meta} paciente${r.meta!==1?"s":""}`),
@@ -3150,7 +3290,7 @@ function MetaDespesasPorCategoria({expenses=[],selMonth,selYear,goals,setGoals,c
           h("div",{style:{fontSize:13,color:P.text,fontWeight:700}},"📐 Orçamento de Despesas"),
           h("div",{style:{fontSize:11,color:P.text3}},`${MONTH_NAMES[selMonth]} ${selYear} · Previsto vs. Realizado`)
         ),
-        onNav&&h("button",{onClick:()=>onNav("relatorios"),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid rgba(157,119,97,.3)`,borderRadius:8,padding:"4px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},"Ver tudo →")
+        onNav&&h("button",{onClick:()=>onNav("relatorios"),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid rgba(157,119,97,.3)`,borderRadius:8,padding:"4px 12px",cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},"Ver tudo →")
       ),
       h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
         rows.slice(0,4).map(r=>{
@@ -3194,9 +3334,9 @@ function MetaDespesasPorCategoria({expenses=[],selMonth,selYear,goals,setGoals,c
             isEditing
               ?h("div",{style:{display:"flex",alignItems:"center",gap:6}},
                   h("span",{style:{fontSize:11,color:P.text3}},"R$"),
-                  h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(r.cat);if(e.key==="Escape")setEditingCat(null);},placeholder:"ex: 2500",style:{width:90,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"5px 8px",color:P.text,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:"none"}}),
-                  h("button",{onClick:()=>saveMeta(r.cat),style:{background:P.rose,border:"none",borderRadius:6,color:P.accent3,cursor:"pointer",padding:"5px 10px",fontSize:11,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},"✓"),
-                  h("button",{onClick:()=>setEditingCat(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"5px 8px",fontSize:11,fontFamily:"'DM Sans',sans-serif"}},"✕")
+                  h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(r.cat);if(e.key==="Escape")setEditingCat(null);},placeholder:"ex: 2500",style:{width:90,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"5px 8px",color:P.text,fontSize:12,fontFamily:"'Jost',system-ui,sans-serif",outline:"none"}}),
+                  h("button",{onClick:()=>saveMeta(r.cat),style:{background:P.rose,border:"none",borderRadius:6,color:P.accent3,cursor:"pointer",padding:"5px 10px",fontSize:11,fontWeight:600,fontFamily:"'Jost',system-ui,sans-serif"}},"✓"),
+                  h("button",{onClick:()=>setEditingCat(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"5px 8px",fontSize:11,fontFamily:"'Jost',system-ui,sans-serif"}},"✕")
                 )
               :h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}},
                   h("span",{style:{fontSize:12.5,color:barColor,fontWeight:600}},fmtCurr(r.realizado)+(r.previsto>0?" de "+fmtCurr(r.previsto):" (sem orçamento)")),
@@ -3215,14 +3355,14 @@ function MetaDespesasPorCategoria({expenses=[],selMonth,selYear,goals,setGoals,c
     catsWithoutMeta.length>0&&h("div",{style:{marginTop:16,paddingTop:14,borderTop:`1px solid ${P.border}`}},
       h("div",{style:{fontSize:11,color:P.text3,marginBottom:8}},"Categorias sem orçamento definido:"),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
-        catsWithoutMeta.map(cat=>h("button",{key:cat,onClick:()=>openEdit(cat,0),style:{fontSize:11.5,padding:"5px 12px",borderRadius:20,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid ${P.border}`,color:P.text2}},"＋ "+cat))
+        catsWithoutMeta.map(cat=>h("button",{key:cat,onClick:()=>openEdit(cat,0),style:{fontSize:11.5,padding:"5px 12px",borderRadius:20,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:"transparent",border:`1px solid ${P.border}`,color:P.text2}},"＋ "+cat))
       ),
       editingCat&&catsWithoutMeta.includes(editingCat)&&h("div",{style:{display:"flex",alignItems:"center",gap:6,marginTop:10}},
         h("span",{style:{fontSize:12,color:P.text}},editingCat+":"),
         h("span",{style:{fontSize:11,color:P.text3}},"R$"),
-        h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(editingCat);if(e.key==="Escape")setEditingCat(null);},placeholder:"ex: 2500",style:{width:90,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"5px 8px",color:P.text,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:"none"}}),
-        h("button",{onClick:()=>saveMeta(editingCat),style:{background:P.rose,border:"none",borderRadius:6,color:P.accent3,cursor:"pointer",padding:"5px 10px",fontSize:11,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}},"✓"),
-        h("button",{onClick:()=>setEditingCat(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"5px 8px",fontSize:11,fontFamily:"'DM Sans',sans-serif"}},"✕")
+        h("input",{autoFocus:true,value:inputVal,onChange:e=>setInputVal(e.target.value.replace(/\D/g,"")),onKeyDown:e=>{if(e.key==="Enter")saveMeta(editingCat);if(e.key==="Escape")setEditingCat(null);},placeholder:"ex: 2500",style:{width:90,background:P.bg3,border:`1px solid ${P.accent}`,borderRadius:8,padding:"5px 8px",color:P.text,fontSize:12,fontFamily:"'Jost',system-ui,sans-serif",outline:"none"}}),
+        h("button",{onClick:()=>saveMeta(editingCat),style:{background:P.rose,border:"none",borderRadius:6,color:P.accent3,cursor:"pointer",padding:"5px 10px",fontSize:11,fontWeight:600,fontFamily:"'Jost',system-ui,sans-serif"}},"✓"),
+        h("button",{onClick:()=>setEditingCat(null),style:{background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"5px 8px",fontSize:11,fontFamily:"'Jost',system-ui,sans-serif"}},"✕")
       )
     )
   );
@@ -3301,15 +3441,20 @@ function EvolucaoFinanceiraChart({data}){
 }
 
 function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,procedures=[],settings,returnRules,isMobile=false,isTablet=false,goals={},setGoals,incomes=[],expenses=[],products=[]}){
+  const h=createElement;
   const today=new Date();
   const todayStr=today.toISOString().slice(0,10);
   const todayBirthdays=patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();});
   const allS=patients.flatMap(p=>p.sessions||[]);
-  const totalRec=allS.filter(s=>s.paid).reduce((a,s)=>a+s.value,0);
-  const totalPend=allS.filter(s=>!s.paid).reduce((a,s)=>a+s.value,0);
+  const totalPend=allS.filter(s=>!s.paid).reduce((a,s)=>a+Number(s.value||0),0);
   const todayAppts=agenda.filter(a=>a.date===todayStr).sort((a,b)=>a.time.localeCompare(b.time));
-  // ── Receita real do mês corrente (para a meta) ──
   const curM=today.getMonth(),curY=today.getFullYear();
+  const inCurMonth=d=>{const dt=parseAnyDate(d);return dt&&dt.getMonth()===curM&&dt.getFullYear()===curY;};
+  const totalRecMonth=allS.filter(s=>s.paid&&inCurMonth(s.date)).reduce((a,s)=>a+Number(s.value||0),0)
+    +(Array.isArray(incomes)?incomes:[]).filter(i=>!i.sessRef&&i.status==="Pago"&&inCurMonth(i.date)).reduce((a,i)=>a+Number(i.value||0),0);
+  const prevMNum=curM===0?11:curM-1,prevMYear=curM===0?curY-1:curY;
+  const prevMonthRecDash=allS.filter(s=>s.paid&&(()=>{const dt=parseAnyDate(s.date);return dt&&dt.getMonth()===prevMNum&&dt.getFullYear()===prevMYear;})()).reduce((a,s)=>a+Number(s.value||0),0)
+    +(Array.isArray(incomes)?incomes:[]).filter(i=>!i.sessRef&&i.status==="Pago"&&(()=>{const dt=parseAnyDate(i.date);return dt&&dt.getMonth()===prevMNum&&dt.getFullYear()===prevMYear;})()).reduce((a,i)=>a+Number(i.value||0),0);
   const months=[5,4,3,2,1,0].map(off=>{
     let mm=curM-off,yy=curY;while(mm<0){mm+=12;yy--;}
     const inM=d=>{const dt=parseAnyDate(d);return dt&&dt.getMonth()===mm&&dt.getFullYear()===yy;};
@@ -3317,208 +3462,236 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
     const rec=sessoesPagas.reduce((a,s)=>a+Number(s.value||0),0)
       +(Array.isArray(incomes)?incomes:[]).filter(i=>!i.sessRef&&i.status==="Pago"&&inM(i.date)).reduce((a,i)=>a+Number(i.value||0),0);
     const desp=(Array.isArray(expenses)?expenses:[]).filter(e=>e.status==="Pago"&&inM(e.date)).reduce((a,e)=>a+Number(e.value||0),0);
-    return {label:MONTH_NAMES[mm].slice(0,3),fullLabel:MONTH_NAMES[mm]+" "+yy,value:rec,despesas:desp,lucro:rec-desp,sessoes:sessoesPagas.length};
+    const novas=patients.filter(p=>{const s=(p.sessions||[]);return s.some(ss=>{const dt=parseAnyDate(ss.date);return dt&&dt.getMonth()===mm&&dt.getFullYear()===yy;})&&!s.some(ss=>{const dt=parseAnyDate(ss.date);return dt&&(dt.getFullYear()<yy||(dt.getFullYear()===yy&&dt.getMonth()<mm));});}).length;
+    return{label:MONTH_NAMES[mm].slice(0,3),value:rec,despesas:desp,lucro:rec-desp,sessoes:sessoesPagas.length,novas};
   });
-  const inCurMonth=d=>{const dt=parseAnyDate(d);return dt&&dt.getMonth()===curM&&dt.getFullYear()===curY;};
-  const totalRecMonth=allS.filter(s=>s.paid&&inCurMonth(s.date)).reduce((a,s)=>a+Number(s.value||0),0)
-    +(Array.isArray(incomes)?incomes:[]).filter(i=>!i.sessRef&&i.status==="Pago"&&inCurMonth(i.date)).reduce((a,i)=>a+Number(i.value||0),0);
-  const prevMNum=curM===0?11:curM-1,prevMYear=curM===0?curY-1:curY;
-  const prevMonthRecDash=allS.filter(s=>s.paid&&(()=>{const dt=parseAnyDate(s.date);return dt&&dt.getMonth()===prevMNum&&dt.getFullYear()===prevMYear;})()).reduce((a,s)=>a+Number(s.value||0),0)
-    +(Array.isArray(incomes)?incomes:[]).filter(i=>!i.sessRef&&i.status==="Pago"&&(()=>{const dt=parseAnyDate(i.date);return dt&&dt.getMonth()===prevMNum&&dt.getFullYear()===prevMYear;})()).reduce((a,i)=>a+Number(i.value||0),0);
-  const h=createElement;
+  const sessoesMes=allS.filter(s=>inCurMonth(s.date)).length;
+  const novasMes=patients.filter(p=>{const s=(p.sessions||[]);return s.some(ss=>inCurMonth(ss.date))&&!s.some(ss=>{const dt=parseAnyDate(ss.date);return dt&&(dt.getFullYear()<curY||(dt.getFullYear()===curY&&dt.getMonth()<curM));});}).length;
+  const metaMes=Number((goals&&goals.monthly)||0);
+  const pctMeta=metaMes>0?Math.min(totalRecMonth/metaMes,1):0;
+  const diasNoMes=new Date(curY,curM+1,0).getDate();
+  const diaAtual=today.getDate();
+  const pctDia=diaAtual/diasNoMes;
+  const recDelta=prevMonthRecDash>0?((totalRecMonth-prevMonthRecDash)/prevMonthRecDash*100):null;
+  const now=new Date();
+  const nowMin=now.getHours()*60+now.getMinutes();
+  const proxAppt=todayAppts.find(a=>{if(!a.time)return false;const[hh,mm]=a.time.split(":").map(Number);return hh*60+mm>nowMin&&a.status!=="Cancelado"&&a.status!=="Realizado";});
+  const proxMin=proxAppt?(()=>{const[hh,mm]=proxAppt.time.split(":").map(Number);return hh*60+mm-nowMin;})():null;
+  const dark=!!(settings&&settings.darkMode);
+  // Alertas automáticos
+  const alertas=[];
+  const critStock=products.filter(p=>p.status==="critical"||(Array.isArray(p.lotes)&&p.lotes.some(l=>{if(!l.validade)return false;const d=parseMY?parseMY(l.validade):null;return d&&d<=new Date(Date.now()+30*864e5);})));
+  if(critStock.length)alertas.push({icon:"ti-alert-triangle",color:P.statusAmber,bg:dark?"rgba(154,110,16,.12)":"rgba(154,110,16,.08)",title:"Estoque crítico",sub:`${critStock.length} item${critStock.length>1?"s":""} requer${critStock.length>1?"em":""} atenção`,action:()=>onNav("estoque")});
+  const retAtrasados=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);});
+  if(retAtrasados.length)alertas.push({icon:"ti-clock-hour-4",color:P.statusBlue,bg:dark?"rgba(58,106,160,.12)":"rgba(58,106,160,.08)",title:"Retornos em atraso",sub:`${retAtrasados.length} paciente${retAtrasados.length>1?"s":""} sem visita além do prazo`,action:()=>onNav("retornos")});
+  const despVencer=(Array.isArray(expenses)?expenses:[]).filter(e=>e.status==="Pendente"&&e.date&&e.date<=new Date(Date.now()+3*864e5).toISOString().slice(0,10));
+  if(despVencer.length)alertas.push({icon:"ti-coin",color:P.statusRed,bg:dark?"rgba(160,48,48,.12)":"rgba(160,48,48,.08)",title:`Conta${despVencer.length>1?"s":""} a vencer`,sub:`${despVencer.length} despesa${despVencer.length>1?"s":""} vencem em 3 dias`,action:()=>onNav("financeiro")});
+  const icAcomp=patients.flatMap(p=>(p.intercorrencias||[]).map(ic=>({...ic,patient:p}))).filter(ic=>icStatusOf(ic)==="Em Acompanhamento");
+  if(icAcomp.length)alertas.push({icon:"ti-stethoscope",color:P.statusRed,bg:dark?"rgba(160,48,48,.12)":"rgba(160,48,48,.08)",title:"Intercorrências ativas",sub:`${icAcomp.length} caso${icAcomp.length>1?"s":""} em acompanhamento`,action:()=>onNav("intercorrencias_global")});
+  // Sparkline SVG
+  function Sparkline({data,color}){
+    const max=Math.max(...data,1);
+    const W=78,H=26;
+    const pts=data.map((v,i)=>({x:i/(data.length-1||1)*(W-4)+2,y:H-2-(v/max)*(H-4)}));
+    const d2=pts.map((p,i)=>i===0?`M${p.x.toFixed(1)},${p.y.toFixed(1)}`:`L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+    return h("svg",{width:W,height:H,style:{display:"block",flexShrink:0}},
+      h("path",{d:d2,fill:"none",stroke:color,strokeWidth:1.5,strokeLinecap:"round",strokeLinejoin:"round",opacity:.8}),
+      h("circle",{cx:pts[pts.length-1].x.toFixed(1),cy:pts[pts.length-1].y.toFixed(1),r:"2.5",fill:color})
+    );
+  }
+  const KPIs=[
+    {label:"Receita do Mês",value:fmtCurr(totalRecMonth),icon:"ti-trending-up",iconColor:P.statusGreen,iconBg:P.statusGreenBg,delta:recDelta!=null?`${recDelta>=0?"▲":"▼"} ${Math.abs(recDelta).toFixed(0)}% vs ${MONTH_NAMES[prevMNum].slice(0,3)}`:"sem dados anteriores",deltaColor:recDelta!=null&&recDelta>=0?P.statusGreen:P.statusRed,sparkData:months.map(m=>m.value),sparkColor:P.statusGreen,border:`0.5px solid rgba(61,138,88,.28)`,bg:P.statusGreenBg},
+    {label:"Sessões Realizadas",value:sessoesMes,icon:"ti-clipboard-list",iconColor:P.statusBlue,iconBg:P.statusBlueBg,delta:"este mês",deltaColor:P.statusBlue,sparkData:months.map(m=>m.sessoes),sparkColor:P.statusBlue,border:`0.5px solid rgba(58,106,160,.28)`,bg:P.statusBlueBg},
+    {label:"Novas Pacientes",value:novasMes,icon:"ti-user-plus",iconColor:"#9D7761",iconBg:"rgba(157,119,97,.12)",delta:"este mês",deltaColor:"#9D7761",sparkData:months.map(m=>m.novas),sparkColor:"#9D7761",border:"0.5px solid rgba(157,119,97,.28)",bg:"rgba(157,119,97,.1)"},
+    {label:"Meta — "+MONTH_NAMES[curM],value:`${Math.round(pctMeta*100)}%`,icon:"ti-target",iconColor:"#855954",iconBg:"rgba(133,89,84,.12)",isMeta:true,delta:metaMes>0?`${fmtCurr(totalRecMonth)} de ${fmtCurr(metaMes)}`:"Configure uma meta",deltaColor:P.text3,pctMeta,pctDia,border:"0.5px solid rgba(133,89,84,.28)",bg:"rgba(133,89,84,.1)"},
+  ];
   return h("div",null,
-    h(SectionHeader,{title:`Olá, ${settings.doctorName||"Dra. Sofia"} 👋`,sub:today.toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long",year:"numeric"}),action:h(Btn,{onClick:()=>onNav("agenda")},"＋ Novo Agendamento")}),
-    // Alerts
-    todayBirthdays.length>0&&h("div",{style:{marginBottom:14,padding:"16px 20px",background:"linear-gradient(135deg,rgba(196,169,106,.13),rgba(196,169,106,.06))",border:"1px solid rgba(196,169,106,.4)",borderRadius:14,boxShadow:"0 2px 16px rgba(196,169,106,.08)"}},
-      h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:12}},
-        h("span",{style:{fontSize:26}},"🎂"),
-        h("div",null,
-          h("div",{style:{fontSize:14,color:P.yellow,fontWeight:700,letterSpacing:".02em"}},"Aniversariante(s) de Hoje!"),
-          h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},`${todayBirthdays.length} paciente${todayBirthdays.length>1?"s":""} fazendo aniversário`)
-        )
+    // Saudação + próximo appt
+    h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}},
+      h("div",null,
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:300,fontSize:isMobile?22:26,color:P.text,letterSpacing:".01em"}},`Olá, ${(settings.doctorName||"Dra. Sofia").split(" ")[0]} ✦`),
+        h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,color:P.text3,marginTop:3}},today.toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long",year:"numeric"}))
       ),
-      h("div",{style:{display:"flex",flexWrap:"wrap",gap:10}},
+      h("div",{style:{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}},
+        proxAppt&&proxMin!=null&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#9D7761",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",padding:"6px 14px",borderRadius:20,whiteSpace:"nowrap"}},`⏱ Próximo em ${proxMin}min · ${proxAppt.patientName}`),
+        h("button",{onClick:()=>onNav("agenda"),style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12,background:"#5C1F32",color:"#E1D2C6",border:"none",borderRadius:9,padding:"8px 18px",cursor:"pointer",letterSpacing:".04em",transition:"all .18s"},onMouseEnter:e=>{e.currentTarget.style.background="#472325";},onMouseLeave:e=>{e.currentTarget.style.background="#5C1F32";}},"+ Novo Agendamento")
+      )
+    ),
+    // KPI cards com sparklines
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}},
+      KPIs.map((k,ki)=>h("div",{key:ki,style:{background:k.bg,border:k.border,borderRadius:13,padding:17,transition:"transform .18s ease,box-shadow .18s ease",cursor:"default"},
+        onMouseEnter:e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px "+k.iconBg;},
+        onMouseLeave:e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}},
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}},
+          h("div",{style:{width:36,height:36,borderRadius:"50%",background:k.iconBg.replace?k.iconBg.replace(".12",".2"):k.iconBg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
+            h("i",{className:`ti ${k.icon}`,style:{fontSize:17,color:k.iconColor}})
+          ),
+          k.sparkData&&!k.isMeta&&h(Sparkline,{data:k.sparkData,color:k.sparkColor})
+        ),
+        h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,textTransform:"uppercase",letterSpacing:".1em",color:k.iconColor,marginBottom:4}},k.label),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:27,color:P.text,lineHeight:1,letterSpacing:".01em"}},k.value),
+        k.isMeta&&metaMes>0
+          ?h("div",{style:{marginTop:8}},
+              h("div",{style:{position:"relative",height:6,borderRadius:6,background:dark?"rgba(0,0,0,.25)":"rgba(133,89,84,.12)",overflow:"visible",marginBottom:4}},
+                h("div",{style:{height:"100%",borderRadius:6,background:"linear-gradient(90deg,#5C1F32,#9D7761)",width:`${pctMeta*100}%`,transition:"width 1s ease"}}),
+                h("div",{title:"Ritmo esperado para hoje",style:{position:"absolute",top:-3,left:`${pctDia*100}%`,transform:"translateX(-50%)",width:2,height:12,borderRadius:1,background:P.text3,opacity:.6}})
+              ),
+              h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,color:P.text3}},k.delta)
+            )
+          :h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9.5,color:k.deltaColor,marginTop:5}},k.delta)
+      ))
+    ),
+    // Alertas semânticos
+    alertas.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:14}},
+      alertas.map((a,i)=>h("div",{key:i,onClick:a.action,style:{display:"flex",alignItems:"center",gap:11,padding:"9px 13px",borderRadius:9,background:a.bg,borderLeft:`3px solid ${a.color}`,cursor:"pointer",transition:"transform .15s"},
+        onMouseEnter:e=>e.currentTarget.style.transform="translateX(3px)",
+        onMouseLeave:e=>e.currentTarget.style.transform="translateX(0)"},
+        h("i",{className:`ti ${a.icon}`,style:{fontSize:15,color:a.color,flexShrink:0}}),
+        h("div",{style:{flex:1}},
+          h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12,color:a.color}},a.title),
+          h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:1}},a.sub)
+        ),
+        h("i",{className:"ti ti-chevron-right",style:{fontSize:13,color:a.color,opacity:.6}})
+      ))
+    ),
+    // Agenda hoje (timeline) + mini chart
+    h("div",{className:"resp-grid-21",style:{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.35fr 0.65fr",gap:13,marginBottom:13,alignItems:"start"}},
+      h(Card,null,
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:17,color:P.text}},"Agenda de hoje"),
+          h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+            h("span",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3}},`${todayAppts.length} atendimento${todayAppts.length!==1?"s":""}`),
+            h("button",{onClick:()=>onNav("agenda"),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#9D7761",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:7,padding:"3px 10px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background="rgba(157,119,97,.18)",onMouseLeave:e=>e.currentTarget.style.background="rgba(157,119,97,.1)"},"Ver tudo →")
+          )
+        ),
+        todayAppts.length===0
+          ?h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,color:P.text3,fontSize:13,textAlign:"center",padding:"20px 0"}},"Nenhuma consulta hoje 🌿")
+          :h("div",{style:{position:"relative",paddingLeft:14}},
+              h("div",{style:{position:"absolute",left:3,top:8,bottom:8,width:1,background:`linear-gradient(to bottom,#5C1F32,rgba(92,31,50,.06))`}}),
+              todayAppts.map((a,i)=>{
+                const cfg=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
+                const color=dark?cfg.colorDark:cfg.color;
+                const bg=dark?cfg.bgDark:cfg.bg;
+                const isNext=proxAppt&&a===proxAppt;
+                return h("div",{key:i,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 0",position:"relative",borderBottom:i<todayAppts.length-1?`0.5px solid ${P.border}`:"none"}},
+                  h("div",{style:{width:9,height:9,borderRadius:"50%",background:color,flexShrink:0,position:"absolute",left:-11,border:`1.5px solid ${P.card}`}}),
+                  h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,minWidth:38}},a.time),
+                  h("div",{style:{flex:1,minWidth:0}},
+                    h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:isNext?400:300,fontSize:12.5,color:P.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.patientName),
+                    h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:1}},a.procedure+(a.location?` · ${a.location}`:""))
+                  ),
+                  h("span",{style:{fontSize:8.5,padding:"3px 9px",borderRadius:20,background:bg,color,fontFamily:"'Jost',sans-serif",fontWeight:400,letterSpacing:".05em",whiteSpace:"nowrap",textTransform:"uppercase",flexShrink:0}},a.status)
+                );
+              })
+            )
+      ),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:12}},
+        h(Card,null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:16,color:P.text,marginBottom:12}},"Faturamento — 6m"),
+          h("div",{style:{display:"flex",alignItems:"flex-end",gap:5,height:65}},
+            months.map((m,i)=>{
+              const max=Math.max(...months.map(x=>x.value),1);
+              const hPct=Math.max((m.value/max)*100,m.value>0?5:0);
+              const isCur=i===5;
+              return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,height:"100%"}},
+                h("div",{style:{width:"100%",flex:1,display:"flex",alignItems:"flex-end"}},
+                  h("div",{style:{width:"100%",height:`${hPct}%`,borderRadius:"4px 4px 0 0",background:isCur?"linear-gradient(to top,#5C1F32,#9D7761)":(dark?"#2d1518":"#E1D2C6"),boxShadow:isCur?"0 0 10px rgba(157,119,97,.2)":"none"}})
+                ),
+                h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:8,color:isCur?"#9D7761":P.text3}},m.label)
+              );
+            })
+          )
+        ),
+        h(Card,null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:16,color:P.text,marginBottom:10}},"Status hoje"),
+          h("div",{style:{display:"flex",flexDirection:"column",gap:0}},
+            Object.entries(APPT_STATUS_CFG).map(([st,cfg])=>{
+              const n=todayAppts.filter(a=>a.status===st).length;
+              if(!n)return null;
+              const color=dark?cfg.colorDark:cfg.color;
+              const bg=dark?cfg.bgDark:cfg.bg;
+              return h("div",{key:st,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:`0.5px solid ${P.border}`}},
+                h("span",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,color:P.text2}},st),
+                h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color}},n)
+              );
+            })
+          )
+        )
+      )
+    ),
+    // Metas
+    h("div",{className:"resp-grid-21",style:{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:13,marginBottom:13,alignItems:"start"}},
+      setGoals&&h(MetaFaturamento,{received:totalRecMonth,selMonth:curM,selYear:curY,goals:goals||{},setGoals,prevMonthReceived:prevMonthRecDash}),
+      setGoals&&h(MetaPorProcedimento,{procedures,patients,selMonth:curM,selYear:curY,goals:goals||{},setGoals,compact:true,onNav})
+    ),
+    // Pacientes atenção (4 grupos)
+    h(Card,{style:{marginBottom:13}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:17,color:P.text}},"Pacientes — Atenção"),
+        h("button",{onClick:()=>onNav("pacientes"),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#9D7761",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:7,padding:"3px 10px",cursor:"pointer"}},"Ver todas →")
+      ),
+      h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}},
+        (()=>{
+          const todayISO2=today.toISOString().slice(0,10);
+          const cg=patients.map(p=>{
+            const d=parseDMY(p.lastVisit);const days=d?daysBetween(d,today):null;
+            const hasUp=agenda.some(a=>a.patientName===p.name&&a.date>=todayISO2&&a.date<=new Date(today.getTime()+30*864e5).toISOString().slice(0,10));
+            return{...p,_days:days,_inTreatment:hasUp||(days!==null&&days<=60)};
+          });
+          const groups=[
+            {label:"Inativas +6m",pts:cg.filter(p=>p._days!==null&&p._days>180&&p.status!=="vip"),color:P.statusRed,bg:dark?"rgba(160,48,48,.1)":"rgba(160,48,48,.07)",icon:"ti-user-off"},
+            {label:"Retorno +3m",pts:cg.filter(p=>p._days!==null&&p._days>90&&p._days<=180&&p.status!=="vip"),color:P.statusAmber,bg:dark?"rgba(154,110,16,.1)":"rgba(154,110,16,.07)",icon:"ti-clock-hour-4"},
+            {label:"Em tratamento",pts:cg.filter(p=>p._inTreatment&&p.status!=="vip"),color:P.statusBlue,bg:dark?"rgba(58,106,160,.1)":"rgba(58,106,160,.07)",icon:"ti-activity"},
+            {label:"VIPs",pts:cg.filter(p=>p.status==="vip"),color:P.statusAmber,bg:dark?"rgba(154,110,16,.1)":"rgba(154,110,16,.07)",icon:"ti-star"},
+          ];
+          return groups.map(r=>h("div",{key:r.label,style:{background:r.bg,borderRadius:10,padding:"12px 13px",border:`0.5px solid ${r.color}22`}},
+            h("div",{style:{display:"flex",alignItems:"center",gap:7,marginBottom:7}},
+              h("i",{className:`ti ${r.icon}`,style:{fontSize:14,color:r.color}}),
+              h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:r.color,flex:1}},r.label)
+            ),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:28,color:P.text,marginBottom:7}},r.pts.length),
+            r.pts.slice(0,3).map(p=>{
+              const d=parseDMY(p.lastVisit);const dias=d?daysBetween(d,today):null;
+              return h("div",{key:p.id,onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderTop:`0.5px solid ${P.border}`,cursor:"pointer"},
+                onMouseEnter:e=>e.currentTarget.style.opacity=".7",onMouseLeave:e=>e.currentTarget.style.opacity="1"},
+                h(Avatar,{name:p.name,size:20,idx:patients.indexOf(p),src:p.profilePhoto}),
+                h("div",{style:{flex:1,minWidth:0}},
+                  h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,color:P.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},p.name),
+                  dias!=null&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,color:r.color}},`há ${dias}d`)
+                )
+              );
+            }),
+            r.pts.length>3&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:3,paddingTop:3,borderTop:`0.5px solid ${P.border}`}},`+${r.pts.length-3} mais`)
+          ));
+        })()
+      )
+    ),
+    // Aniversariantes
+    todayBirthdays.length>0&&h("div",{style:{marginBottom:13,padding:"14px 16px",background:dark?"rgba(154,110,16,.1)":"rgba(154,110,16,.07)",borderLeft:`3px solid ${P.statusAmber}`,borderRadius:10}},
+      h("div",{style:{display:"flex",alignItems:"center",gap:9,marginBottom:10}},
+        h("i",{className:"ti ti-cake",style:{fontSize:17,color:P.statusAmber}}),
+        h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:13,color:P.statusAmber}},"Aniversariante hoje!"),
+        h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginLeft:"auto"}},`${todayBirthdays.length} paciente${todayBirthdays.length>1?"s":""}`)
+      ),
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:8}},
         todayBirthdays.map(p=>{
-          const bd_=new Date(p.birthDate+"T12:00");let age=new Date().getFullYear()-bd_.getFullYear();const m_=new Date().getMonth()-bd_.getMonth();if(m_<0||(m_===0&&new Date().getDate()<bd_.getDate()))age--;
+          const bd_=new Date(p.birthDate+"T12:00");let age=new Date().getFullYear()-bd_.getFullYear();
           const phone=p.phone?p.phone.replace(/\D/g,""):"";
-          const waMsg=encodeURIComponent(`Olá ${p.name.split(" ")[0]}! 🎂 Feliz aniversário! Que seu dia seja incrível! 🌸`);
-          return h("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",background:"rgba(196,169,106,.1)",border:"1px solid rgba(196,169,106,.3)",borderRadius:12,flex:"1 1 auto",minWidth:220}},
-            h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:10,cursor:"pointer",flex:1}},
-              h(Avatar,{name:p.name,size:36,src:p.profilePhoto}),
+          const waMsg=encodeURIComponent(`Olá ${p.name.split(" ")[0]}! 🎂 Feliz aniversário! Que seu dia seja lindo! 🌸`);
+          return h("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:9,padding:"7px 12px",background:dark?"rgba(154,110,16,.08)":"rgba(255,255,255,.7)",border:`0.5px solid ${P.statusAmber}44`,borderRadius:9,flex:"1 1 auto",minWidth:180}},
+            h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:8,cursor:"pointer",flex:1}},
+              h(Avatar,{name:p.name,size:30,src:p.profilePhoto}),
               h("div",null,
-                h("div",{style:{fontSize:13.5,color:P.text,fontWeight:600}},p.name),
-                h("div",{style:{fontSize:12,color:P.yellow,marginTop:1}},`🎉 ${age} anos hoje!`)
+                h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12,color:P.text}},p.name),
+                h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.statusAmber,marginTop:1}},`🎉 ${age} anos`)
               )
             ),
-            phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",background:"rgba(106,196,130,.15)",border:"1px solid rgba(106,196,130,.35)",borderRadius:8,color:"#7aad8a",fontSize:11,fontWeight:600,textDecoration:"none",flexShrink:0,cursor:"pointer"}},"💬 WhatsApp")
+            phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",background:P.statusGreenBg,border:`0.5px solid ${P.statusGreen}44`,borderRadius:7,color:P.statusGreen,textDecoration:"none",flexShrink:0}},"WhatsApp")
           );
         })
       )
     ),
-    (()=>{
-      const icAcomp=patients.flatMap(p=>(p.intercorrencias||[]).map(ic=>({...ic,patient:p}))).filter(ic=>icStatusOf(ic)==="Em Acompanhamento").sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-      if(icAcomp.length===0)return null;
-      return h("div",{style:{marginBottom:14,padding:"16px 20px",background:"linear-gradient(135deg,rgba(192,112,112,.13),rgba(192,112,112,.05))",border:"1px solid rgba(192,112,112,.4)",borderRadius:14,boxShadow:"0 2px 16px rgba(192,112,112,.08)"}},
-        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
-          h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-            h("span",{style:{fontSize:26}},"⚠"),
-            h("div",null,
-              h("div",{style:{fontSize:14,color:P.red,fontWeight:700,letterSpacing:".02em"}},"Intercorrências em Acompanhamento"),
-              h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},`${icAcomp.length} caso${icAcomp.length>1?"s":""} clínico${icAcomp.length>1?"s":""} requer${icAcomp.length>1?"em":""} atenção`)
-            )
-          ),
-          h("button",{onClick:()=>onNav("intercorrencias_global"),style:{fontSize:11,color:P.red,background:"rgba(192,112,112,.1)",border:"1px solid rgba(192,112,112,.3)",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},"Ver todas →")
-        ),
-        h("div",{style:{display:"flex",flexWrap:"wrap",gap:10}},
-          icAcomp.slice(0,4).map(ic=>{
-            const sevCfg=IC_SEVERITY_CFG[icSeverityOf(ic)]||IC_SEVERITY_CFG.Leve;
-            return h("div",{key:ic.id,onClick:()=>{onSelectPatient(ic.patient);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:10,padding:"8px 14px",background:"rgba(192,112,112,.08)",border:"1px solid rgba(192,112,112,.25)",borderRadius:12,cursor:"pointer",flex:"1 1 auto",minWidth:230}},
-              h(Avatar,{name:ic.patient.name,size:32,src:ic.patient.profilePhoto}),
-              h("div",{style:{flex:1,minWidth:0}},
-                h("div",{style:{fontSize:13,color:P.text,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},ic.patient.name),
-                h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},`${ic.type} · ${isoToBR(ic.date)||ic.date}`)
-              ),
-              h("span",{style:{fontSize:9.5,padding:"2px 8px",borderRadius:10,background:sevCfg.bg,color:sevCfg.color,fontWeight:600,flexShrink:0}},icSeverityOf(ic))
-            );
-          })
-        ),
-        icAcomp.length>4&&h("div",{style:{fontSize:11,color:P.text3,marginTop:10}},`+ ${icAcomp.length-4} caso(s) adicional(is)...`)
-      );
-    })(),
-    h(RetornosPendentes,{patients,returnRules,onSelectPatient,onNav,onScheduleReturn,mini:true}),
-    // ── Alerta proativo: lotes de injetáveis vencendo nos próximos 60 dias ──
-    (()=>{
-      // Varre todos os produtos com lotes, coleta os que têm alerta
-      const loteAlerts=products
-        .filter(p=>p.cat!=="Insumos/Descartáveis"&&Array.isArray(p.lotes))
-        .flatMap(p=>(p.lotes||[]).filter(l=>l.qtd>0).map(l=>({...l,prodName:p.name,prodEmoji:p.emoji||"💉"})))
-        .map(l=>({...l,alerta:calcValidadeAlerta(l.validade,60)}))
-        .filter(l=>l.alerta)
-        .sort((a,b)=>b.alerta.urgencia-a.alerta.urgencia||(a.alerta.dias-b.alerta.dias));
-      if(!loteAlerts.length)return null;
-      const hasVencido=loteAlerts.some(l=>l.alerta.urgencia===3);
-      const hasCrit=loteAlerts.some(l=>l.alerta.urgencia>=2);
-      const borderColor=hasVencido||hasCrit?"rgba(192,112,112,.45)":"rgba(196,169,106,.4)";
-      const bgGrad=hasVencido||hasCrit
-        ?"linear-gradient(135deg,rgba(192,112,112,.12),rgba(192,112,112,.04))"
-        :"linear-gradient(135deg,rgba(196,169,106,.12),rgba(196,169,106,.04))";
-      const titleColor=hasVencido||hasCrit?P.red:P.yellow;
-      const icon=hasVencido?"🚨":hasCrit?"⚠️":"📦";
-      return h("div",{style:{marginBottom:14,padding:"16px 20px",background:bgGrad,border:`1px solid ${borderColor}`,borderRadius:14,boxShadow:"0 2px 16px rgba(192,112,112,.06)"}},
-        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
-          h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-            h("span",{style:{fontSize:26}},icon),
-            h("div",null,
-              h("div",{style:{fontSize:14,color:titleColor,fontWeight:700,letterSpacing:".02em"}},
-                hasVencido?"Lotes Vencidos no Estoque":"Validade Próxima — Estoque"
-              ),
-              h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},
-                `${loteAlerts.length} lote${loteAlerts.length>1?"s":""} requer${loteAlerts.length>1?"em":""} atenção`
-              )
-            )
-          ),
-          h("button",{
-            onClick:()=>onNav("estoque"),
-            style:{fontSize:11,color:titleColor,background:titleColor==="var"?"rgba(192,112,112,.1)":titleColor===P.red?"rgba(192,112,112,.1)":"rgba(196,169,106,.1)",border:`1px solid ${titleColor==="var"?"rgba(192,112,112,.3)":titleColor===P.red?"rgba(192,112,112,.3)":"rgba(196,169,106,.3)"}`,borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}
-          },"Ver estoque →")
-        ),
-        h("div",{style:{display:"flex",flexWrap:"wrap",gap:8}},
-          loteAlerts.slice(0,6).map(l=>{
-            const ac=l.alerta;
-            return h("div",{key:l.id||l.codigo,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 14px",background:"rgba(255,255,255,.55)",border:`1px solid ${ac.color}33`,borderRadius:12,flex:"1 1 auto",minWidth:200}},
-              h("span",{style:{fontSize:20,flexShrink:0}},l.prodEmoji),
-              h("div",{style:{flex:1,minWidth:0}},
-                h("div",{style:{fontSize:13,color:P.text,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},l.prodName),
-                h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},`Lote ${l.codigo||"—"} · ${l.qtd} ${l.qtd===1?"un":"un"} restante${l.qtd!==1?"s":""}`)
-              ),
-              h("span",{style:{fontSize:10,padding:"2px 9px",borderRadius:10,background:ac.color+"22",color:ac.color,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}},ac.label)
-            );
-          })
-        ),
-        loteAlerts.length>6&&h("div",{style:{fontSize:11,color:P.text3,marginTop:10}},`+ ${loteAlerts.length-6} lote(s) adicional(is)...`)
-      );
-    })(),
-    // KPIs
-    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:isMobile?10:14,marginBottom:22}},
-      [{l:"Receita do Mês",v:`R$${(totalRec/1000||48.2).toFixed(1)}k`,sub:"Sessões pagas",c:KPI.green},{l:"Consultas Hoje",v:todayAppts.length,sub:`${todayAppts.filter(a=>a.status==="Realizado").length} realizadas`,c:KPI.purple},{l:"Pacientes Ativos",v:patients.length,sub:"cadastrados",c:KPI.orange},{l:"A Receber",v:fmtCurr(totalPend||6800),sub:"pendências",c:KPI.blue}].map(k=>h(Card,{key:k.l,style:{position:"relative",overflow:"hidden",background:`${k.c}1A`,border:`1px solid ${k.c}40`}},
-        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:32,color:k.c,lineHeight:1}},k.v),
-        h("div",{style:{fontSize:11,color:P.text3,marginTop:6}},k.sub),
-        h("div",{style:{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:k.c,opacity:.12}})
-      ))
-    ),
-    h("div",{className:"resp-grid-21",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,marginBottom:18,alignItems:"start"}},
-      setGoals&&h(MetaFaturamento,{received:totalRecMonth,selMonth:curM,selYear:curY,goals:goals||{},setGoals,prevMonthReceived:prevMonthRecDash}),
-      setGoals&&h(MetaPorProcedimento,{procedures,patients,selMonth:curM,selYear:curY,goals:goals||{},setGoals,compact:true,onNav})
-    ),
-    h("div",{className:"resp-grid-21",style:{display:"grid",gridTemplateColumns:"2fr 1fr",gap:18,marginBottom:18}},
-      h(Card,null,
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:16}},"Evolução Financeira"),
-        h(EvolucaoFinanceiraChart,{data:months})
-      ),
-      h(Card,null,
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:12}},"Status Agenda Hoje"),
-        Object.entries(APPT_STATUS_CFG).map(([st,cfg])=>{const n=todayAppts.filter(a=>a.status===st).length;if(!n)return null;return h("div",{key:st,style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${P.border}`}},h("span",{style:{fontSize:12,color:P.text2}},st),h("span",{style:{fontSize:16,fontFamily:"'Cormorant Garamond',serif",color:cfg.color}},n));})
-      )
-    ),
-    h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
-      h(Card,null,
-        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Agenda de Hoje"),
-          h("button",{onClick:()=>onNav("agenda"),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid rgba(157,119,97,.25)`,borderRadius:6,padding:"3px 10px",cursor:"pointer"}},"Ver tudo")
-        ),
-        todayAppts.length===0?h("div",{style:{color:P.text3,fontSize:13,textAlign:"center",padding:20}},"Nenhuma consulta hoje.")
-        :todayAppts.map((a,i)=>{const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;return h("div",{key:i,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 11px",marginBottom:6,background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
-          h("div",{style:{width:6,height:6,borderRadius:"50%",background:sc.color,flexShrink:0}}),
-          h("div",{style:{fontSize:11,color:P.accent,fontWeight:700,minWidth:74}},a.time+(a.duration?"–"+apptEndTime(a):"")),
-          h("div",{style:{flex:1}},h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},a.patientName),h("div",{style:{fontSize:11,color:P.text3}},`${a.procedure} · 📍 ${a.location}`)),
-          h("span",{style:{fontSize:10,padding:"2px 7px",borderRadius:12,color:sc.color,background:sc.bg}},a.status)
-        );})
-      ),
-      h(Card,null,
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Pacientes — Atenção"),
-        (()=>{
-          const todayISO2=today.toISOString().slice(0,10);
-          const computedGroups=patients.map(p=>{
-            const d=parseDMY(p.lastVisit);
-            const days=d?daysBetween(d,today):null;
-            const hasUpcoming=agenda.some(a=>a.patientName===p.name&&a.date>=todayISO2&&a.date<=new Date(today.getTime()+30*864e5).toISOString().slice(0,10));
-            const hadRecent=days!==null&&days<=60;
-            const isInTreatment=hasUpcoming||hadRecent;
-            return{...p,_days:days,_inTreatment:isInTreatment};
-          });
-          const groups=[
-            {label:"Inativas +6 meses",patients:computedGroups.filter(p=>p._days!==null&&p._days>180&&p.status!=="vip"),color:P.red,icon:"🔴"},
-            {label:"Retorno pendente +3m",patients:computedGroups.filter(p=>p._days!==null&&p._days>90&&p._days<=180&&p.status!=="vip"),color:P.yellow,icon:"🟡"},
-            {label:"Em tratamento",patients:computedGroups.filter(p=>p._inTreatment&&p.status!=="vip"),color:"#7aaed4",icon:"🔵"},
-            {label:"VIPs",patients:computedGroups.filter(p=>p.status==="vip"),color:P.gold,icon:"⭐"},
-          ];
-          return groups.map(r=>h("div",{key:r.label,style:{marginBottom:4}},
-            h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${P.border}`}},
-              h("span",{style:{fontSize:12.5,color:P.text2}},`${r.icon} ${r.label}`),
-              h("div",{style:{display:"flex",alignItems:"center",gap:8}},
-                h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:r.color}},r.patients.length),
-                r.patients.length>0&&h("button",{onClick:()=>onNav("pacientes"),style:{fontSize:10,color:r.color,background:r.color+"15",border:`1px solid ${r.color}33`,borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},"Ver todas →")
-              )
-            ),
-            r.patients.length>0&&h("div",{style:{padding:"4px 0 8px"}},
-              r.patients.slice(0,3).map(p=>{
-                const d=parseDMY(p.lastVisit);const dias=d?daysBetween(d,today):null;
-                return h("div",{key:p.id,onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",cursor:"pointer",borderRadius:7,transition:"all .12s"},onMouseEnter:e=>e.currentTarget.style.background=P.bg3,onMouseLeave:e=>e.currentTarget.style.background="transparent"},
-                  h(Avatar,{name:p.name,size:24,idx:patients.indexOf(p),src:p.profilePhoto}),
-                  h("div",{style:{flex:1,minWidth:0}},
-                    h("div",{style:{fontSize:12.5,color:P.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},p.name),
-                    dias&&h("div",{style:{fontSize:10.5,color:r.color}},`há ${dias} dias`)
-                  ),
-                  h("span",{style:{fontSize:10,color:P.text3}},p.phone?.slice(0,9)||"")
-                );
-              }),
-              r.patients.length>3&&h("div",{style:{fontSize:11,color:P.text3,padding:"4px 10px"}},`+ ${r.patients.length-3} mais...`)
-            )
-          ));
-        })()
-      )
-    )
+    h(RetornosPendentes,{patients,returnRules,onSelectPatient,onNav,onScheduleReturn,mini:true})
   );
 }
 // ─── PATIENT AUTOCOMPLETE ────────────────────────────────────────────────────
@@ -3539,7 +3712,7 @@ function PatientAutocomplete({value,onChange,patients}){
     return()=>document.removeEventListener("mousedown",handleClick);
   },[]);
   return h("div",{ref,style:{position:"relative"}},
-    h("input",{value:q,onChange:e=>{setQ(e.target.value);onChange(e.target.value,null);setOpen(true);},onFocus:()=>setOpen(true),placeholder:"Nome da paciente",style:{...{width:"100%",background:P.bg3,border:`1px solid ${P.border}`,borderRadius:8,padding:"9px 12px",color:P.text,fontSize:13.5,fontFamily:"'DM Sans',sans-serif",outline:"none",boxSizing:"border-box"}}}),
+    h("input",{value:q,onChange:e=>{setQ(e.target.value);onChange(e.target.value,null);setOpen(true);},onFocus:()=>setOpen(true),placeholder:"Nome da paciente",style:{...{width:"100%",background:P.bg3,border:`1px solid ${P.border}`,borderRadius:8,padding:"9px 12px",color:P.text,fontSize:13.5,fontFamily:"'Jost',system-ui,sans-serif",outline:"none",boxSizing:"border-box"}}}),
     open&&suggestions.length>0&&h("div",{style:{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:P.bg2,border:`1px solid ${P.border}`,borderRadius:10,zIndex:999,boxShadow:"0 8px 24px rgba(0,0,0,.5)",overflow:"hidden"}},
       suggestions.map(p=>h("div",{key:p.id,onMouseDown:e=>{e.preventDefault();setQ(p.name);onChange(p.name,p);setOpen(false);},style:{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",cursor:"pointer",borderBottom:`1px solid ${P.border}`},onMouseEnter:e=>e.currentTarget.style.background=P.card,onMouseLeave:e=>e.currentTarget.style.background="transparent"},
         h(Avatar,{name:p.name,size:26,src:p.profilePhoto}),
@@ -4009,7 +4182,7 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
   const HOURS=[7,8,9,10,11,12,13,14,15,16,17,18,19,20];
 
   // ─── Estilos reutilizáveis ───
-  const blockBtnStyle={padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid rgba(192,112,112,.35)`,color:P.red};
+  const blockBtnStyle={padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:"transparent",border:`1px solid rgba(192,112,112,.35)`,color:P.red};
 
   // ApptCard/HourSlots/HourSlotsDay agora vivem fora do Agenda (ver AgendaApptCardBase
   // e AgendaHourSlotsBase acima) — aqui só repassamos as closures locais como props,
@@ -4032,15 +4205,15 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
         h("div",{style:{fontSize:13,color:P.text3,marginTop:5}},`${MONTH_NAMES[viewMonth.m]} ${viewMonth.y}`)
       ),
       h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-        h("button",{onClick:()=>setShowGlobalLog(true),title:"Ver todo o histórico de criações, edições, reagendamentos e exclusões",style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid ${P.border}`,color:P.text2}},"📜 Histórico Geral"),
+        h("button",{onClick:()=>setShowGlobalLog(true),title:"Ver todo o histórico de criações, edições, reagendamentos e exclusões",style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:"transparent",border:`1px solid ${P.border}`,color:P.text2}},"📜 Histórico Geral"),
         h("button",{onClick:()=>setShowBlockModal(true),style:blockBtnStyle},"🔒 Bloquear Horário"),
-        h("button",{onClick:()=>{setEditItem(null);setForm({...blank,date:selDate});setShowNew(true);},style:{padding:"9px 20px",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",transition:"all .15s",background:`linear-gradient(135deg,${P.rose},${P.gold})`,color:P.accent3,border:"none"}},"＋ Novo")
+        h("button",{onClick:()=>{setEditItem(null);setForm({...blank,date:selDate});setShowNew(true);},style:{padding:"9px 20px",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",transition:"all .15s",background:`linear-gradient(135deg,${P.rose},${P.gold})`,color:P.accent3,border:"none"}},"＋ Novo")
       )
     ),
 
     // ── Toggle de views ──
     h("div",{style:{display:"flex",gap:8,marginBottom:16}},
-      [{k:"month",l:"Mês"},{k:"week",l:"Semana"},{k:"day",l:"Dia"}].map(v=>h("button",{key:v.k,onClick:()=>setViewMode(v.k),style:{padding:"6px 16px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewMode===v.k?P.rose:"transparent",border:`1px solid ${viewMode===v.k?P.rose:P.border}`,color:viewMode===v.k?P.accent3:P.text2}},v.l))
+      [{k:"month",l:"Mês"},{k:"week",l:"Semana"},{k:"day",l:"Dia"}].map(v=>h("button",{key:v.k,onClick:()=>setViewMode(v.k),style:{padding:"6px 16px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:viewMode===v.k?P.rose:"transparent",border:`1px solid ${viewMode===v.k?P.rose:P.border}`,color:viewMode===v.k?P.accent3:P.text2}},v.l))
     ),
 
     // ─── VIEW DIA ───────────────────────────────────────────────────────────────
@@ -4065,32 +4238,88 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
     ),
 
     // ─── VIEW SEMANA ────────────────────────────────────────────────────────────
-    viewMode==="week"&&h("div",{style:{background:P.bg2,borderRadius:12,border:`1px solid ${P.border}`,overflow:"hidden"}},
-      // Cabeçalho da semana
-      h("div",{style:{display:"grid",gridTemplateColumns:"60px repeat(7,1fr)",borderBottom:`1px solid ${P.border}`}},
-        h("div",{style:{padding:"12px 4px",display:"flex",alignItems:"center",justifyContent:"space-between",borderRight:`1px solid ${P.border}`,gap:2}},
-          h("button",{onClick:()=>{const d=new Date(selDate+"T12:00");d.setDate(d.getDate()-7);setSelDate(d.toISOString().slice(0,10));},style:{background:"transparent",border:"none",color:P.text3,cursor:"pointer",fontSize:14,padding:0}},"‹"),
-          h("button",{onClick:()=>{const d=new Date(selDate+"T12:00");d.setDate(d.getDate()+7);setSelDate(d.toISOString().slice(0,10));},style:{background:"transparent",border:"none",color:P.text3,cursor:"pointer",fontSize:14,padding:0}},"›")
+    viewMode==="week"&&h("div",{style:{background:P.card,borderRadius:12,border:`0.5px solid ${P.border}`,overflow:"hidden"}},
+      // Cabeçalho
+      h("div",{style:{display:"grid",gridTemplateColumns:"56px repeat(7,1fr)",borderBottom:`0.5px solid ${P.border}`}},
+        h("div",{style:{padding:"10px 4px",display:"flex",alignItems:"center",justifyContent:"space-between",borderRight:`0.5px solid ${P.border}`,gap:2}},
+          h("button",{onClick:()=>{const d=new Date(selDate+"T12:00");d.setDate(d.getDate()-7);setSelDate(d.toISOString().slice(0,10));},style:{background:"transparent",border:"none",color:P.text3,cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1}},"‹"),
+          h("button",{onClick:()=>{const d=new Date(selDate+"T12:00");d.setDate(d.getDate()+7);setSelDate(d.toISOString().slice(0,10));},style:{background:"transparent",border:"none",color:P.text3,cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1}},"›")
         ),
         weekDays.map(ds=>{
           const isToday=ds===todayISO(),isSel=ds===selDate;
           const d=new Date(ds+"T12:00");
-          return h("div",{key:ds,onClick:()=>setSelDate(ds),style:{padding:"10px 4px",textAlign:"center",borderRight:`1px solid ${P.border}`,cursor:"pointer",background:isSel?P.rose:isToday?"rgba(157,119,97,.1)":"transparent"}},
-            h("div",{style:{fontSize:9.5,color:isSel?P.accent3:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d.getDay()]),
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:isSel?P.accent3:isToday?P.accent:P.text,marginTop:2}},d.getDate())
+          const cnt=agenda.filter(a=>a.date===ds&&!a.blocked).length;
+          return h("div",{key:ds,onClick:()=>setSelDate(ds),style:{padding:"8px 4px",textAlign:"center",borderRight:`0.5px solid ${P.border}`,cursor:"pointer",background:isSel?"#5C1F32":isToday?"rgba(157,119,97,.08)":"transparent",transition:"background .15s"}},
+            h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,color:isSel?"rgba(255,255,255,.7)":P.text3,textTransform:"uppercase",letterSpacing:".08em"}},["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d.getDay()]),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:isSel?"#fff":isToday?"#9D7761":P.text,marginTop:1}},d.getDate()),
+            cnt>0&&h("div",{style:{display:"flex",justifyContent:"center",gap:2,marginTop:3}},
+              Array.from({length:Math.min(cnt,4)}).map((_,i)=>h("div",{key:i,style:{width:4,height:4,borderRadius:"50%",background:isSel?"rgba(255,255,255,.6)":"#9D7761"}}))
+            )
           );
         })
       ),
-      // Grade de horas × dias
-      h("div",{style:{display:"grid",gridTemplateColumns:"60px repeat(7,1fr)"}},
-        // Coluna de horas
-        h("div",{style:{borderRight:`1px solid ${P.border}`}},
-          HOURS.map(hr=>h("div",{key:hr,style:{height:64,borderBottom:`1px solid ${P.border}`,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:4,fontSize:9.5,color:P.text3}},`${String(hr).padStart(2,"0")}:00`))
+      // Grade horária com blocos visuais
+      h("div",{style:{display:"grid",gridTemplateColumns:"56px repeat(7,1fr)",maxHeight:520,overflowY:"auto"}},
+        h("div",{style:{borderRight:`0.5px solid ${P.border}`}},
+          HOURS.map(hr=>h("div",{key:hr,style:{height:56,borderBottom:`0.5px solid ${P.border}`,display:"flex",alignItems:"flex-start",justifyContent:"flex-end",paddingRight:8,paddingTop:4,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,color:P.text3}},`${String(hr).padStart(2,"0")}h`))
         ),
-        // Colunas dos dias
-        weekDays.map(ds=>h("div",{key:ds,style:{borderRight:`1px solid ${P.border}`,position:"relative"}},
-          h(HourSlots,{date:ds,appts:agenda.filter(a=>a.date===ds)})
-        ))
+        weekDays.map((ds,di)=>{
+          const dayAppts=agenda.filter(a=>a.date===ds&&!a.blocked);
+          const isToday=ds===todayISO();
+          // Paleta de cores por procedimento (hash consistente)
+          function procColor(proc){
+            const colors=["#5C1F32","#855954","#9D7761","#3a6aa0","#2a7a80","#6a3a90","#3d8a58","#9a6e10"];
+            let h2=0;for(let i=0;i<(proc||"").length;i++)h2=(h2*31+proc.charCodeAt(i))&0xffff;
+            return colors[h2%colors.length];
+          }
+          return h("div",{key:ds,style:{borderRight:`0.5px solid ${P.border}`,position:"relative",background:isToday?"rgba(157,119,97,.03)":"transparent"}},
+            // Linhas de hora de fundo
+            HOURS.map(hr=>h("div",{key:hr,style:{position:"absolute",top:(hr-HOURS[0])*56,left:0,right:0,height:56,borderBottom:`0.5px solid ${P.border}`,pointerEvents:"none"}})),
+            // Blocos de agendamento
+            dayAppts.map((a,ai)=>{
+              const[hh,mm]=(a.time||"08:00").split(":").map(Number);
+              const topMin=(hh-HOURS[0])*60+mm;
+              const durMin=Number((a.duration||"1 hora").split(" ")[0].replace("h",""))*(a.duration&&a.duration.includes("hora")?60:1)||60;
+              const top=topMin/60*56;
+              const height=Math.max(durMin/60*56,24);
+              const color=procColor(a.procedure);
+              const sc=APPT_STATUS_CFG[a.status]||APPT_STATUS_CFG.Aguardando;
+              const statusColor=dark?sc.colorDark:sc.color;
+              // Detectar colisões simples para offset
+              const cols=dayAppts.filter(b=>{
+                const[bh,bm]=(b.time||"08:00").split(":").map(Number);
+                const bTop=(bh-HOURS[0])*60+bm;
+                const bDur=Number((b.duration||"1 hora").split(" ")[0].replace("h",""))*(b.duration&&b.duration.includes("hora")?60:1)||60;
+                return b.id!==a.id&&bTop<topMin+durMin&&bTop+bDur>topMin;
+              });
+              const colIdx=cols.length>0?ai%2:0;
+              const w=cols.length>0?"50%":"calc(100% - 4px)";
+              return h("div",{key:a.id,
+                onClick:()=>{setSelDate(ds);setViewMode("day");},
+                title:`${a.time} · ${a.patientName} · ${a.procedure}`,
+                style:{
+                  position:"absolute",top:top+1,left:colIdx===0?2:"50%",
+                  width:w,height:height-2,
+                  background:color+"22",
+                  borderLeft:`3px solid ${color}`,
+                  borderRadius:"0 6px 6px 0",
+                  padding:"3px 5px",overflow:"hidden",
+                  cursor:"pointer",zIndex:1+ai,
+                  transition:"opacity .15s,filter .15s",
+                },
+                onMouseEnter:e=>{e.currentTarget.style.opacity=".85";e.currentTarget.style.filter="brightness(1.1)";},
+                onMouseLeave:e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.filter="none";}},
+                h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:9.5,color:color,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},a.patientName),
+                height>30&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:8.5,color:color,opacity:.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:1}},a.procedure),
+                h("div",{style:{width:5,height:5,borderRadius:"50%",background:statusColor,position:"absolute",top:3,right:3}})
+              );
+            }),
+            // Linha de hora atual
+            isToday&&h("div",{style:{position:"absolute",left:0,right:0,top:(new Date().getHours()-HOURS[0])*56+new Date().getMinutes()/60*56,height:1.5,background:"#5C1F32",zIndex:10,pointerEvents:"none"}},
+              h("div",{style:{position:"absolute",left:-3,top:-3,width:8,height:8,borderRadius:"50%",background:"#5C1F32"}})
+            )
+          );
+        })
       )
     ),
 
@@ -4178,11 +4407,11 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
                 )
               ),
               h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-                h("button",{onClick:()=>cycleStatus(a.id),style:{fontSize:10,padding:"3px 8px",borderRadius:12,color:sc.color,background:sc.bg,border:"none",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},"↻ "+a.status),
+                h("button",{onClick:()=>cycleStatus(a.id),style:{fontSize:9,padding:"3px 10px",borderRadius:20,color:sc.color,background:sc.bg,border:"none",cursor:"pointer",fontFamily:"'Jost',sans-serif",fontWeight:400,letterSpacing:".05em",textTransform:"uppercase",transition:"opacity .15s"},onMouseEnter:e=>e.currentTarget.style.opacity=".75",onMouseLeave:e=>e.currentTarget.style.opacity="1"},"↻ "+a.status),
                 h("div",{style:{display:"flex",gap:5}},
-                  h("button",{onClick:()=>openEdit(a),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"✎"),
-                  h("button",{onClick:()=>rescheduleAppt(a),title:"Reagendar",style:{fontSize:11,color:"#9b7aad",background:"transparent",border:"1px solid rgba(155,122,173,.3)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"📅"),
-                  h("button",{onClick:()=>delAppt(a.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
+                  h("button",{onClick:()=>openEdit(a),style:{fontSize:12,color:P.text3,background:"transparent",border:`0.5px solid ${P.border}`,borderRadius:7,padding:"3px 8px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>{e.currentTarget.style.color=P.text;e.currentTarget.style.borderColor=P.text3;},onMouseLeave:e=>{e.currentTarget.style.color=P.text3;e.currentTarget.style.borderColor=P.border;}},"✎"),
+                  h("button",{onClick:()=>rescheduleAppt(a),title:"Reagendar",style:{fontSize:12,color:P.statusPurple||"#6a3a90",background:"transparent",border:`0.5px solid ${(P.statusPurple||"#6a3a90")+"44"}`,borderRadius:7,padding:"3px 8px",cursor:"pointer",transition:"all .15s"}},"↗"),
+                  h("button",{onClick:()=>delAppt(a.id),style:{fontSize:12,color:P.statusRed,background:"transparent",border:`0.5px solid ${P.statusRed+"33"}`,borderRadius:7,padding:"3px 8px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background=P.statusRedBg,onMouseLeave:e=>e.currentTarget.style.background="transparent"},"✕")
                 )
               )
             );
@@ -4330,7 +4559,7 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
       ),
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
         h("span",{style:{fontSize:10,padding:"3px 9px",borderRadius:12,background:sevCfg.bg,color:sevCfg.color,fontWeight:600}},icSeverityOf(ic)),
-        h("select",{value:icStatusOf(ic),onChange:e=>changeStatus(e.target.value),style:{fontSize:10.5,padding:"3px 8px",borderRadius:12,background:stCfg.bg,color:stCfg.color,border:`1px solid ${stCfg.color}55`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},IC_STATUS_LIST.map(st=>h("option",{key:st,value:st},st)))
+        h("select",{value:icStatusOf(ic),onChange:e=>changeStatus(e.target.value),style:{fontSize:10.5,padding:"3px 8px",borderRadius:12,background:stCfg.bg,color:stCfg.color,border:`1px solid ${stCfg.color}55`,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},IC_STATUS_LIST.map(st=>h("option",{key:st,value:st},st)))
       )
     ),
     (ic.procedure||ic.product||ic.region)&&h("div",{style:{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:P.text2,marginBottom:8,padding:"8px 12px",background:P.bg3,borderRadius:8}},
@@ -4387,7 +4616,7 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
     // Próxima reavaliação
     h("div",{style:{display:"flex",alignItems:"center",gap:8,paddingTop:8,borderTop:`1px solid ${P.border}`}},
       h("span",{style:{fontSize:11,color:P.text3,whiteSpace:"nowrap"}},"📆 Próxima reavaliação:"),
-      h("input",{type:"date",value:ic.nextReavaliacao||"",onChange:e=>changeReaval(e.target.value),style:{fontSize:12,padding:"4px 8px",borderRadius:6,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontFamily:"'DM Sans',sans-serif"}})
+      h("input",{type:"date",value:ic.nextReavaliacao||"",onChange:e=>changeReaval(e.target.value),style:{fontSize:12,padding:"4px 8px",borderRadius:6,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontFamily:"'Jost',system-ui,sans-serif"}})
     )
   );
 }
@@ -4439,7 +4668,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
     )}),
     h("div",{style:{display:"flex",gap:12,marginBottom:18,alignItems:"center",flexWrap:"wrap"}},
       h("input",{value:search,onChange:e=>setSearch(e.target.value),placeholder:"🔍 Buscar por nome, telefone, CPF...",style:{...IS,flex:1,minWidth:200,padding:"8px 14px"}}),
-      h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},filtersBtns.map(fi=>h("button",{key:fi.k,onClick:()=>setFilter(fi.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filter===fi.k?P.rose:"transparent",border:`1px solid ${filter===fi.k?P.rose:P.border}`,color:filter===fi.k?P.accent3:P.text2}},fi.l)))
+      h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},filtersBtns.map(fi=>h("button",{key:fi.k,onClick:()=>setFilter(fi.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===fi.k?P.rose:"transparent",border:`1px solid ${filter===fi.k?P.rose:P.border}`,color:filter===fi.k?P.accent3:P.text2}},fi.l)))
     ),
     h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}},
       visible.map((p,i)=>{
@@ -4511,7 +4740,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
             CANAIS_AQUISICAO.map(o=>
               h("button",{key:o.k,onClick:()=>setForm(p=>({...p,canalAquisicao:o.k,origem:"nova",indicadoPor:o.k==="indicacao"?p.indicadoPor:""})),
-                style:{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
+                style:{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",
                   background:form.canalAquisicao===o.k?P.rose:"transparent",
                   border:`1px solid ${form.canalAquisicao===o.k?P.rose:P.border}`,
                   color:form.canalAquisicao===o.k?P.accent3:P.text2}},
@@ -4570,35 +4799,27 @@ function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,pr
     setAgenda(prev=>prev.map(ap=>ap.id===a.id?logged:ap));
   }
 
-  return h("div",{style:{marginBottom:10,background:P.bg3,border:`1px solid ${isUpcoming?"rgba(122,174,212,.3)":P.border}`,borderRadius:10,overflow:"hidden"}},
-    // Linha principal
-    h("div",{style:{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",flexWrap:"wrap"}},
-      // Indicador de status
-      h("div",{style:{width:4,alignSelf:"stretch",background:sc.color,borderRadius:2,flexShrink:0}}),
-      // Data/hora
-      h("div",{style:{minWidth:90,flexShrink:0}},
-        h("div",{style:{fontSize:13,color:P.accent,fontWeight:700}},apptDate.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})),
-        h("div",{style:{fontSize:11,color:P.text3}},a.duration?`${a.time} — ${apptEndTime(a)}`:a.time)
+  return h("div",{style:{marginBottom:8,background:P.card,border:`0.5px solid ${isUpcoming?(P.statusBlue+"44"):P.border}`,borderRadius:11,overflow:"hidden",transition:"box-shadow .18s"},onMouseEnter:e=>e.currentTarget.style.boxShadow="0 2px 12px rgba(92,31,50,.08)",onMouseLeave:e=>e.currentTarget.style.boxShadow="none"},
+    h("div",{style:{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",flexWrap:"wrap"}},
+      h("div",{style:{width:3,alignSelf:"stretch",background:sc.color,borderRadius:2,flexShrink:0}}),
+      h("div",{style:{minWidth:88,flexShrink:0}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:14,color:P.text}},apptDate.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})),
+        h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3}},a.duration?`${a.time} — ${apptEndTime(a)}`:a.time)
       ),
-      // Procedimento e local
       h("div",{style:{flex:1,minWidth:120}},
-        h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},a.procedure||"—"),
-        a.location&&h("div",{style:{fontSize:11,color:P.text3}},"📍 "+a.location),
-        a.obs&&h("div",{style:{fontSize:11,color:P.text3,fontStyle:"italic",marginTop:2}},a.obs)
+        h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:13,color:P.text}},a.procedure||"—"),
+        a.location&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:1}},a.location),
+        a.obs&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,fontStyle:"italic",marginTop:2}},a.obs)
       ),
-      // Status badge
-      h("button",{onClick:cycleStatus,title:"Clique para mudar status",style:{fontSize:10,padding:"3px 10px",borderRadius:12,color:sc.color,background:sc.bg,border:"none",cursor:setAgenda?"pointer":"default",fontFamily:"'DM Sans',sans-serif",whiteSpace:"nowrap"}},"↻ "+a.status),
-      // Valor (se houver)
-      a.value>0&&h("div",{style:{fontSize:13,color:P.text2,fontFamily:"'Cormorant Garamond',serif",whiteSpace:"nowrap"}},fmtCurr(a.value)),
-      // Ações
+      h("button",{onClick:cycleStatus,title:"Clique para mudar status",style:{fontSize:9,padding:"3px 10px",borderRadius:20,color:sc.color,background:sc.bg,border:"none",cursor:setAgenda?"pointer":"default",fontFamily:"'Jost',sans-serif",fontWeight:400,letterSpacing:".05em",textTransform:"uppercase",whiteSpace:"nowrap",transition:"opacity .15s"},onMouseEnter:e=>e.currentTarget.style.opacity=".75",onMouseLeave:e=>e.currentTarget.style.opacity="1"},"↻ "+a.status),
+      a.value>0&&h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:14,color:P.text2,whiteSpace:"nowrap"}},fmtCurr(a.value)),
       h("div",{style:{display:"flex",gap:5,flexShrink:0}},
-        setAgenda&&h("button",{onClick:reschedule,title:"Reagendar",style:{fontSize:11,color:"#9b7aad",background:"transparent",border:"1px solid rgba(155,122,173,.3)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"📅"),
-        hasHistory&&h("button",{onClick:()=>setOpen(v=>!v),style:{fontSize:11,color:"#9b7aad",background:"rgba(155,122,173,.08)",border:"1px solid rgba(155,122,173,.25)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},open?"▲ Histórico":"▼ Histórico ("+histList.length+"x)")
+        setAgenda&&h("button",{onClick:reschedule,title:"Reagendar",style:{fontSize:12,color:P.statusPurple||"#6a3a90",background:"transparent",border:`0.5px solid ${(P.statusPurple||"#6a3a90")+"44"}`,borderRadius:7,padding:"3px 8px",cursor:"pointer",transition:"all .15s"}},"↗"),
+        hasHistory&&h("button",{onClick:()=>setOpen(v=>!v),style:{fontSize:10,color:P.statusBlue,background:P.statusBlueBg,border:`0.5px solid ${P.statusBlue+"44"}`,borderRadius:7,padding:"3px 9px",cursor:"pointer",fontFamily:"'Jost',sans-serif",fontWeight:300}},open?"▲":"▼ "+histList.length+"x")
       )
     ),
-    // Histórico completo (expansível): criação, edições de campo e reagendamentos
-    open&&hasHistory&&h("div",{style:{borderTop:`1px solid ${P.border}`,padding:"10px 14px 12px 14px",background:"rgba(155,122,173,.04)"}},
-      h("div",{style:{fontSize:9.5,color:"#9b7aad",textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:8}},"Histórico do Agendamento"),
+    open&&hasHistory&&h("div",{style:{borderTop:`0.5px solid ${P.border}`,padding:"10px 14px 12px",background:dark?"rgba(92,31,50,.04)":"rgba(133,89,84,.04)"}},
+      h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,color:P.statusBlue,textTransform:"uppercase",letterSpacing:".12em",marginBottom:8}},"Histórico do Agendamento"),
       histList.map(ev=>h(HistEventRow,{key:ev.id,ev}))
     )
   );
@@ -5384,7 +5605,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           h(Field,{label:"Título do Orçamento"},h(Inp,{value:orcForm.title,onChange:v=>setOrcForm(p=>({...p,title:v})),placeholder:"Ex: Planejamento Facial Completo"})),
           h(Field,{label:"Valor Total (R$)"},h(Inp,{value:orcForm.value,onChange:v=>setOrcForm(p=>({...p,value:v})),placeholder:"0,00"})),
           h(Field,{label:"Validade"},h(Inp,{value:orcForm.expiry,onChange:v=>setOrcForm(p=>({...p,expiry:v})),placeholder:"Ex: 31/12/2026"})),
-          h(Field,{label:"Status"},h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},[{k:"espera",l:"🟡 Em Espera"},{k:"aprovado",l:"🟢 Aprovado"},{k:"recusado",l:"🔴 Recusado"},{k:"expirado",l:"⚪ Expirado"}].map(s=>h("button",{key:s.k,onClick:()=>setOrcForm(p=>({...p,status:s.k})),style:{padding:"5px 12px",borderRadius:8,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:orcForm.status===s.k?P.rose:"transparent",border:`1px solid ${orcForm.status===s.k?P.rose:P.border}`,color:orcForm.status===s.k?P.accent3:P.text2}},s.l)))),
+          h(Field,{label:"Status"},h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},[{k:"espera",l:"🟡 Em Espera"},{k:"aprovado",l:"🟢 Aprovado"},{k:"recusado",l:"🔴 Recusado"},{k:"expirado",l:"⚪ Expirado"}].map(s=>h("button",{key:s.k,onClick:()=>setOrcForm(p=>({...p,status:s.k})),style:{padding:"5px 12px",borderRadius:8,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:orcForm.status===s.k?P.rose:"transparent",border:`1px solid ${orcForm.status===s.k?P.rose:P.border}`,color:orcForm.status===s.k?P.accent3:P.text2}},s.l)))),
           h(Field,{label:"Procedimentos Planejados"},h("div",null,h("div",{style:{display:"flex",gap:8,marginBottom:8}},h("select",{value:orcItemInput,onChange:e=>setOrcItemInput(e.target.value),style:{...IS,flex:1}},h("option",{value:""},"Selecionar procedimento..."),procedures.map(p=>h("option",{key:p,value:p},p))),h(Btn,{onClick:()=>{if(orcItemInput&&!orcForm.items.includes(orcItemInput)){setOrcForm(p=>({...p,items:[...p.items,orcItemInput]}));setOrcItemInput("");}},style:{flexShrink:0,padding:"9px 14px"}},"＋")),h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},(orcForm.items||[]).map((item,i)=>h("div",{key:i,style:{display:"flex",alignItems:"center",gap:5,fontSize:12,padding:"4px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text}},h("span",{style:{color:P.green}},"☑"),item,h("button",{onClick:()=>setOrcForm(p=>({...p,items:p.items.filter((_,j)=>j!==i)})),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:12,marginLeft:2}},"×")))))),
           h(Field,{label:"Observações"},h(TA,{value:orcForm.obs,onChange:v=>setOrcForm(p=>({...p,obs:v})),placeholder:'Ex: "Paciente pretende iniciar após férias."',rows:2}))
         ),
@@ -5476,7 +5697,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           h("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:21,color:s.finStatus==="Pago"?P.green:s.finStatus==="Pendente"?P.yellow:P.red}},fmtCurr(s.value)),
             s.payMethod==="Cartão Crédito"&&s.parcelas>1&&h("div",{style:{fontSize:11,color:P.accent,background:"rgba(157,119,97,.1)",borderRadius:8,padding:"2px 8px",fontWeight:600}},`${s.parcelas}x ${fmtCurr(s.value/s.parcelas)}`),
-            h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.id,e.target.value),style:{fontSize:11,padding:"3px 8px",borderRadius:12,color:s.finStatus==="Pago"?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st))),
+            h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.id,e.target.value),style:{fontSize:11,padding:"3px 8px",borderRadius:12,color:s.finStatus==="Pago"?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st))),
             h("button",{onClick:()=>openMapForSession(s),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},mapPlanBySession[s.id]?"🗺 Editar Mapa":"🗺 Mapa"),
             h("button",{onClick:()=>{setEditSess(s);setSForm({...s,value:String(s.value),finStatus:s.finStatus||"Pendente",items:s.items&&s.items.length>0?s.items.map(it=>({...it,value:String(it.value||"")})):[{procedure:s.procedure||"",product:s.product||"",loteId:s.loteId||"",qtdUsada:s.qtdUsada||"",dose:s.dose||"",region:s.region||"",value:String(s.value||""),debitarEstoque:true,skipAutoInsumos:false}]});setShowNewS(true);},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"✎"),
             h("button",{onClick:()=>delSession(s.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"🗑")
@@ -5656,10 +5877,10 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         );
       })(),
       (patient.intercorrencias||[]).length>0&&h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}},
-        h("select",{value:icFilterSev,onChange:e=>setIcFilterSev(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'DM Sans',sans-serif"}},["Todas",...IC_SEVERITY].map(o=>h("option",{key:o,value:o},o))),
-        h("select",{value:icFilterStatus,onChange:e=>setIcFilterStatus(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'DM Sans',sans-serif"}},["Todos",...IC_STATUS_LIST].map(o=>h("option",{key:o,value:o},o))),
-        h("select",{value:icFilterProc,onChange:e=>setIcFilterProc(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'DM Sans',sans-serif"}},["Todos",...Array.from(new Set((patient.intercorrencias||[]).map(ic=>ic.procedure).filter(Boolean)))].map(o=>h("option",{key:o,value:o},o))),
-        h("select",{value:icFilterProd,onChange:e=>setIcFilterProd(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'DM Sans',sans-serif"}},["Todos",...Array.from(new Set((patient.intercorrencias||[]).map(ic=>ic.product).filter(Boolean)))].map(o=>h("option",{key:o,value:o},o)))
+        h("select",{value:icFilterSev,onChange:e=>setIcFilterSev(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'Jost',system-ui,sans-serif"}},["Todas",...IC_SEVERITY].map(o=>h("option",{key:o,value:o},o))),
+        h("select",{value:icFilterStatus,onChange:e=>setIcFilterStatus(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'Jost',system-ui,sans-serif"}},["Todos",...IC_STATUS_LIST].map(o=>h("option",{key:o,value:o},o))),
+        h("select",{value:icFilterProc,onChange:e=>setIcFilterProc(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'Jost',system-ui,sans-serif"}},["Todos",...Array.from(new Set((patient.intercorrencias||[]).map(ic=>ic.procedure).filter(Boolean)))].map(o=>h("option",{key:o,value:o},o))),
+        h("select",{value:icFilterProd,onChange:e=>setIcFilterProd(e.target.value),style:{fontSize:12,padding:"6px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontFamily:"'Jost',system-ui,sans-serif"}},["Todos",...Array.from(new Set((patient.intercorrencias||[]).map(ic=>ic.product).filter(Boolean)))].map(o=>h("option",{key:o,value:o},o)))
       ),
       (()=>{
         const filtered=(patient.intercorrencias||[]).filter(ic=>
@@ -5828,7 +6049,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     tab==="galeria"&&h(EvolucaoFotos,{patient,upd,addMedia,removeMedia,clinicName:clinicSettings?.clinicName}),
     // ─── DOCS TAB
     tab==="docs"&&h("div",null,(patient.sessions||[]).map(s=>h(Card,{key:s.id,style:{marginBottom:14}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:12}},`${s.date} · ${s.procedure} `,h("span",{style:{fontSize:12,color:P.text3,fontFamily:"'DM Sans',sans-serif"}},`${(s.docs||[]).length} doc(s)`)),
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:12}},`${s.date} · ${s.procedure} `,h("span",{style:{fontSize:12,color:P.text3,fontFamily:"'Jost',system-ui,sans-serif"}},`${(s.docs||[]).length} doc(s)`)),
       h(MediaGallery,{items:s.docs||[],onAdd:files=>addMedia(s.id,files,"docs"),onRemove:id=>removeMedia(s.id,id,"docs"),docMode:true,label:"Termos, anamnese, receitas..."})
     ))),
     // ─── FINANCEIRO TAB
@@ -5958,7 +6179,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
                   h("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}},
                     h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:s.paid?P.green:P.yellow}},fmtCurr(s.value)),
                     s.netValue&&s.netValue!==s.value&&h("div",{style:{fontSize:10,color:P.text3}},`Líq: ${fmtCurr(s.netValue)}`),
-                    h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
+                    h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
                   )
                 ),
                 // Cronograma de depósitos do cartão
@@ -6073,7 +6294,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       h("div",{style:{width:"100%",marginTop:4}},
         h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}},
           h("div",{style:{fontSize:11,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",fontWeight:600}},"💉 Procedimentos & Produtos"),
-          h("button",{onClick:sItemAdd,style:{fontSize:12,padding:"5px 12px",borderRadius:8,background:P.rose,border:"none",color:P.accent3,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontWeight:500}},"＋ Adicionar Procedimento")
+          h("button",{onClick:sItemAdd,style:{fontSize:12,padding:"5px 12px",borderRadius:8,background:P.rose,border:"none",color:P.accent3,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",fontWeight:500}},"＋ Adicionar Procedimento")
         ),
         h("div",{style:{display:"flex",flexDirection:"column",gap:14}},
           (sForm.items||[]).map((item,idx)=>{
@@ -6250,7 +6471,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           h("div",{style:{fontSize:12,color:P.text3,padding:"10px 12px",background:P.bg3,borderRadius:8}},"O mapa facial (com foto da paciente) é registrado separadamente. Feche este formulário e clique em \"🗺 Mapa\" no card da sessão para preencher ou editar.")
         )
       ),
-      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},h(Btn,{variant:"ghost",onClick:()=>{setShowNewS(false);setEditSess(null);}},"Cancelar"),!editSess&&h("button",{onClick:()=>{saveSession();setTimeout(()=>{setPkgForm(p=>({...p,procedure:sForm.items?.[0]?.procedure||sForm.procedure}));setShowNewPkg(true);setTab("pacotes");},100);},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:"1px solid "+P.gold,color:P.gold}},"📦 Salvar e Criar Pacote"),h(Btn,{onClick:saveSession},editSess?"Salvar":"Salvar Sessão"))
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},h(Btn,{variant:"ghost",onClick:()=>{setShowNewS(false);setEditSess(null);}},"Cancelar"),!editSess&&h("button",{onClick:()=>{saveSession();setTimeout(()=>{setPkgForm(p=>({...p,procedure:sForm.items?.[0]?.procedure||sForm.procedure}));setShowNewPkg(true);setTab("pacotes");},100);},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:"transparent",border:"1px solid "+P.gold,color:P.gold}},"📦 Salvar e Criar Pacote"),h(Btn,{onClick:saveSession},editSess?"Salvar":"Salvar Sessão"))
     ),
     showIntercorr&&h(Modal,{open:true,onClose:()=>{setShowIntercorr(null);setIcForm(blankIc);},title:"⚠ Registrar Intercorrência",width:560},
       showIntercorr==="global"&&(patient.sessions||[]).length>0&&h(Field,{label:"Vincular a um Procedimento Realizado (opcional)"},
@@ -6287,7 +6508,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       ),
       h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},
         h(Btn,{variant:"ghost",onClick:()=>setShowPlan(false)},"Cancelar"),
-        h("button",{onClick:()=>{if(!planForm.title.trim())return;setPlanAnnotating("new");},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:"transparent",border:`1px solid ${P.gold}`,color:P.gold}},"🖼 Salvar e Anotar Foto"),
+        h("button",{onClick:()=>{if(!planForm.title.trim())return;setPlanAnnotating("new");},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:"transparent",border:`1px solid ${P.gold}`,color:P.gold}},"🖼 Salvar e Anotar Foto"),
         h(Btn,{onClick:addPlanejamento},"Criar Plano")
       )
     ),
@@ -6322,7 +6543,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
             CANAIS_AQUISICAO.map(o=>
               h("button",{key:o.k,onClick:()=>pfv("canalAquisicao")(o.k),
-                style:{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
+                style:{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",
                   background:(patForm.canalAquisicao||"")===o.k?P.rose:"transparent",
                   border:`1px solid ${(patForm.canalAquisicao||"")===o.k?P.rose:P.border}`,
                   color:(patForm.canalAquisicao||"")===o.k?P.accent3:P.text2}},
@@ -6347,7 +6568,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       h("div",{style:{marginBottom:16}},
         h("div",{style:{fontSize:11,color:P.text3,marginBottom:8,textTransform:"uppercase",letterSpacing:".08em"}},"Escolha o template"),
         h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-          _vTemplates.map(t=>h("button",{key:t.k,onClick:()=>qvfv("template")(t.k),style:{padding:"8px 14px",borderRadius:10,fontSize:12,cursor:"pointer",border:`2px solid ${qvForm.template===t.k?P.accent:"transparent"}`,background:t.grad,color:"#fff",fontFamily:"'DM Sans',sans-serif"}},t.l))
+          _vTemplates.map(t=>h("button",{key:t.k,onClick:()=>qvfv("template")(t.k),style:{padding:"8px 14px",borderRadius:10,fontSize:12,cursor:"pointer",border:`2px solid ${qvForm.template===t.k?P.accent:"transparent"}`,background:t.grad,color:"#fff",fontFamily:"'Jost',system-ui,sans-serif"}},t.l))
         )
       ),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
@@ -6576,7 +6797,7 @@ function Estoque({products,setProducts,stockCats,setStockCats}){
 
     // ── Sub-abas: Injetáveis | Insumos/Descartáveis (cadastros e telas totalmente separados) ──
     h("div",{style:{display:"flex",gap:6,marginBottom:20,borderBottom:`1px solid ${P.border}`,paddingBottom:0}},
-      SUB_TABS.map(t=>h("button",{key:t.k,onClick:()=>{setSubTab(t.k);setFilter("all");},style:{padding:"9px 18px",background:"transparent",border:"none",borderBottom:`2px solid ${subTab===t.k?P.rose:"transparent"}`,color:subTab===t.k?P.rose:P.text2,cursor:"pointer",fontSize:13,fontFamily:"'DM Sans',sans-serif",fontWeight:subTab===t.k?600:400,marginBottom:-1,transition:"all .15s",display:"flex",alignItems:"center",gap:6}},
+      SUB_TABS.map(t=>h("button",{key:t.k,onClick:()=>{setSubTab(t.k);setFilter("all");},style:{padding:"9px 18px",background:"transparent",border:"none",borderBottom:`2px solid ${subTab===t.k?P.rose:"transparent"}`,color:subTab===t.k?P.rose:P.text2,cursor:"pointer",fontSize:13,fontFamily:"'Jost',system-ui,sans-serif",fontWeight:subTab===t.k?600:400,marginBottom:-1,transition:"all .15s",display:"flex",alignItems:"center",gap:6}},
         t.l,h("span",{style:{fontSize:10,color:P.text3,background:P.bg3,padding:"1px 7px",borderRadius:20,border:`1px solid ${P.border}`}},t.count)
       ))
     ),
@@ -6585,7 +6806,7 @@ function Estoque({products,setProducts,stockCats,setStockCats}){
       h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
         [{l:"Nível Crítico",v:critical,c:KPI.red},{l:"Produtos",v:injetaveis.length,c:KPI.blue},{l:"Valor em Estoque",v:fmtCurr(totalVal),c:KPI.green}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
       ),
-      h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
+      h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
 
       // ── Lista de produtos com expansão por lotes ──
       h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
@@ -6710,7 +6931,7 @@ function Estoque({products,setProducts,stockCats,setStockCats}){
       h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
         [{l:"Nível Crítico",v:criticalInsumos,c:KPI.red},{l:"Insumos",v:insumos.length,c:KPI.teal},{l:"Valor em Estoque",v:fmtCurr(totalValInsumos),c:KPI.green}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
       ),
-      h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
+      h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
       h("div",{style:{fontSize:11,color:P.text3,marginBottom:14}},"Itens de consumo (agulhas, luvas, gaze, anestésico tópico, etc). Cadastro simples — sem controle de lote ou validade."),
 
       h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
@@ -7045,7 +7266,7 @@ function FluxoCaixaProjetado({patients=[],incomes=[],expenses=[],recurringExpens
           h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},"Saldo atual acumulado: ",h("span",{style:{color:saldoFinal>=0?P.green:P.red,fontWeight:600}},fmtCurr2(saldoFinal)))
         ),
         h("div",{style:{display:"flex",gap:8}},
-          [30,60,90].map(d=>h("button",{key:d,onClick:()=>{setHorizon(d);setHoverIdx(null);},style:{padding:"7px 18px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:horizon===d?P.rose:"transparent",border:`1px solid ${horizon===d?P.rose:P.border}`,color:horizon===d?P.accent3:P.text2}},d+"d"))
+          [30,60,90].map(d=>h("button",{key:d,onClick:()=>{setHorizon(d);setHoverIdx(null);},style:{padding:"7px 18px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:horizon===d?P.rose:"transparent",border:`1px solid ${horizon===d?P.rose:P.border}`,color:horizon===d?P.accent3:P.text2}},d+"d"))
         )
       )
     ),
@@ -7744,7 +7965,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
               `⏳ ${depositsFuturos.length}x a receber`
             )
           ),
-          h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.pid,s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
+          h("select",{value:s.finStatus||"Pendente",onChange:e=>toggleFinStatus(s.pid,s.id,e.target.value),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:s.paid?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st)))
         )
       ),
       // ── Cronograma de depósitos (bolinhas com ★)
@@ -7792,7 +8013,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:inc.status==="Pago"?P.green:P.yellow}},fmtCurr(inc.value)),
           inc.netValue&&inc.netValue!==inc.value&&h("div",{style:{fontSize:10,color:P.text3}},`Líq: ${fmtCurr(inc.netValue)}`)
         ),
-        h("select",{value:inc.status,onChange:e=>setIncomes(prev=>prev.map(x=>x.id===inc.id?{...x,status:e.target.value,paid:e.target.value==="Pago"}:x)),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:inc.status==="Pago"?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st))),
+        h("select",{value:inc.status,onChange:e=>setIncomes(prev=>prev.map(x=>x.id===inc.id?{...x,status:e.target.value,paid:e.target.value==="Pago"}:x)),style:{fontSize:10,padding:"3px 8px",borderRadius:10,color:inc.status==="Pago"?P.green:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},FIN_STATUS.map(st=>h("option",{key:st,value:st},st))),
         h("button",{onClick:()=>openEditInc(inc),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"✎"),
         h("button",{onClick:()=>delInc(inc.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 7px",cursor:"pointer"}},"🗑")
       )
@@ -7953,7 +8174,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
         TAB_GROUPS.map(g=>h("div",{key:g.label},
           h("div",{style:{fontSize:10,textTransform:"uppercase",letterSpacing:".04em",color:P.text3,marginBottom:6,paddingLeft:2}},g.label),
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-            g.tabs.map(t=>h("button",{key:t.k,onClick:()=>setViewTab(t.k),style:{padding:"7px 14px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:viewTab===t.k?P.rose:"transparent",border:`1px solid ${viewTab===t.k?P.rose:P.border}`,color:viewTab===t.k?P.accent3:P.text2,whiteSpace:"nowrap"}},t.l))
+            g.tabs.map(t=>h("button",{key:t.k,onClick:()=>setViewTab(t.k),style:{padding:"7px 14px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:viewTab===t.k?P.rose:"transparent",border:`1px solid ${viewTab===t.k?P.rose:P.border}`,color:viewTab===t.k?P.accent3:P.text2,whiteSpace:"nowrap"}},t.l))
           )
         ))
       );
@@ -7962,8 +8183,8 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     // ── ABA: Fluxo de Caixa (com sub-toggle Diário / Projetado 30-60-90d) ────
     viewTab==="fluxo"&&h(Fragment,null,
       h("div",{style:{display:"flex",gap:8,marginBottom:14}},
-        h("button",{onClick:()=>setFluxoSubView("diario"),style:{padding:"5px 14px",borderRadius:20,fontSize:11.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:fluxoSubView==="diario"?P.accent:"transparent",border:`1px solid ${fluxoSubView==="diario"?P.accent:P.border}`,color:fluxoSubView==="diario"?P.accent3:P.text2}},"Realizado (Diário)"),
-        h("button",{onClick:()=>setFluxoSubView("projetado"),style:{padding:"5px 14px",borderRadius:20,fontSize:11.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:fluxoSubView==="projetado"?P.accent:"transparent",border:`1px solid ${fluxoSubView==="projetado"?P.accent:P.border}`,color:fluxoSubView==="projetado"?P.accent3:P.text2}},"🔮 Projetado 30/60/90d")
+        h("button",{onClick:()=>setFluxoSubView("diario"),style:{padding:"5px 14px",borderRadius:20,fontSize:11.5,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:fluxoSubView==="diario"?P.accent:"transparent",border:`1px solid ${fluxoSubView==="diario"?P.accent:P.border}`,color:fluxoSubView==="diario"?P.accent3:P.text2}},"Realizado (Diário)"),
+        h("button",{onClick:()=>setFluxoSubView("projetado"),style:{padding:"5px 14px",borderRadius:20,fontSize:11.5,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:fluxoSubView==="projetado"?P.accent:"transparent",border:`1px solid ${fluxoSubView==="projetado"?P.accent:P.border}`,color:fluxoSubView==="projetado"?P.accent3:P.text2}},"🔮 Projetado 30/60/90d")
       ),
       fluxoSubView==="projetado"
         ? h(FluxoCaixaProjetado,{patients,incomes,expenses,recurringExpenses,maquininhas,saldoFinal,selMonth,selYear})
@@ -8010,30 +8231,30 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       ),
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}},
         [["month","Mês atual"],["day","Hoje"],["week","Esta semana"],["quarter","Trimestre"],["year","Este ano"],["custom","Personalizado"]].map(([k,l])=>
-          h("button",{key:k,onClick:()=>setFilterPeriod(k),style:{fontSize:11.5,padding:"5px 12px",borderRadius:20,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${filterPeriod===k?P.rose:P.border}`,background:filterPeriod===k?P.rose:"transparent",color:filterPeriod===k?P.accent3:P.text2}},l)
+          h("button",{key:k,onClick:()=>setFilterPeriod(k),style:{fontSize:11.5,padding:"5px 12px",borderRadius:20,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",border:`1px solid ${filterPeriod===k?P.rose:P.border}`,background:filterPeriod===k?P.rose:"transparent",color:filterPeriod===k?P.accent3:P.text2}},l)
         )
       ),
       filterPeriod==="custom"&&h("div",{style:{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}},
         h("div",{style:{display:"flex",alignItems:"center",gap:6}},
           h("span",{style:{fontSize:11,color:P.text3}},"De"),
-          h("input",{type:"date",value:filterDateFrom,onChange:e=>setFilterDateFrom(e.target.value),style:{fontSize:12,padding:"5px 8px",borderRadius:8,border:`1px solid ${P.border}`,background:P.bg3,color:P.text,fontFamily:"'DM Sans',sans-serif"}})
+          h("input",{type:"date",value:filterDateFrom,onChange:e=>setFilterDateFrom(e.target.value),style:{fontSize:12,padding:"5px 8px",borderRadius:8,border:`1px solid ${P.border}`,background:P.bg3,color:P.text,fontFamily:"'Jost',system-ui,sans-serif"}})
         ),
         h("div",{style:{display:"flex",alignItems:"center",gap:6}},
           h("span",{style:{fontSize:11,color:P.text3}},"até"),
-          h("input",{type:"date",value:filterDateTo,onChange:e=>setFilterDateTo(e.target.value),style:{fontSize:12,padding:"5px 8px",borderRadius:8,border:`1px solid ${P.border}`,background:P.bg3,color:P.text,fontFamily:"'DM Sans',sans-serif"}})
+          h("input",{type:"date",value:filterDateTo,onChange:e=>setFilterDateTo(e.target.value),style:{fontSize:12,padding:"5px 8px",borderRadius:8,border:`1px solid ${P.border}`,background:P.bg3,color:P.text,fontFamily:"'Jost',system-ui,sans-serif"}})
         )
       ),
       h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-        h("input",{type:"text",placeholder:"🔍 Buscar por descrição / paciente...",value:filterSearch,onChange:e=>setFilterSearch(e.target.value),style:{flex:"1 1 200px",fontSize:12,padding:"7px 12px",borderRadius:8,border:`1px solid ${filterSearch?P.rose:P.border}`,background:P.bg3,color:P.text,fontFamily:"'DM Sans',sans-serif",outline:"none"}}),
-        h("select",{value:filterCat,onChange:e=>setFilterCat(e.target.value),style:{fontSize:12,padding:"7px 10px",borderRadius:8,border:`1px solid ${filterCat?P.rose:P.border}`,background:P.bg3,color:filterCat?P.text:P.text3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer"}},
+        h("input",{type:"text",placeholder:"🔍 Buscar por descrição / paciente...",value:filterSearch,onChange:e=>setFilterSearch(e.target.value),style:{flex:"1 1 200px",fontSize:12,padding:"7px 12px",borderRadius:8,border:`1px solid ${filterSearch?P.rose:P.border}`,background:P.bg3,color:P.text,fontFamily:"'Jost',system-ui,sans-serif",outline:"none"}}),
+        h("select",{value:filterCat,onChange:e=>setFilterCat(e.target.value),style:{fontSize:12,padding:"7px 10px",borderRadius:8,border:`1px solid ${filterCat?P.rose:P.border}`,background:P.bg3,color:filterCat?P.text:P.text3,fontFamily:"'Jost',system-ui,sans-serif",cursor:"pointer"}},
           h("option",{value:""},"Categoria"),
           EXPENSE_CATS.map(c=>h("option",{key:c,value:c},c))
         ),
-        h("select",{value:filterPayMethod,onChange:e=>setFilterPayMethod(e.target.value),style:{fontSize:12,padding:"7px 10px",borderRadius:8,border:`1px solid ${filterPayMethod?P.rose:P.border}`,background:P.bg3,color:filterPayMethod?P.text:P.text3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer"}},
+        h("select",{value:filterPayMethod,onChange:e=>setFilterPayMethod(e.target.value),style:{fontSize:12,padding:"7px 10px",borderRadius:8,border:`1px solid ${filterPayMethod?P.rose:P.border}`,background:P.bg3,color:filterPayMethod?P.text:P.text3,fontFamily:"'Jost',system-ui,sans-serif",cursor:"pointer"}},
           h("option",{value:""},"Pagamento"),
           PAY_METHODS.map(m=>h("option",{key:m,value:m},m))
         ),
-        h("select",{value:filterStatus,onChange:e=>setFilterStatus(e.target.value),style:{fontSize:12,padding:"7px 10px",borderRadius:8,border:`1px solid ${filterStatus?P.rose:P.border}`,background:P.bg3,color:filterStatus?P.text:P.text3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer"}},
+        h("select",{value:filterStatus,onChange:e=>setFilterStatus(e.target.value),style:{fontSize:12,padding:"7px 10px",borderRadius:8,border:`1px solid ${filterStatus?P.rose:P.border}`,background:P.bg3,color:filterStatus?P.text:P.text3,fontFamily:"'Jost',system-ui,sans-serif",cursor:"pointer"}},
           h("option",{value:""},"Status"),
           FIN_STATUS.map(s=>h("option",{key:s,value:s},s))
         )
@@ -8174,7 +8395,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
 
       const DRERow=({label,value,indent,bold,divider,color,small})=>h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:divider?"8px 0":"5px 0",borderTop:divider?`1px solid ${P.border}`:"none",marginLeft:indent?16:0}},
         h("span",{style:{fontSize:small?11:13,color:bold?P.text:P.text2,fontWeight:bold?600:400}},label),
-        h("span",{style:{fontSize:bold?16:13,fontFamily:bold?"'Cormorant Garamond',serif":"'DM Sans',sans-serif",color:color||(value>=0?P.text:P.red),fontWeight:bold?600:400}},
+        h("span",{style:{fontSize:bold?16:13,fontFamily:bold?"'Cormorant Garamond',serif":"'Jost',system-ui,sans-serif",color:color||(value>=0?P.text:P.red),fontWeight:bold?600:400}},
           value===null?"—":(value>=0?fmtCurr(value):`− ${fmtCurr(Math.abs(value))}`)
         )
       );
@@ -8368,7 +8589,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
                     h("span",null,`${s.date} — ${s.procedure}`),
                     h("div",{style:{display:"flex",alignItems:"center",gap:8}},
                       h("span",{style:{color:P.yellow}},fmtCurr(s.value)),
-                      h("select",{value:s.finStatus||"Pendente",onChange:e=>{const newSt=e.target.value;setPatients(prev=>prev.map(pat=>pat.id!==p.pid?pat:{...pat,sessions:(pat.sessions||[]).map(ses=>ses.id!==s.id?ses:{...ses,finStatus:newSt,paid:newSt==="Pago"})}));},style:{fontSize:10,padding:"2px 6px",borderRadius:8,color:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},
+                      h("select",{value:s.finStatus||"Pendente",onChange:e=>{const newSt=e.target.value;setPatients(prev=>prev.map(pat=>pat.id!==p.pid?pat:{...pat,sessions:(pat.sessions||[]).map(ses=>ses.id!==s.id?ses:{...ses,finStatus:newSt,paid:newSt==="Pago"})}));},style:{fontSize:10,padding:"2px 6px",borderRadius:8,color:P.yellow,background:P.bg3,border:`1px solid ${P.border}`,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},
                         FIN_STATUS.map(st=>h("option",{key:st,value:st},st))
                       )
                     )
@@ -8483,7 +8704,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
         ),
         h("div",{style:{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}},
           [{k:"todas",l:"Todas"},{k:"pagar",l:"↓ A Pagar"},{k:"receber",l:"↑ A Receber"}].map(f=>
-            h("button",{key:f.k,onClick:()=>setVencFiltro(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:vencFiltro===f.k?P.rose:"transparent",border:`1px solid ${vencFiltro===f.k?P.rose:P.border}`,color:vencFiltro===f.k?P.accent3:P.text2}},f.l)
+            h("button",{key:f.k,onClick:()=>setVencFiltro(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:vencFiltro===f.k?P.rose:"transparent",border:`1px solid ${vencFiltro===f.k?P.rose:P.border}`,color:vencFiltro===f.k?P.accent3:P.text2}},f.l)
           )
         ),
         contas.length===0
@@ -8845,7 +9066,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},"Gera uma planilha .xlsx com as abas Resumo, Receitas e Despesas — pronta para enviar ao contador ou importar no Google Sheets."),
       h("div",{style:{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}},
         [{k:"month",l:"Mês"},{k:"quarter",l:"Trimestre"},{k:"year",l:"Ano"},{k:"custom",l:"Período personalizado"}].map(m=>
-          h("button",{key:m.k,onClick:()=>setExcelPeriodMode(m.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:excelPeriodMode===m.k?P.rose:"transparent",border:`1px solid ${excelPeriodMode===m.k?P.rose:P.border}`,color:excelPeriodMode===m.k?P.accent3:P.text2}},m.l)
+          h("button",{key:m.k,onClick:()=>setExcelPeriodMode(m.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:excelPeriodMode===m.k?P.rose:"transparent",border:`1px solid ${excelPeriodMode===m.k?P.rose:P.border}`,color:excelPeriodMode===m.k?P.accent3:P.text2}},m.l)
         )
       ),
       excelPeriodMode==="month"&&h("div",{style:{display:"flex",gap:12}},
@@ -9776,8 +9997,8 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
             h("div",{style:{fontSize:12,color:P.text3,marginTop:2,maxWidth:480}},"Atendimentos e receita por dia da semana e horário — use para decidir quando abrir mais vagas na agenda ou fazer promoções nos horários mais vazios.")
           ),
           h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-            h("div",{style:{display:"flex",gap:6}},HM_PERIODS.map(p=>h("button",{key:p.k,onClick:()=>setHmPeriod(p.k),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${hmPeriod===p.k?P.rose:P.border}`,background:hmPeriod===p.k?P.rose:"transparent",color:hmPeriod===p.k?P.accent3:P.text2}},p.l))),
-            h("div",{style:{display:"flex",gap:6}},[{k:"atend",l:"📅 Atendimentos"},{k:"receita",l:"💰 Receita"}].map(m=>h("button",{key:m.k,onClick:()=>setHmMetric(m.k),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontWeight:hmMetric===m.k?600:400,border:`1px solid ${hmMetric===m.k?P.gold:P.border}`,background:hmMetric===m.k?P.gold:"transparent",color:hmMetric===m.k?P.bg:P.text2}},m.l)))
+            h("div",{style:{display:"flex",gap:6}},HM_PERIODS.map(p=>h("button",{key:p.k,onClick:()=>setHmPeriod(p.k),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",border:`1px solid ${hmPeriod===p.k?P.rose:P.border}`,background:hmPeriod===p.k?P.rose:"transparent",color:hmPeriod===p.k?P.accent3:P.text2}},p.l))),
+            h("div",{style:{display:"flex",gap:6}},[{k:"atend",l:"📅 Atendimentos"},{k:"receita",l:"💰 Receita"}].map(m=>h("button",{key:m.k,onClick:()=>setHmMetric(m.k),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",fontWeight:hmMetric===m.k?600:400,border:`1px solid ${hmMetric===m.k?P.gold:P.border}`,background:hmMetric===m.k?P.gold:"transparent",color:hmMetric===m.k?P.bg:P.text2}},m.l)))
           )
         ),
         h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}},
@@ -9907,7 +10128,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
                 h("div",{style:{height:"100%",width:pct+"%",background:tier.c,borderRadius:2,transition:"width .4s"}})
               ),
               onSelectPatient&&h("div",{style:{textAlign:"right",marginTop:8}},
-                h("button",{onClick:()=>{onSelectPatient(p);onNav&&onNav("prontuario");},style:{fontSize:11,padding:"4px 12px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}},"Ver prontuário →")
+                h("button",{onClick:()=>{onSelectPatient(p);onNav&&onNav("prontuario");},style:{fontSize:11,padding:"4px 12px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},"Ver prontuário →")
               )
             );
           })
@@ -10243,16 +10464,16 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
         // ── Painel de seleção: modo, mês (se aplicável) e anos ──────────────
         h("div",{style:{background:P.card,border:`1px solid ${P.border}`,borderRadius:12,padding:16,marginBottom:20}},
           h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:14}},
-            [{k:"ano",l:"Ano Completo"},{k:"mes",l:"Mês Específico"}].map(md=>h("button",{key:md.k,onClick:()=>setYoyMode(md.k),style:{padding:"6px 16px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${yoyMode===md.k?P.rose:P.border}`,background:yoyMode===md.k?P.rose:"transparent",color:yoyMode===md.k?P.accent3:P.text2}},md.l))
+            [{k:"ano",l:"Ano Completo"},{k:"mes",l:"Mês Específico"}].map(md=>h("button",{key:md.k,onClick:()=>setYoyMode(md.k),style:{padding:"6px 16px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",border:`1px solid ${yoyMode===md.k?P.rose:P.border}`,background:yoyMode===md.k?P.rose:"transparent",color:yoyMode===md.k?P.accent3:P.text2}},md.l))
           ),
           yoyMode==="mes"&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center",marginBottom:14}},
-            MONTH_NAMES.map((mn,mi)=>h("button",{key:mi,onClick:()=>setYoyMonth(mi),style:{padding:"5px 11px",borderRadius:14,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${yoyMonth===mi?P.accent:P.border}`,background:yoyMonth===mi?P.accent3:"transparent",color:yoyMonth===mi?P.accent:P.text2,fontWeight:yoyMonth===mi?600:400}},mn.slice(0,3)))
+            MONTH_NAMES.map((mn,mi)=>h("button",{key:mi,onClick:()=>setYoyMonth(mi),style:{padding:"5px 11px",borderRadius:14,fontSize:11,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",border:`1px solid ${yoyMonth===mi?P.accent:P.border}`,background:yoyMonth===mi?P.accent3:"transparent",color:yoyMonth===mi?P.accent:P.text2,fontWeight:yoyMonth===mi?600:400}},mn.slice(0,3)))
           ),
           h("div",{style:{textAlign:"center",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}},"Anos selecionados (até 4) — clique para adicionar ou remover"),
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center"}},
             yearPills.map(y=>{
               const sel=yoyYears.includes(y);
-              return h("button",{key:y,onClick:()=>toggleYoyYear(y),style:{padding:"6px 15px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${sel?P.rose:P.border}`,background:sel?P.rose:"transparent",color:sel?P.accent3:P.text2,fontWeight:sel?600:400}},String(y));
+              return h("button",{key:y,onClick:()=>toggleYoyYear(y),style:{padding:"6px 15px",borderRadius:20,fontSize:12.5,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",border:`1px solid ${sel?P.rose:P.border}`,background:sel?P.rose:"transparent",color:sel?P.accent3:P.text2,fontWeight:sel?600:400}},String(y));
             })
           )
         ),
@@ -10493,11 +10714,11 @@ function MargemLucro({allS,parseDMY2,products}){
     // ── Filtros ──
     h("div",{style:{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}},
       h("div",{style:{display:"flex",gap:5,flexWrap:"wrap"}},
-        PERIOD_OPTS.map(p=>h("button",{key:p.k,onClick:()=>setMargemPeriod(p.k),style:{padding:"5px 13px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${margemPeriod===p.k?P.rose:P.border}`,background:margemPeriod===p.k?P.rose:"transparent",color:margemPeriod===p.k?P.accent3:P.text2}},p.l))
+        PERIOD_OPTS.map(p=>h("button",{key:p.k,onClick:()=>setMargemPeriod(p.k),style:{padding:"5px 13px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",border:`1px solid ${margemPeriod===p.k?P.rose:P.border}`,background:margemPeriod===p.k?P.rose:"transparent",color:margemPeriod===p.k?P.accent3:P.text2}},p.l))
       ),
       h("div",{style:{marginLeft:"auto",display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}},
         h("span",{style:{fontSize:11,color:P.text3}},"Ordenar por:"),
-        SORT_OPTS.map(s=>h("button",{key:s.k,onClick:()=>setMargemSort(s.k),style:{padding:"4px 11px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",border:`1px solid ${margemSort===s.k?P.gold:P.border}`,background:margemSort===s.k?P.gold:"transparent",color:margemSort===s.k?P.bg:P.text2}},s.l))
+        SORT_OPTS.map(s=>h("button",{key:s.k,onClick:()=>setMargemSort(s.k),style:{padding:"4px 11px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",border:`1px solid ${margemSort===s.k?P.gold:P.border}`,background:margemSort===s.k?P.gold:"transparent",color:margemSort===s.k?P.bg:P.text2}},s.l))
       )
     ),
 
@@ -10679,7 +10900,7 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
             ),
             // Linha 2: tipo de regra (chips)
             h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}},
-              INSUMO_REGRAS.map(r=>h("button",{key:r.k,onClick:()=>updInsumo(ins.id,"regra",r.k),style:{fontSize:11,padding:"3px 10px",borderRadius:20,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:regra===r.k?P.rose:"transparent",border:`1px solid ${regra===r.k?P.rose:P.border}`,color:regra===r.k?P.accent3:P.text2,transition:"all .12s"}},r.l))
+              INSUMO_REGRAS.map(r=>h("button",{key:r.k,onClick:()=>updInsumo(ins.id,"regra",r.k),style:{fontSize:11,padding:"3px 10px",borderRadius:20,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:regra===r.k?P.rose:"transparent",border:`1px solid ${regra===r.k?P.rose:P.border}`,color:regra===r.k?P.accent3:P.text2,transition:"all .12s"}},r.l))
             ),
             // Linha 3: campos dependendo da regra
             h("div",{style:{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}},
@@ -10840,7 +11061,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
     h(SectionHeader,{title:"Configurações",sub:"Gerencie procedimentos, locais e dados da clínica"}),
     // Tab bar
     h("div",{style:{display:"flex",gap:6,marginBottom:20,borderBottom:`1px solid ${P.border}`,paddingBottom:0}},
-      TABS.map(t=>h("button",{key:t.k,onClick:()=>setTab(t.k),style:{padding:"9px 18px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===t.k?P.rose:"transparent"}`,color:tab===t.k?P.rose:P.text2,cursor:"pointer",fontSize:13,fontFamily:"'DM Sans',sans-serif",fontWeight:tab===t.k?600:400,marginBottom:-1,transition:"all .15s"}},t.l))
+      TABS.map(t=>h("button",{key:t.k,onClick:()=>setTab(t.k),style:{padding:"9px 18px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===t.k?P.rose:"transparent"}`,color:tab===t.k?P.rose:P.text2,cursor:"pointer",fontSize:13,fontFamily:"'Jost',system-ui,sans-serif",fontWeight:tab===t.k?600:400,marginBottom:-1,transition:"all .15s"}},t.l))
     ),
 
     // ── ABA PROCEDIMENTOS ────────────────────────────────────────────────────
@@ -11147,10 +11368,10 @@ function drawCaptionBar(ctx,x,w,h,label,sub){
   ctx.fillStyle="rgba(10,5,6,.66)";
   ctx.fillRect(x,h-barH,w,barH);
   ctx.fillStyle="#E1D2C6";
-  ctx.font="bold 28px 'DM Sans',sans-serif";
+  ctx.font="bold 28px 'Jost',system-ui,sans-serif";
   ctx.textAlign="center";
   ctx.fillText(label,x+w/2,h-barH+38);
-  ctx.font="15px 'DM Sans',sans-serif";
+  ctx.font="15px 'Jost',system-ui,sans-serif";
   ctx.fillStyle="rgba(225,210,198,.88)";
   ctx.fillText(sub,x+w/2,h-barH+64);
 }
@@ -11167,7 +11388,7 @@ async function buildComparisonCanvas(antes,depois,clinicName){
   drawCaptionBar(ctx,0,halfW,H,"ANTES",fmtSubLegenda(antes));
   drawCaptionBar(ctx,halfW,halfW,H,"DEPOIS",fmtSubLegenda(depois));
   if(clinicName){
-    ctx.font="13px 'DM Sans',sans-serif";
+    ctx.font="13px 'Jost',system-ui,sans-serif";
     ctx.fillStyle="rgba(225,210,198,.55)";
     ctx.textAlign="right";
     ctx.fillText(clinicName,canvas.width-14,22);
@@ -11333,11 +11554,11 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia,clinicName}){
       ),
       h("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
         h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-          allProcs.map(proc=>h("button",{key:proc,onClick:()=>setFilterProc(proc),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filterProc===proc?P.rose:"transparent",border:`1px solid ${filterProc===proc?P.rose:P.border}`,color:filterProc===proc?P.accent3:P.text2}},proc))
+          allProcs.map(proc=>h("button",{key:proc,onClick:()=>setFilterProc(proc),style:{padding:"5px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filterProc===proc?P.rose:"transparent",border:`1px solid ${filterProc===proc?P.rose:P.border}`,color:filterProc===proc?P.accent3:P.text2}},proc))
         ),
         allPhotos.length>=2&&h("button",{
           onClick:()=>{setSelMode(m=>!m);setSelected([]);},
-          style:{display:"flex",alignItems:"center",gap:6,padding:"6px 13px",borderRadius:20,fontSize:11.5,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:selMode?P.rose:"rgba(157,119,97,.08)",border:`1px solid ${selMode?P.rose:"rgba(157,119,97,.4)"}`,color:selMode?P.accent3:P.accent,whiteSpace:"nowrap"}
+          style:{display:"flex",alignItems:"center",gap:6,padding:"6px 13px",borderRadius:20,fontSize:11.5,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:selMode?P.rose:"rgba(157,119,97,.08)",border:`1px solid ${selMode?P.rose:"rgba(157,119,97,.4)"}`,color:selMode?P.accent3:P.accent,whiteSpace:"nowrap"}
         },selMode?"✕ Cancelar seleção":"🖐 Selecionar 2 fotos")
       )
     ),
@@ -11471,9 +11692,9 @@ function PacotesGlobal({patients,setPatients,onSelectPatient,onNav}){
       )
     ),
     h("div",{style:{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}},
-      h("input",{value:search,onChange:e=>setSearch(e.target.value),placeholder:"Buscar paciente ou procedimento...",style:{flex:1,minWidth:200,padding:"8px 14px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:13,fontFamily:"'DM Sans',sans-serif"}}),
+      h("input",{value:search,onChange:e=>setSearch(e.target.value),placeholder:"Buscar paciente ou procedimento...",style:{flex:1,minWidth:200,padding:"8px 14px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:13,fontFamily:"'Jost',system-ui,sans-serif"}}),
       [{k:"todos",l:"Todos"},{k:"andamento",l:"Em Andamento"},{k:"concluido",l:"Concluídos"},{k:"novo",l:"Novos"}].map(f=>
-        h("button",{key:f.k,onClick:()=>setFilterStatus(f.k),style:{padding:"7px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filterStatus===f.k?P.rose:"transparent",border:`1px solid ${filterStatus===f.k?P.rose:P.border}`,color:filterStatus===f.k?P.accent3:P.text2}},f.l)
+        h("button",{key:f.k,onClick:()=>setFilterStatus(f.k),style:{padding:"7px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filterStatus===f.k?P.rose:"transparent",border:`1px solid ${filterStatus===f.k?P.rose:P.border}`,color:filterStatus===f.k?P.accent3:P.text2}},f.l)
       )
     ),
     filtered.length===0&&h(Card,{style:{textAlign:"center",padding:40}},
@@ -11542,7 +11763,7 @@ function IntercorrenciasGlobal({patients,setPatients,onSelectPatient,onNav,proce
     resolv:all.filter(ic=>icStatusOf(ic)==="Resolvida").length,
     graves:all.filter(ic=>["Grave","Emergencial"].includes(icSeverityOf(ic))).length,
   };
-  const selStyle={padding:"8px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontSize:12.5,fontFamily:"'DM Sans',sans-serif",cursor:"pointer"};
+  const selStyle={padding:"8px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontSize:12.5,fontFamily:"'Jost',system-ui,sans-serif",cursor:"pointer"};
   return h("div",null,
     h(SectionHeader,{title:"Intercorrências",sub:"Painel clínico de intercorrências da clínica"}),
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:18}},
@@ -11564,7 +11785,7 @@ function IntercorrenciasGlobal({patients,setPatients,onSelectPatient,onNav,proce
       )
     ),
     h("div",{style:{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}},
-      h("input",{value:fPaciente,onChange:e=>setFPaciente(e.target.value),placeholder:"Buscar paciente...",style:{flex:"1 1 200px",padding:"8px 14px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:13,fontFamily:"'DM Sans',sans-serif"}}),
+      h("input",{value:fPaciente,onChange:e=>setFPaciente(e.target.value),placeholder:"Buscar paciente...",style:{flex:"1 1 200px",padding:"8px 14px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text,fontSize:13,fontFamily:"'Jost',system-ui,sans-serif"}}),
       h("select",{value:fProc,onChange:e=>setFProc(e.target.value),style:selStyle},procOptions.map(o=>h("option",{key:o,value:o},o))),
       h("select",{value:fProd,onChange:e=>setFProd(e.target.value),style:selStyle},prodOptions.map(o=>h("option",{key:o,value:o},o))),
       h("select",{value:fSev,onChange:e=>setFSev(e.target.value),style:selStyle},["Todas",...IC_SEVERITY].map(o=>h("option",{key:o,value:o},o))),
@@ -11835,7 +12056,7 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav,voucherTe
     h("div",{style:{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}},
       h("input",{value:search,onChange:e=>setSearch(e.target.value),placeholder:"🔍 Buscar por nome ou código...",style:{...IS,flex:1,minWidth:200,padding:"8px 14px"}}),
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},filterBtns.map(f=>
-        h("button",{key:f.k,onClick:()=>setFilterStatus(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",background:filterStatus===f.k?P.rose:"transparent",border:`1px solid ${filterStatus===f.k?P.rose:P.border}`,color:filterStatus===f.k?P.accent3:P.text2}},f.l)
+        h("button",{key:f.k,onClick:()=>setFilterStatus(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filterStatus===f.k?P.rose:"transparent",border:`1px solid ${filterStatus===f.k?P.rose:P.border}`,color:filterStatus===f.k?P.accent3:P.text2}},f.l)
       ))
     ),
 
@@ -11853,7 +12074,7 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav,voucherTe
       h("div",{style:{marginBottom:16}},
         h("div",{style:{fontSize:11,color:P.text3,marginBottom:8,textTransform:"uppercase",letterSpacing:".08em"}},"Escolha o template"),
         h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-          templates.map(t=>h("button",{key:t.k,onClick:()=>fv("template")(t.k),style:{padding:"8px 14px",borderRadius:10,fontSize:12,cursor:"pointer",border:`2px solid ${form.template===t.k?P.accent:"transparent"}`,background:t.grad,color:"#fff",fontFamily:"'DM Sans',sans-serif"}},t.l))
+          templates.map(t=>h("button",{key:t.k,onClick:()=>fv("template")(t.k),style:{padding:"8px 14px",borderRadius:10,fontSize:12,cursor:"pointer",border:`2px solid ${form.template===t.k?P.accent:"transparent"}`,background:t.grad,color:"#fff",fontFamily:"'Jost',system-ui,sans-serif"}},t.l))
         )
       ),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
@@ -12145,117 +12366,140 @@ function AppInner({ session, onLogout }) {
     handleNav("agenda");
   }
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos Pendentes",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
+  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos Pendentes",pacientes_risco:"Pacientes em Risco",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
   const settings = settingsData;
 
-  const nav=[
-    {k:"dashboard",l:"Dashboard",icon:"✦"},
-    {k:"aniversariantes",l:"Aniversariantes",icon:"🎂",badge:(()=>{const t=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===t.getMonth()&&bd.getDate()===t.getDate();}).length||null;})(),badgeColor:P.yellow},
-    {k:"retornos",l:"Retornos",icon:"⏰",badge:(()=>{const today=new Date();return patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length||null;})(),badgeColor:P.red},
-    {k:"agenda",l:"Agenda",icon:"📅",badge:todayApptCount||null},
-    {k:"pacientes",l:"Pacientes",icon:"👤"},
-    {k:"estoque",l:"Estoque",icon:"🧴",badge:criticalStock||null,badgeColor:P.yellow},
-    {k:"financeiro",l:"Financeiro",icon:"💰"},
-    {k:"pacotes_global",l:"Pacotes",icon:"📦"},
-    {k:"vouchers",l:"Vouchers",icon:"🎁"},
-    {k:"relatorios",l:"Relatórios",icon:"📊"},
-    {k:"intercorrencias_global",l:"Intercorrências",icon:"⚠",badge:patients.flatMap(p=>p.intercorrencias||[]).filter(ic=>icStatusOf(ic)==="Em Acompanhamento").length||null,badgeColor:P.red},
-    {k:"config",l:"Configurações",icon:"⚙️"},
+  const dark=!!(settingsData&&settingsData.darkMode);
+  const navGroups=[
+    {label:"Principal",items:[
+      {k:"dashboard",l:"Dashboard",ti:"ti-layout-dashboard"},
+      {k:"agenda",l:"Agenda",ti:"ti-calendar",badge:todayApptCount||null,badgeColor:P.statusBlue},
+      {k:"pacientes",l:"Pacientes",ti:"ti-users"},
+      {k:"aniversariantes",l:"Aniversariantes",ti:"ti-cake",badge:(()=>{const t=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===t.getMonth()&&bd.getDate()===t.getDate();}).length||null;})(),badgeColor:P.statusAmber},
+      {k:"retornos",l:"Retornos",ti:"ti-clock-hour-4",badge:(()=>{const today=new Date();return patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length||null;})(),badgeColor:P.statusRed},
+      {k:"pacientes_risco",l:"Em Risco",ti:"ti-heart-broken",badge:(()=>{return patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length||null;})(),badgeColor:P.statusRed},
+    ]},
+    {label:"Clínica",items:[
+      {k:"estoque",l:"Estoque",ti:"ti-package",badge:criticalStock||null,badgeColor:P.statusRed},
+      {k:"financeiro",l:"Financeiro",ti:"ti-coin"},
+      {k:"pacotes_global",l:"Pacotes",ti:"ti-box"},
+      {k:"vouchers",l:"Vouchers",ti:"ti-ticket"},
+      {k:"relatorios",l:"Relatórios",ti:"ti-chart-bar"},
+      {k:"intercorrencias_global",l:"Intercorrências",ti:"ti-alert-triangle",badge:patients.flatMap(p=>p.intercorrencias||[]).filter(ic=>icStatusOf(ic)==="Em Acompanhamento").length||null,badgeColor:P.statusRed},
+    ]},
+    {label:"Sistema",items:[
+      {k:"config",l:"Configurações",ti:"ti-settings"},
+    ]},
   ];
+  const nav=navGroups.flatMap(g=>g.items);
 
   // largura real do sidebar conforme estado
   const sideW=sidebarCollapsed&&!isMobile?64:238;
 
   const sidebarContent=h("aside",{style:{
-    width:sidebarOpen?(isMobile?"80vw":sideW):0,
-    minWidth:sidebarOpen?(isMobile?"80vw":sideW):0,
-    maxWidth:isMobile?"80vw":"none",
-    background:P.bg2,
-    borderRight:`1px solid ${P.border}`,
+    width:sidebarOpen?(isMobile?"82vw":sideW):0,
+    minWidth:sidebarOpen?(isMobile?"82vw":sideW):0,
+    maxWidth:isMobile?"82vw":"none",
+    background:dark?"#1a0c0e":"#FDFAF7",
+    borderRight:`0.5px solid ${P.border}`,
     display:"flex",flexDirection:"column",flexShrink:0,
-    transition:"width .22s cubic-bezier(.4,0,.2,1), min-width .22s cubic-bezier(.4,0,.2,1)",
+    transition:"width .22s cubic-bezier(.4,0,.2,1),min-width .22s cubic-bezier(.4,0,.2,1)",
     overflow:"hidden",
     position:isMobile?"fixed":"relative",
     top:isMobile?0:"auto",left:isMobile?0:"auto",
     height:isMobile?"100vh":"auto",
     zIndex:isMobile?200:1,
   }},
-    // Header do sidebar
-    h("div",{style:{padding:sidebarCollapsed&&!isMobile?"16px 0":"24px 20px 16px",borderBottom:`1px solid ${P.border}`,display:"flex",alignItems:"center",justifyContent:sidebarCollapsed&&!isMobile?"center":"space-between",flexShrink:0}},
+    // Logo
+    h("div",{style:{padding:sidebarCollapsed&&!isMobile?"18px 0":"22px 18px 15px",borderBottom:`0.5px solid ${P.border}`,display:"flex",alignItems:"center",justifyContent:sidebarCollapsed&&!isMobile?"center":"space-between",flexShrink:0}},
       !sidebarCollapsed||isMobile
         ? h("div",null,
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.rose,letterSpacing:".04em",lineHeight:1.1,whiteSpace:"nowrap",overflow:"hidden"}},settings.clinicName||"HarmonizaPro"),
-            h("div",{style:{fontSize:9,color:P.text3,letterSpacing:".14em",textTransform:"uppercase",marginTop:3}},"Gestão de Clínica")
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:300,fontSize:19,color:dark?P.text:"#221112",letterSpacing:".04em",lineHeight:1.1,whiteSpace:"nowrap"}},
+              settings.clinicName||"HarmonizaPro",
+              h("span",{style:{color:"#9D7761"}},"✦")
+            ),
+            h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9,color:P.text3,letterSpacing:".14em",textTransform:"uppercase",marginTop:4}},"Gestão clínica")
           )
-        : h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.rose}},"✦"),
-      // Botão colapsar (desktop/tablet)
-      !isMobile&&h("button",{onClick:()=>setSidebarCollapsed(c=>!c),title:sidebarCollapsed?"Expandir menu":"Recolher menu",style:{background:"none",border:`1px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"4px 6px",fontSize:13,display:"flex",flexDirection:"column",gap:3,alignItems:"center",justifyContent:"center",flexShrink:0}},
-        h("span",{style:{display:"block",width:14,height:1.5,background:P.text3,borderRadius:2}}),
-        h("span",{style:{display:"block",width:14,height:1.5,background:P.text3,borderRadius:2}}),
-        h("span",{style:{display:"block",width:14,height:1.5,background:P.text3,borderRadius:2}})
-      ),
-      // Botão fechar (mobile)
+        : h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:"#9D7761"}},"✦"),
+      !isMobile&&h("button",{onClick:()=>setSidebarCollapsed(c=>!c),title:sidebarCollapsed?"Expandir":"Recolher",style:{background:"none",border:`0.5px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"4px 7px",fontSize:12,lineHeight:1,flexShrink:0,transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background=P.card,onMouseLeave:e=>e.currentTarget.style.background="none"},sidebarCollapsed?"›":"‹"),
       isMobile&&h("button",{onClick:()=>setSidebarOpen(false),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:20,padding:"4px",lineHeight:1}},"✕")
     ),
-    // Nav items
-    h("nav",{style:{flex:1,padding:sidebarCollapsed&&!isMobile?"10px 6px":"14px 10px",overflowY:"auto"}},
-      nav.map(item=>{
-        const isActive=page===item.k||(item.k==="pacientes"&&page==="prontuario");
-        return h("div",{
-        key:item.k,
-        onClick:()=>handleNav(item.k),
-        title:sidebarCollapsed&&!isMobile?item.l:undefined,
-        style:{
-          display:"flex",alignItems:"center",
-          gap:sidebarCollapsed&&!isMobile?0:10,
-          padding:sidebarCollapsed&&!isMobile?"10px 0":"9px 12px",
-          justifyContent:sidebarCollapsed&&!isMobile?"center":"flex-start",
-          borderRadius:8,cursor:"pointer",marginBottom:2,
-          background:isActive?P.rose:"transparent",
-          color:isActive?P.accent3:P.text2,
-          border:`1px solid ${isActive?P.rose:"transparent"}`,
-          transition:"all .15s",position:"relative"
-        },
-        onMouseEnter:e=>{if(!isActive){e.currentTarget.style.background=P.card;e.currentTarget.style.color=P.text;}},
-        onMouseLeave:e=>{if(!isActive){e.currentTarget.style.background="transparent";e.currentTarget.style.color=P.text2;}}
-      },
-        h("span",{style:{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,flexShrink:0}},h(NavIcon,{name:item.k,size:17})),
-        !sidebarCollapsed||isMobile
-          ? h(Fragment,null,
-              h("span",{style:{fontSize:13.5,whiteSpace:"nowrap"}},item.l),
-              item.badge&&h("span",{style:{marginLeft:"auto",background:item.badgeColor||P.rose2,color:item.badgeColor===P.yellow?"#160b0e":P.accent3,fontSize:10,fontWeight:600,padding:"1px 6px",borderRadius:20,lineHeight:1.7}},item.badge)
-            )
-          : item.badge&&h("span",{style:{position:"absolute",top:4,right:4,background:item.badgeColor||P.rose2,color:item.badgeColor===P.yellow?"#160b0e":P.accent3,fontSize:9,fontWeight:700,padding:"1px 4px",borderRadius:10,lineHeight:1.5}},item.badge)
-      );})
+    // Nav groups
+    h("nav",{style:{flex:1,padding:sidebarCollapsed&&!isMobile?"10px 7px":"10px 9px",overflowY:"auto"}},
+      navGroups.map(group=>h(Fragment,{key:group.label},
+        (!sidebarCollapsed||isMobile)&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:8.5,color:dark?"#3a1e20":P.nude||"#E1D2C6",textTransform:"uppercase",letterSpacing:".13em",padding:"11px 10px 4px"}},group.label),
+        group.items.map(item=>{
+          const isActive=page===item.k||(item.k==="pacientes"&&page==="prontuario");
+          const bdColor=item.badgeColor||P.statusRed;
+          return h("div",{
+            key:item.k,
+            onClick:()=>handleNav(item.k),
+            title:sidebarCollapsed&&!isMobile?item.l:undefined,
+            style:{
+              display:"flex",alignItems:"center",
+              gap:sidebarCollapsed&&!isMobile?0:10,
+              padding:sidebarCollapsed&&!isMobile?"9px 0":"8px 11px",
+              justifyContent:sidebarCollapsed&&!isMobile?"center":"flex-start",
+              borderRadius:9,cursor:"pointer",marginBottom:2,
+              background:isActive?"#5C1F32":"transparent",
+              color:isActive?"#fff":P.text3,
+              transition:"all .18s ease",position:"relative",
+              fontFamily:"'Jost',sans-serif",fontWeight:isActive?400:300,fontSize:12.5,
+            },
+            onMouseEnter:e=>{if(!isActive){e.currentTarget.style.background=dark?"rgba(133,89,84,.1)":"rgba(133,89,84,.07)";e.currentTarget.style.color=P.text;}},
+            onMouseLeave:e=>{if(!isActive){e.currentTarget.style.background="transparent";e.currentTarget.style.color=P.text3;}}
+          },
+            // Ícone Tabler
+            h("i",{className:`ti ${item.ti||"ti-circle"}`,style:{fontSize:16,flexShrink:0,transition:"color .18s",color:isActive?"rgba(255,255,255,.85)":P.text3,width:sidebarCollapsed&&!isMobile?undefined:20,textAlign:"center"}}),
+            !sidebarCollapsed||isMobile
+              ? h(Fragment,null,
+                  h("span",{style:{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1}},item.l),
+                  item.badge&&h("span",{style:{marginLeft:"auto",background:isActive?"rgba(0,0,0,.22)":bdColor+"22",color:isActive?"#fff":bdColor,fontSize:9,fontWeight:500,padding:"1px 7px",borderRadius:20,lineHeight:1.7,fontFamily:"'Jost',sans-serif"}},item.badge)
+                )
+              : item.badge&&h("span",{style:{position:"absolute",top:3,right:3,background:bdColor,color:"#fff",fontSize:8,fontWeight:600,padding:"1px 4px",borderRadius:10,lineHeight:1.5}},item.badge)
+          );
+        })
+      ))
     ),
-    // Footer do sidebar
-    h("div",{style:{padding:sidebarCollapsed&&!isMobile?10:14,borderTop:`1px solid ${P.border}`,flexShrink:0}},
+    // Footer
+    h("div",{style:{padding:sidebarCollapsed&&!isMobile?"10px 7px":"12px 9px",borderTop:`0.5px solid ${P.border}`,flexShrink:0}},
       sidebarCollapsed&&!isMobile
         ? h("div",{style:{display:"flex",justifyContent:"center"}},
-            h("div",{style:{width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${P.rose},${P.gold})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:P.accent3,cursor:"pointer"},title:settings.doctorName||"Dra. Sofia"},initials(settings.doctorName||"Dra Sofia"))
+            h("div",{onClick:onLogout,title:"Sair",style:{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#5C1F32,#9D7761)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:500,color:"#fff",cursor:"pointer",fontFamily:"'Cormorant Garamond',serif"}},initials(settings.doctorName||"Dra Sofia"))
           )
-        : h("div",{style:{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,background:P.card}},
-            h("div",{style:{width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${P.rose},${P.gold})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:P.accent3,flexShrink:0}},initials(settings.doctorName||"Dra Sofia")),
+        : h("div",{style:{display:"flex",alignItems:"center",gap:10,padding:"9px 11px",borderRadius:9,background:dark?"rgba(133,89,84,.06)":"rgba(133,89,84,.05)",border:`0.5px solid ${P.border}`,cursor:"pointer",transition:"background .18s"},onMouseEnter:e=>e.currentTarget.style.background=dark?"rgba(133,89,84,.1)":"rgba(133,89,84,.08)",onMouseLeave:e=>e.currentTarget.style.background=dark?"rgba(133,89,84,.06)":"rgba(133,89,84,.05)"},
+        h("div",{style:{position:"relative",flexShrink:0}},
+            h("div",{style:{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#5C1F32,#9D7761)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontFamily:"'Cormorant Garamond',serif",fontWeight:400}},initials(settings.doctorName||"Dra Sofia")),
+            h("div",{title:todayAppts.some(a=>a.status==="Realizado")?"Em atendimento":"Disponível",style:{position:"absolute",bottom:1,right:1,width:9,height:9,borderRadius:"50%",background:todayAppts.some(a=>{const[hh,mm]=(a.time||"00:00").split(":").map(Number);const end=hh*60+mm+(Number(a.duration?.split(" ")[0])||60);const now=new Date();return a.status==="Confirmado"&&now.getHours()*60+now.getMinutes()>=hh*60+mm&&now.getHours()*60+now.getMinutes()<=end;})?"#4a9668":"#9F8475",border:`1.5px solid ${dark?"#1a0c0e":"#FDFAF7"}`,transition:"background .3s"}})
+          ),
             h("div",{style:{flex:1,minWidth:0}},
-              h("div",{style:{fontSize:12.5,fontWeight:500,color:P.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},settings.doctorName||"Dra. Sofia"),
-              h("div",{style:{fontSize:10.5,color:P.text3}},settings.doctorTitle||"Médica Responsável")
+              h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12.5,color:P.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},settings.doctorName||"Dra. Sofia"),
+              h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:9.5,color:P.text3,marginTop:1}},settings.doctorTitle||"Biomédica Esteta")
             ),
-            h("button",{onClick:onLogout,title:"Sair",style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:16,padding:"4px",borderRadius:6,flexShrink:0}},"⏻")
+            h("button",{onClick:onLogout,title:"Sair",style:{background:"none",border:`0.5px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",fontSize:13,padding:"4px 6px",lineHeight:1,transition:"all .15s",flexShrink:0},onMouseEnter:e=>{e.currentTarget.style.background="#5C1F32";e.currentTarget.style.color="#fff";},onMouseLeave:e=>{e.currentTarget.style.background="none";e.currentTarget.style.color=P.text3;}},"⏻")
           )
     )
   );
 
   return h(Fragment,null,
     h("style",null,`
-      @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Jost:wght@300;400;500&display=swap');
+      @import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css');
       *{box-sizing:border-box;margin:0;padding:0;}
-      body{background:${P.bg};color:${P.text};font-family:'DM Sans',sans-serif;transition:background .25s,color .25s;}
+      body{background:${P.bg};color:${P.text};font-family:'Jost',system-ui,sans-serif;font-weight:300;transition:background .28s,color .28s;}
       ::-webkit-scrollbar{width:4px;height:4px;}
       ::-webkit-scrollbar-track{background:transparent;}
-      ::-webkit-scrollbar-thumb{background:${P.border};border-radius:2px;}
-      input,select,textarea{font-family:'DM Sans',sans-serif;color:${P.text};background:${P.bg2};transition:background .25s,color .25s;}
+      ::-webkit-scrollbar-thumb{background:${P.border};border-radius:3px;}
+      ::-webkit-scrollbar-thumb:hover{background:${P.accent2};}
+      input,select,textarea{font-family:'Jost',system-ui,sans-serif;font-weight:300;color:${P.text};background:${P.bg2};transition:background .18s,color .18s;}
       select option{background:${P.bg2};color:${P.text};}
-      *{transition:background-color .18s,border-color .18s,color .18s;}
+      button{font-family:'Jost',system-ui,sans-serif;}
+      h1,h2,h3,.serif{font-family:'Cormorant Garamond',Georgia,serif!important;}
+      *{transition:background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease;}
+      /* Pills de status */
+      .pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-family:'Jost',sans-serif;font-weight:400;font-size:11px;letter-spacing:.04em;white-space:nowrap;}
+      /* Cards hover */
+      .card-hover:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(92,31,50,.1);}
       @media(max-width:639px){
         .resp-grid-4{grid-template-columns:repeat(2,1fr)!important;}
         .resp-grid-2{grid-template-columns:1fr!important;}
@@ -12269,26 +12513,35 @@ function AppInner({ session, onLogout }) {
       }
     `),
     h("div",{style:{display:"flex",height:"100vh",overflow:"hidden",background:P.bg,position:"relative"}},
-      // Overlay escuro para fechar sidebar no mobile
       isMobile&&sidebarOpen&&h("div",{
         onClick:()=>setSidebarOpen(false),
         style:{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:199,backdropFilter:"blur(2px)"}
       }),
       sidebarContent,
       h("div",{style:{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}},
-        // Topbar
-        h("div",{style:{height:56,background:P.bg2,borderBottom:`1px solid ${P.border}`,display:"flex",alignItems:"center",padding:isMobile?"0 12px":"0 24px",gap:isMobile?10:14,flexShrink:0}},
-          // Botão hambúrguer (mobile) ou toggle (tablet)
+        // Topbar refinado
+        h("div",{style:{height:54,background:dark?"#1a0c0e":"#FDFAF7",borderBottom:`0.5px solid ${P.border}`,display:"flex",alignItems:"center",padding:isMobile?"0 14px":"0 24px",gap:isMobile?10:14,flexShrink:0}},
           (isMobile||isTablet)&&h("button",{
             onClick:()=>setSidebarOpen(o=>!o),
-            style:{background:"none",border:`1px solid ${P.border}`,borderRadius:7,color:P.text2,cursor:"pointer",padding:"6px 8px",display:"flex",flexDirection:"column",gap:4,alignItems:"center",justifyContent:"center",flexShrink:0}
+            style:{background:"none",border:`0.5px solid ${P.border}`,borderRadius:7,color:P.text3,cursor:"pointer",padding:"6px 9px",display:"flex",flexDirection:"column",gap:4,alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .15s"},
+            onMouseEnter:e=>{e.currentTarget.style.background=P.card;e.currentTarget.style.color=P.text;},
+            onMouseLeave:e=>{e.currentTarget.style.background="none";e.currentTarget.style.color=P.text3;}
           },
-            h("span",{style:{display:"block",width:16,height:1.5,background:P.text2,borderRadius:2}}),
-            h("span",{style:{display:"block",width:16,height:1.5,background:P.text2,borderRadius:2}}),
-            h("span",{style:{display:"block",width:16,height:1.5,background:P.text2,borderRadius:2}})
+            h("span",{style:{display:"block",width:15,height:1.5,background:"currentColor",borderRadius:2}}),
+            h("span",{style:{display:"block",width:15,height:1.5,background:"currentColor",borderRadius:2}}),
+            h("span",{style:{display:"block",width:15,height:1.5,background:"currentColor",borderRadius:2}})
           ),
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:isMobile?17:20,color:P.text,flexShrink:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:isMobile?120:260}},pageTitles[page]),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:300,fontSize:isMobile?17:19,color:P.text,flexShrink:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:isMobile?130:280,letterSpacing:".01em"}},pageTitles[page]),
+          h("div",{style:{flex:1}}),
           h(GlobalSearch,{patients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav}),
+          // Toggle dark/light mode
+          h("button",{
+            onClick:()=>setSettings(s=>({...s,darkMode:!s.darkMode})),
+            title:dark?"Modo claro":"Modo escuro",
+            style:{background:"none",border:`0.5px solid ${P.border}`,borderRadius:7,color:P.text3,cursor:"pointer",padding:"6px 8px",fontSize:15,lineHeight:1,transition:"all .15s",flexShrink:0},
+            onMouseEnter:e=>{e.currentTarget.style.background=P.card;e.currentTarget.style.color="#9D7761";},
+            onMouseLeave:e=>{e.currentTarget.style.background="none";e.currentTarget.style.color=P.text3;}
+          },dark?"☀":"🌙"),
           h(SyncIndicator,null)
         ),
         // Conteúdo principal
@@ -12297,6 +12550,7 @@ function AppInner({ session, onLogout }) {
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,onScheduleReturn:handleScheduleReturn,procedures:procedureNames,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses,products}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn}),
+            page==="pacientes_risco"&&h(PacientesEmRisco,{patients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="agenda"&&h(Agenda,{patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null)}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
@@ -12315,4 +12569,111 @@ function AppInner({ session, onLogout }) {
   );
 }
 
-export default App;
+// ─── PACIENTES EM RISCO ───────────────────────────────────────────────────────
+function PacientesEmRisco({patients,agenda,onSelectPatient,onNav}){
+  const h=createElement;
+  const today=new Date();
+  const todayStr=today.toISOString().slice(0,10);
+  const[filter,setFilter]=useState("todos");
+  const[sort,setSort]=useState("urgencia");
+  const dark=false;
+  const risco=useMemo(()=>{
+    return patients.map(p=>{
+      const sessions=(p.sessions||[]);
+      const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];
+      const lastDate=last?parseDMY(last.date):null;
+      const diasSemVisita=lastDate?daysBetween(lastDate,today):null;
+      const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;
+      const totalAppts=agenda.filter(a=>a.patientName===p.name).length;
+      const txCancel=totalAppts>0?cancelamentos/totalAppts:0;
+      const semProtocolo=sessions.length>0&&!sessions.some(s=>s.protocol||s.returnReminderDays);
+      const hasUpcoming=agenda.some(a=>a.patientName===p.name&&a.date>=todayStr&&a.status!=="Cancelado");
+      // Score de risco (maior = mais urgente)
+      let score=0;
+      if(diasSemVisita!=null){
+        if(diasSemVisita>180)score+=40;
+        else if(diasSemVisita>90)score+=25;
+        else if(diasSemVisita>60)score+=10;
+      }
+      if(cancelamentos>=3)score+=30;
+      else if(cancelamentos>=2)score+=15;
+      if(semProtocolo)score+=10;
+      if(hasUpcoming)score=Math.max(0,score-20);
+      // Motivos
+      const motivos=[];
+      if(diasSemVisita!=null&&diasSemVisita>60)motivos.push({label:`${diasSemVisita}d sem visita`,color:diasSemVisita>180?P.statusRed:diasSemVisita>90?P.statusAmber:P.text3});
+      if(cancelamentos>=2)motivos.push({label:`${cancelamentos} cancelamentos`,color:cancelamentos>=3?P.statusRed:P.statusAmber});
+      if(semProtocolo)motivos.push({label:"Sem protocolo",color:P.text3});
+      if(hasUpcoming)motivos.push({label:"Agendada",color:P.statusGreen});
+      const nivel=score>=40?"alto":score>=20?"medio":"baixo";
+      return{...p,_score:score,_nivel:nivel,_diasSemVisita:diasSemVisita,_cancelamentos:cancelamentos,_semProtocolo:semProtocolo,_hasUpcoming:hasUpcoming,_motivos:motivos,_lastProc:last?.procedure,_lastDate:last?.date};
+    })
+    .filter(p=>p._score>5)
+    .sort((a,b)=>sort==="urgencia"?b._score-a._score:sort==="dias"?(b._diasSemVisita||0)-(a._diasSemVisita||0):(b._cancelamentos-a._cancelamentos));
+  },[patients,agenda,sort]);
+  const filtered=filter==="alto"?risco.filter(p=>p._nivel==="alto"):filter==="medio"?risco.filter(p=>p._nivel==="medio"):risco;
+  const nivelCfg={alto:{color:P.statusRed,bg:dark?"rgba(160,48,48,.12)":"rgba(160,48,48,.08)",label:"Alto risco"},medio:{color:P.statusAmber,bg:dark?"rgba(154,110,16,.12)":"rgba(154,110,16,.08)",label:"Atenção"},baixo:{color:P.text3,bg:"transparent",label:"Monitorar"}};
+  return h("div",null,
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}},
+      h("div",null,
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:300,fontSize:26,color:P.text}},"Pacientes em Risco"),
+        h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,color:P.text3,marginTop:3}},`${risco.filter(p=>p._nivel==="alto").length} alto risco · ${risco.filter(p=>p._nivel==="medio").length} atenção`)
+      ),
+      h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+        [["todos","Todos"],["alto","Alto risco"],["medio","Atenção"]].map(([k,l])=>h("button",{key:k,onClick:()=>setFilter(k),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,padding:"5px 13px",borderRadius:20,border:`0.5px solid ${filter===k?"#5C1F32":P.border}`,background:filter===k?"#5C1F32":"transparent",color:filter===k?"#E1D2C6":P.text3,cursor:"pointer",transition:"all .15s"}},l)),
+        h("select",{value:sort,onChange:e=>setSort(e.target.value),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,padding:"5px 10px",borderRadius:9,border:`0.5px solid ${P.border}`,background:P.bg2,color:P.text,cursor:"pointer"}},
+          h("option",{value:"urgencia"},"Ordenar: Urgência"),
+          h("option",{value:"dias"},"Ordenar: Dias sem visita"),
+          h("option",{value:"cancelamentos"},"Ordenar: Cancelamentos")
+        )
+      )
+    ),
+    // Resumo cards
+    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}},
+      [{label:"Alto risco",value:risco.filter(p=>p._nivel==="alto").length,icon:"ti-user-off",color:P.statusRed,bg:dark?"rgba(160,48,48,.1)":"rgba(160,48,48,.07)"},
+       {label:"Atenção",value:risco.filter(p=>p._nivel==="medio").length,icon:"ti-clock-hour-4",color:P.statusAmber,bg:dark?"rgba(154,110,16,.1)":"rgba(154,110,16,.07)"},
+       {label:"Sem agendamento futuro",value:risco.filter(p=>!p._hasUpcoming).length,icon:"ti-calendar-off",color:P.text3,bg:P.bg3||P.bg2}
+      ].map((k,i)=>h("div",{key:i,style:{background:k.bg,border:`0.5px solid ${k.color}22`,borderRadius:12,padding:"14px 16px"}},
+        h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:6}},
+          h("i",{className:`ti ${k.icon}`,style:{fontSize:16,color:k.color}}),
+          h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:k.color}},k.label)
+        ),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:28,color:P.text}},k.value)
+      ))
+    ),
+    // Lista
+    filtered.length===0
+      ?h("div",{style:{textAlign:"center",padding:40,color:P.text3,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:13}},"Nenhuma paciente em risco nesta categoria 🌿")
+      :filtered.map(p=>{
+        const nc=nivelCfg[p._nivel];
+        const phone=(p.phone||"").replace(/\D/g,"");
+        const waMsg=encodeURIComponent(`Olá ${p.name.split(" ")[0]}! Tudo bem? Sentimos sua falta na clínica. Que tal agendarmos sua próxima sessão? 🌸`);
+        return h("div",{key:p.id,style:{background:P.card,border:`0.5px solid ${P.border}`,borderLeft:`3px solid ${nc.color}`,borderRadius:"0 11px 11px 0",padding:"13px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",transition:"box-shadow .18s"},
+          onMouseEnter:e=>e.currentTarget.style.boxShadow="0 2px 14px rgba(92,31,50,.08)",
+          onMouseLeave:e=>e.currentTarget.style.boxShadow="none"},
+          // Avatar
+          h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{cursor:"pointer",flexShrink:0}},
+            h(Avatar,{name:p.name,size:38,src:p.profilePhoto})
+          ),
+          // Info
+          h("div",{style:{flex:1,minWidth:160},onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{flex:1,minWidth:160,cursor:"pointer"}},
+            h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:3}},
+              h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:13,color:P.text}},p.name),
+              h("span",{style:{fontSize:9,padding:"2px 8px",borderRadius:20,background:nc.bg,color:nc.color,fontFamily:"'Jost',sans-serif",fontWeight:400,textTransform:"uppercase",letterSpacing:".05em"}},nc.label)
+            ),
+            h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+              p._motivos.map((m,mi)=>h("span",{key:mi,style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:m.color}},m.label+(mi<p._motivos.length-1?" ·":"")))
+            ),
+            p._lastProc&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:2}},`Último: ${p._lastProc}${p._lastDate?" · "+p._lastDate:""}`)
+          ),
+          // Ações
+          h("div",{style:{display:"flex",gap:7,flexShrink:0,alignItems:"center"}},
+            h("button",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.text3,background:"transparent",border:`0.5px solid ${P.border}`,borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>{e.currentTarget.style.color=P.text;e.currentTarget.style.borderColor=P.text3;},onMouseLeave:e=>{e.currentTarget.style.color=P.text3;e.currentTarget.style.borderColor=P.border;}},"Ver prontuário"),
+            h("button",{onClick:()=>{onSelectPatient(p);onNav("agenda");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#9D7761",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background="rgba(157,119,97,.18)",onMouseLeave:e=>e.currentTarget.style.background="rgba(157,119,97,.1)"},"Agendar"),
+            phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"inline-flex",alignItems:"center",gap:5,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.statusGreen,background:P.statusGreenBg,border:`0.5px solid ${P.statusGreen}44`,borderRadius:8,padding:"5px 11px",textDecoration:"none",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background=P.statusGreenBg.replace(".12",".2"),onMouseLeave:e=>e.currentTarget.style.background=P.statusGreenBg},
+              h("i",{className:"ti ti-brand-whatsapp",style:{fontSize:13}}),"WhatsApp")
+          )
+        );
+      })
+  );
+}
