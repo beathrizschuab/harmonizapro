@@ -4524,6 +4524,7 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
   const h=createElement;
   const[showEvo,setShowEvo]=useState(false);
   const[evoText,setEvoText]=useState("");
+  const[evoPhotoFiles,setEvoPhotoFiles]=useState([]);
   const[showCond,setShowCond]=useState(false);
   const[condText,setCondText]=useState("");
   const sevCfg=IC_SEVERITY_CFG[icSeverityOf(ic)]||IC_SEVERITY_CFG.Leve;
@@ -4531,9 +4532,17 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
   const evolutions=icEvolutionsOf(ic);
   const conducts=icConductsOf(ic);
   function addEvo(){
-    if(!evoText.trim())return;
-    updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,evolutions:[...(old.evolutions||[]),{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),text:evoText.trim()}]}));
-    setEvoText("");setShowEvo(false);
+    if(!evoText.trim()&&evoPhotoFiles.length===0)return;
+    const finish=(photos)=>{
+      updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,evolutions:[...(old.evolutions||[]),{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),text:evoText.trim(),photos}]}));
+      setEvoText("");setEvoPhotoFiles([]);setShowEvo(false);
+    };
+    if(evoPhotoFiles.length){
+      Promise.all(evoPhotoFiles.map(f=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,url:e.target.result});r.readAsDataURL(f);}))).then(finish);
+    } else finish([]);
+  }
+  function removeEvoPhoto(evoId,photoId){
+    updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,evolutions:(old.evolutions||[]).map(e=>e.id===evoId?{...e,photos:(e.photos||[]).filter(p=>p.id!==photoId)}:e)}));
   }
   function addCond(){
     if(!condText.trim())return;
@@ -4584,17 +4593,30 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
     // Histórico de evolução
     h("div",{style:{marginBottom:10,paddingTop:8,borderTop:`1px solid ${P.border}`}},
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
-        h("span",{style:{fontSize:9.5,color:P.accent,textTransform:"uppercase",letterSpacing:".1em"}},"Histórico de Evolução"),
+        h("span",{style:{fontSize:9.5,color:P.accent,textTransform:"uppercase",letterSpacing:".1em"}},"Histórico de Evolução",evolutions.length>0&&h("span",{style:{marginLeft:6,color:P.text3}},`(${evolutions.length})`)),
         h("button",{onClick:()=>setShowEvo(s=>!s),style:{fontSize:10.5,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"2px 8px",cursor:"pointer"}},showEvo?"✕":"＋ Evolução")
       ),
-      showEvo&&h("div",{style:{display:"flex",gap:6,marginBottom:8}},
-        h(TA,{value:evoText,onChange:setEvoText,placeholder:"Descreva a evolução do quadro...",rows:2}),
-        h(Btn,{onClick:addEvo,style:{flexShrink:0,alignSelf:"flex-end"}},"Salvar")
+      showEvo&&h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:10,background:P.bg3,borderRadius:8,padding:10}},
+        h(TA,{value:evoText,onChange:setEvoText,placeholder:"Descreva a evolução do quadro (melhora, piora, estável)...",rows:2}),
+        h("div",{style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
+          h("label",{style:{fontSize:10.5,color:P.accent,border:`1px solid ${P.border}`,borderRadius:6,padding:"4px 10px",cursor:"pointer"}},"📷 Anexar Fotos",
+            h("input",{type:"file",accept:"image/*",multiple:true,style:{display:"none"},onChange:e=>{setEvoPhotoFiles(f=>[...f,...[...e.target.files]]);e.target.value="";}})
+          ),
+          evoPhotoFiles.map((f,fi)=>h("span",{key:fi,style:{fontSize:10,color:P.text3,background:P.card,border:`1px solid ${P.border}`,borderRadius:12,padding:"2px 9px",display:"flex",alignItems:"center",gap:6}},
+            f.name.length>18?f.name.slice(0,16)+"…":f.name,
+            h("span",{onClick:()=>setEvoPhotoFiles(list=>list.filter((_,i)=>i!==fi)),style:{cursor:"pointer",color:P.red,fontWeight:600}},"✕")
+          ))
+        ),
+        h(Btn,{onClick:addEvo,style:{alignSelf:"flex-end"}},"Salvar Evolução")
       ),
       evolutions.length===0?h("div",{style:{fontSize:11.5,color:P.text3}},"Sem registros de evolução ainda."):
-      h("div",{style:{display:"flex",flexDirection:"column",gap:6}},evolutions.map((e,i)=>h("div",{key:e.id||i,style:{background:P.bg3,borderRadius:8,padding:"7px 10px"}},
-        h("div",{style:{fontSize:9.5,color:P.text3,marginBottom:2}},e.date),
-        h("div",{style:{fontSize:12.5,color:P.text2}},e.text)
+      h("div",{style:{display:"flex",flexDirection:"column",gap:7}},evolutions.slice().reverse().map((e,i)=>h("div",{key:e.id||i,style:{background:P.bg3,borderLeft:`2px solid ${P.accent}66`,borderRadius:"0 8px 8px 0",padding:"8px 10px"}},
+        h("div",{style:{fontSize:9.5,color:P.text3,marginBottom:e.text||(e.photos||[]).length>0?4:0}},e.date),
+        e.text&&h("div",{style:{fontSize:12.5,color:P.text2,lineHeight:1.5,marginBottom:(e.photos||[]).length>0?7:0}},e.text),
+        (e.photos||[]).length>0&&h("div",{style:{display:"flex",gap:7,flexWrap:"wrap"}},(e.photos||[]).map(ph=>h("div",{key:ph.id,style:{position:"relative"}},
+          h("img",{src:ph.url,alt:ph.name,onClick:()=>window.open(ph.url,"_blank"),style:{width:56,height:56,objectFit:"cover",borderRadius:7,border:`1px solid ${P.border}`,cursor:"pointer"}}),
+          h("button",{onClick:()=>removeEvoPhoto(e.id,ph.id),style:{position:"absolute",top:-6,right:-6,width:17,height:17,borderRadius:"50%",background:P.red,color:"#fff",border:"none",fontSize:9.5,cursor:"pointer",lineHeight:"17px"}},"✕")
+        )))
       )))
     ),
     // Histórico de condutas
@@ -4830,31 +4852,74 @@ function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,pr
 // ─── SKINCARE TAB COMPONENT ──────────────────────────────────────────────────
 function SkincareTab({patient,upd,skincareConfig}){
   const h=createElement;
-  const sk=patient.skincare||{produtos:[],recomendacoes:"",adesao:"boa"};
+  const sk=patient.skincare||{produtos:[],historico:[],recomendacoes:""};
   const [showSkForm,setShowSkForm]=useState(false);
   const [skForm,setSkForm]=useState({nome:"",frequencia:"Diário",periodo:"Manhã e Noite",obs:""});
-  const [recText,setRecText]=useState(sk.recomendacoes||"");
+  const [recText,setRecText]=useState("");
+  const [showDescontinuados,setShowDescontinuados]=useState(false);
+  const [showHistRec,setShowHistRec]=useState(false);
+  const [showHistFull,setShowHistFull]=useState(false);
   const FREQ=(skincareConfig&&skincareConfig.frequencias)||["Diário","Noturno","2x por semana","Semanal","Mensal","Conforme necessário"];
   const PERIODOS=["Manhã","Noite","Manhã e Noite","Conforme necessário"];
   const PRODS_SUGERIDOS=(skincareConfig&&skincareConfig.produtos)||["Vitamina C","Retinol","Ácido Glicólico","Ácido Hialurônico","Protetor Solar FPS 50+","Niacinamida","Peptídeos","Bakuchiol","AHA/BHA","Ceramidas","Água Micelar","Hidratante Facial"];
   const adesaoCor={ótima:P.green,boa:"#7aaed4",regular:P.yellow,baixa:P.red};
+  const produtosAtivos=(sk.produtos||[]).filter(x=>x.status!=="descontinuado");
+  const produtosDescontinuados=(sk.produtos||[]).filter(x=>x.status==="descontinuado");
+  // Histórico unificado (produtos + recomendações), mais recente primeiro. Compatível com dados antigos (recomendacoes em texto único, sem histórico).
+  const historico=(sk.historico&&sk.historico.length>0)?sk.historico.slice().reverse():(sk.recomendacoes&&sk.recomendacoes.trim()?[{id:"legacy",date:"—",type:"rec",text:sk.recomendacoes,legacy:true}]:[]);
+  const recomendacoesHist=historico.filter(e=>e.type==="rec");
+  const ultimaRec=recomendacoesHist[0]||null;
   function addProduto(){
     if(!skForm.nome)return;
-    const novo={id:Date.now(),nome:skForm.nome,frequencia:skForm.frequencia,periodo:skForm.periodo,obs:skForm.obs,adesao:"regular",addedAt:new Date().toLocaleDateString("pt-BR")};
-    upd(p=>({...p,skincare:{...(p.skincare||{}),produtos:[...(sk.produtos||[]),novo]}}));
+    const today=new Date().toLocaleDateString("pt-BR");
+    const novo={id:Date.now(),nome:skForm.nome,frequencia:skForm.frequencia,periodo:skForm.periodo,obs:skForm.obs,adesao:"regular",status:"ativo",addedAt:today,endedAt:null};
+    upd(p=>({...p,skincare:{...(p.skincare||{}),
+      produtos:[...(sk.produtos||[]),novo],
+      historico:[...(sk.historico||[]),{id:Date.now()+1,date:today,type:"produto_add",nome:skForm.nome,text:`Iniciado: ${skForm.nome} · ${skForm.frequencia} · ${skForm.periodo}`+(skForm.obs?" — "+skForm.obs:"")}]
+    }}));
     setSkForm({nome:"",frequencia:"Diário",periodo:"Manhã e Noite",obs:""});setShowSkForm(false);
   }
-  function removeProduto(id){upd(p=>({...p,skincare:{...(p.skincare||{}),produtos:(sk.produtos||[]).filter(x=>x.id!==id)}}));}
+  function discontinuarProduto(id){
+    const today=new Date().toLocaleDateString("pt-BR");
+    const prod=(sk.produtos||[]).find(x=>x.id===id);
+    if(!window.confirm(`Descontinuar "${prod?.nome}"? Ele sai da lista de produtos ativos e fica registrado no histórico.`))return;
+    upd(p=>({...p,skincare:{...(p.skincare||{}),
+      produtos:(sk.produtos||[]).map(x=>x.id===id?{...x,status:"descontinuado",endedAt:today}:x),
+      historico:[...(sk.historico||[]),{id:Date.now(),date:today,type:"produto_end",nome:prod?.nome,text:`Descontinuado: ${prod?.nome||""}`}]
+    }}));
+  }
+  function reativarProduto(id){
+    const today=new Date().toLocaleDateString("pt-BR");
+    const prod=(sk.produtos||[]).find(x=>x.id===id);
+    upd(p=>({...p,skincare:{...(p.skincare||{}),
+      produtos:(sk.produtos||[]).map(x=>x.id===id?{...x,status:"ativo",endedAt:null}:x),
+      historico:[...(sk.historico||[]),{id:Date.now(),date:today,type:"produto_add",nome:prod?.nome,text:`Reintroduzido: ${prod?.nome||""}`}]
+    }}));
+  }
+  function deleteProduto(id){
+    if(!window.confirm("Excluir este produto permanentemente? Use isso apenas para corrigir um cadastro errado — para uma paciente que parou de usar, prefira \"Descontinuar\" para manter o histórico."))return;
+    upd(p=>({...p,skincare:{...(p.skincare||{}),produtos:(sk.produtos||[]).filter(x=>x.id!==id)}}));
+  }
   function toggleAdesao(id){
     const opts=["ótima","boa","regular","baixa"];
     upd(p=>({...p,skincare:{...(p.skincare||{}),produtos:(sk.produtos||[]).map(x=>{if(x.id!==id)return x;const i=opts.indexOf(x.adesao||"regular");return{...x,adesao:opts[(i+1)%opts.length]};})}}));
   }
-  function saveRec(){upd(p=>({...p,skincare:{...(p.skincare||{}),recomendacoes:recText}}));}
+  function addRecomendacao(){
+    if(!recText.trim())return;
+    const today=new Date().toLocaleDateString("pt-BR");
+    upd(p=>({...p,skincare:{...(p.skincare||{}),historico:[...(sk.historico||[]),{id:Date.now(),date:today,type:"rec",text:recText.trim()}]}}));
+    setRecText("");
+  }
+  const histIcon={produto_add:"🧴",produto_end:"⏹",rec:"📝"};
+  const histColor={produto_add:P.green,produto_end:P.text3,rec:P.accent};
   return h("div",null,
-    h(SectionHeader,{title:"🧴 Skincare em Uso",sub:"Produtos domiciliares e adesão ao protocolo"}),
+    h(SectionHeader,{title:"🧴 Skincare em Uso",sub:"Produtos ativos, adesão e histórico datado de mudanças na rotina"}),
     h(Card,{style:{marginBottom:14}},
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Produtos em Uso"),
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}},
+        h("div",null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Produtos Ativos"),
+          produtosDescontinuados.length>0&&h("div",{style:{fontSize:11,color:P.text3,marginTop:2,cursor:"pointer"},onClick:()=>setShowDescontinuados(s=>!s)},(showDescontinuados?"▾ ":"▸ ")+`${produtosDescontinuados.length} produto(s) descontinuado(s) — ver histórico`)
+        ),
         h(Btn,{onClick:()=>setShowSkForm(v=>!v),style:{fontSize:12}},"＋ Adicionar Produto")
       ),
       showSkForm&&h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`,marginBottom:14}},
@@ -4883,25 +4948,69 @@ function SkincareTab({patient,upd,skincareConfig}){
           h(Btn,{onClick:addProduto,style:{fontSize:12}},"Adicionar")
         )
       ),
-      (sk.produtos||[]).length===0&&!showSkForm?h("div",{style:{textAlign:"center",padding:24,color:P.text3,fontSize:13}},"Nenhum produto cadastrado."):null,
+      produtosAtivos.length===0&&!showSkForm?h("div",{style:{textAlign:"center",padding:24,color:P.text3,fontSize:13}},"Nenhum produto ativo no momento."):null,
       h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-        (sk.produtos||[]).map(prod=>h("div",{key:prod.id,style:{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
+        produtosAtivos.map(prod=>h("div",{key:prod.id,style:{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`,flexWrap:"wrap"}},
           h("div",{style:{fontSize:22,flexShrink:0}},"🧴"),
-          h("div",{style:{flex:1}},
+          h("div",{style:{flex:1,minWidth:160}},
             h("div",{style:{fontSize:14,color:P.text,fontWeight:600}},prod.nome),
             h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},prod.frequencia+" · "+prod.periodo+(prod.obs?" · "+prod.obs:"")),
-            h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},"Adicionado em "+prod.addedAt)
+            h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},"Em uso desde "+prod.addedAt)
           ),
           h("button",{onClick:()=>toggleAdesao(prod.id),title:"Clique para alterar adesão",style:{padding:"4px 12px",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer",background:"transparent",border:`1px solid ${adesaoCor[prod.adesao||"regular"]}44`,color:adesaoCor[prod.adesao||"regular"]}},"Adesão: "+(prod.adesao||"regular")),
-          h("button",{onClick:()=>removeProduto(prod.id),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:16,padding:"4px"}},"×")
+          h("button",{onClick:()=>discontinuarProduto(prod.id),title:"Descontinuar (mantém no histórico)",style:{padding:"4px 10px",borderRadius:7,fontSize:11,cursor:"pointer",background:"transparent",border:`1px solid ${P.border}`,color:P.text3}},"⏹ Descontinuar"),
+          h("button",{onClick:()=>deleteProduto(prod.id),title:"Excluir permanentemente",style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:16,padding:"4px"}},"×")
         ))
+      ),
+      showDescontinuados&&produtosDescontinuados.length>0&&h("div",{style:{marginTop:14,paddingTop:14,borderTop:`1px solid ${P.border}`}},
+        h("div",{style:{fontSize:10.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},"Produtos Descontinuados"),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+          produtosDescontinuados.map(prod=>h("div",{key:prod.id,style:{display:"flex",alignItems:"center",gap:12,padding:"9px 14px",background:"transparent",borderRadius:10,border:`1px solid ${P.border}`,opacity:.7,flexWrap:"wrap"}},
+            h("div",{style:{fontSize:18,flexShrink:0}},"🧴"),
+            h("div",{style:{flex:1,minWidth:160}},
+              h("div",{style:{fontSize:13,color:P.text,textDecoration:"line-through"}},prod.nome),
+              h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},`Usado de ${prod.addedAt} até ${prod.endedAt||"—"}`)
+            ),
+            h("button",{onClick:()=>reativarProduto(prod.id),title:"Reintroduzir na rotina",style:{padding:"4px 10px",borderRadius:7,fontSize:11,cursor:"pointer",background:"transparent",border:`1px solid ${P.border}`,color:P.accent}},"↺ Reativar"),
+            h("button",{onClick:()=>deleteProduto(prod.id),title:"Excluir permanentemente",style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15,padding:"4px"}},"×")
+          ))
+        )
       )
     ),
-    h(Card,null,
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:12}},"📝 Recomendações & Observações"),
-      h("textarea",{value:recText,onChange:e=>setRecText(e.target.value),placeholder:"Ex: Introduzir retinol gradualmente, começar 2x/semana...",rows:5,style:{...IS,width:"100%",resize:"vertical"}}),
+    h(Card,{style:{marginBottom:14}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"📝 Recomendações"),
+        recomendacoesHist.length>1&&h("div",{style:{fontSize:11,color:P.text3,cursor:"pointer"},onClick:()=>setShowHistRec(s=>!s)},(showHistRec?"▾ ":"▸ ")+`Histórico (${recomendacoesHist.length})`)
+      ),
+      ultimaRec?h("div",{style:{background:`${P.accent}0d`,border:`1px solid ${P.accent}30`,borderRadius:10,padding:"12px 14px",marginBottom:14}},
+        h("div",{style:{fontSize:10,color:P.accent,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},(ultimaRec.legacy?"Registrada em: ":"Atualizada em: ")+ultimaRec.date),
+        h("div",{style:{fontSize:13.5,color:P.text2,lineHeight:1.6}},ultimaRec.text)
+      ):h("div",{style:{fontSize:13,color:P.text3,marginBottom:14}},"Nenhuma recomendação registrada ainda."),
+      showHistRec&&recomendacoesHist.length>1&&h("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:14}},
+        recomendacoesHist.slice(1).map((e,i)=>h("div",{key:e.id||i,style:{background:P.bg3,borderLeft:`2px solid ${P.border}`,borderRadius:"0 8px 8px 0",padding:"8px 10px"}},
+          h("div",{style:{fontSize:9.5,color:P.text3,marginBottom:3}},e.date),
+          h("div",{style:{fontSize:12.5,color:P.text2,lineHeight:1.5}},e.text)
+        ))
+      ),
+      h("div",{style:{fontSize:10.5,color:P.text3,marginBottom:6}},"Nova recomendação (fica datada e some registro anterior no histórico):"),
+      h("textarea",{value:recText,onChange:e=>setRecText(e.target.value),placeholder:"Ex: Introduzir retinol gradualmente, começar 2x/semana...",rows:3,style:{...IS,width:"100%",resize:"vertical"}}),
       h("div",{style:{display:"flex",justifyContent:"flex-end",marginTop:8}},
-        h(Btn,{onClick:saveRec,style:{fontSize:12}},"Salvar Recomendações")
+        h(Btn,{onClick:addRecomendacao,style:{fontSize:12}},"＋ Registrar Recomendação")
+      )
+    ),
+    historico.length>0&&h(Card,null,
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:showHistFull?12:0,cursor:"pointer"},onClick:()=>setShowHistFull(s=>!s)},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"📜 Histórico Completo da Rotina"),
+        h("div",{style:{fontSize:11,color:P.text3}},(showHistFull?"▾ ":"▸ ")+`${historico.length} registro(s)`)
+      ),
+      showHistFull&&h("div",{style:{display:"flex",flexDirection:"column",gap:7}},
+        historico.map((e,i)=>h("div",{key:e.id||i,style:{display:"flex",gap:10,alignItems:"flex-start",background:P.bg3,borderLeft:`2px solid ${histColor[e.type]||P.border}`,borderRadius:"0 8px 8px 0",padding:"8px 10px"}},
+          h("div",{style:{fontSize:15,flexShrink:0}},histIcon[e.type]||"•"),
+          h("div",{style:{flex:1}},
+            h("div",{style:{fontSize:9.5,color:P.text3,marginBottom:2}},e.date),
+            h("div",{style:{fontSize:12.5,color:P.text2,lineHeight:1.5}},e.text)
+          )
+        ))
       )
     )
   );
@@ -5016,6 +5125,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[editPat,setEditPat]=useState(false);
   const[showIntercorr,setShowIntercorr]=useState(null);
   const[showPlan,setShowPlan]=useState(false);
+  const[editingText,setEditingText]=useState(null); // {id,title,stepsText,notes} | null — edição de texto p/ qualquer tipo de plano
   const[planAnnotating,setPlanAnnotating]=useState(null); // null | "new" | planObj
   const[showNewPkg,setShowNewPkg]=useState(false);
   const[pkgForm,setPkgForm]=useState({name:"",procedure:"",total:4,price:"",notes:""});
@@ -5352,6 +5462,11 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     setMarkerPlanning(null);setMarkerPlanningForSession(null);
   }
 
+  function savePlanText(){
+    if(!editingText)return;
+    upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>pl.id===editingText.id?{...pl,title:editingText.title.trim()||pl.title,steps:editingText.stepsText.split("\n").filter(s=>s.trim()),notes:editingText.notes,updatedAt:new Date().toLocaleDateString("pt-BR")}:pl)}));
+    setEditingText(null);
+  }
   function togglePlanStep(planId,stepIdx){
     upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>{if(pl.id!==planId)return pl;const steps=[...pl.steps];steps[stepIdx]=steps[stepIdx].includes("✓")?steps[stepIdx].replace(" ✓",""):steps[stepIdx]+" ✓";return{...pl,steps};})}));
   }
@@ -5982,7 +6097,8 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
                       mp&&h("span",{style:{marginLeft:8,fontSize:10,color:P.accent,background:"rgba(157,119,97,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(157,119,97,.3)"}},"📍 "+mpDone+"/"+mpTotal+" marcadores realizados")
                     )
                   ),
-                  h("div",{style:{display:"flex",gap:5,flexShrink:0}},
+                  h("div",{style:{display:"flex",gap:5,flexShrink:0,flexWrap:"wrap"}},
+                    h("button",{onClick:()=>setEditingText({id:pl.id,title:pl.title||"",stepsText:(pl.steps||[]).join("\n"),notes:pl.notes||""}),title:"Editar título, etapas e observações",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},"✎ Texto"),
                     h("button",{onClick:()=>setPlanAnnotating(pl),title:pl.annotation?"Editar anotação visual":"Adicionar foto",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},pl.annotation?"✎ Foto":"📷 Foto"),
                     h("button",{onClick:()=>setMarkerPlanning(mp?pl:"new"),title:mp?"Editar marcadores":"Adicionar marcadores",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},mp?"✎ Marcadores":"📍 Marcadores"),
                     h("button",{onClick:()=>deletePlan(pl.id),style:{padding:"5px 8px",borderRadius:7,background:"transparent",border:"1px solid rgba(192,112,112,.2)",color:P.red,cursor:"pointer",fontSize:11}},"🗑")
@@ -5999,7 +6115,8 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
                     h("div",{style:{width:14,height:14,borderRadius:3,border:`2px solid ${step.includes("✓")?P.green:P.border}`,background:step.includes("✓")?P.green:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff"}},step.includes("✓")?"✓":""),
                     h("span",{style:{fontSize:12.5,color:step.includes("✓")?P.green:P.text,textDecoration:step.includes("✓")?"line-through":"none"}},step.replace(" ✓",""))
                   ))
-                )
+                ),
+                !pl.notes&&(pl.steps||[]).length===0&&h("div",{onClick:()=>setEditingText({id:pl.id,title:pl.title||"",stepsText:(pl.steps||[]).join("\n"),notes:pl.notes||""}),style:{fontSize:11.5,color:P.text3,cursor:"pointer",fontStyle:"italic"}},"＋ Adicionar etapas ou observações em texto")
               )
             )
           );
@@ -6510,6 +6627,17 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Btn,{variant:"ghost",onClick:()=>setShowPlan(false)},"Cancelar"),
         h("button",{onClick:()=>{if(!planForm.title.trim())return;setPlanAnnotating("new");},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:"transparent",border:`1px solid ${P.gold}`,color:P.gold}},"🖼 Salvar e Anotar Foto"),
         h(Btn,{onClick:addPlanejamento},"Criar Plano")
+      )
+    ),
+    editingText&&h(Modal,{open:true,onClose:()=>setEditingText(null),title:"✎ Editar Texto do Plano",width:480},
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
+        h(Field,{label:"Título do Plano"},h(Inp,{value:editingText.title,onChange:v=>setEditingText(p=>({...p,title:v})),placeholder:"Ex: Protocolo de Harmonização Completa"})),
+        h(Field,{label:"Etapas / Marcadores (uma por linha)"},h(TA,{value:editingText.stepsText,onChange:v=>setEditingText(p=>({...p,stepsText:v})),placeholder:"Toxina Botulínica\nPreenchimento Labial\nBioestimulador...",rows:4})),
+        h(Field,{label:"Observações"},h(TA,{value:editingText.notes,onChange:v=>setEditingText(p=>({...p,notes:v})),placeholder:"Metas, prazos, considerações...",rows:2}))
+      ),
+      h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},
+        h(Btn,{variant:"ghost",onClick:()=>setEditingText(null)},"Cancelar"),
+        h(Btn,{onClick:savePlanText},"Salvar Texto")
       )
     ),
     editPat&&h(Modal,{open:true,onClose:()=>setEditPat(false),title:"✎ Editar Dados da Paciente",width:620},
