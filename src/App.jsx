@@ -1735,6 +1735,14 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
   const[markers,setMarkers]=useState(initial?.markers||[]);
   const[shapes,setShapes]=useState(initial?.shapes||[]); // desenho livre: setas/círculos sobre a foto
   const[texts,setTexts]=useState(initial?.texts||[]); // anotações de texto sobre a foto
+  const[undoStack,setUndoStack]=useState([]); // pilha de desfazer: snapshots de {markers,shapes,texts}
+  function pushUndo(){setUndoStack(st=>[...st,{markers,shapes,texts}].slice(-20));}
+  function undo(){
+    if(!undoStack.length)return;
+    const prev=undoStack[undoStack.length-1];
+    setMarkers(prev.markers);setShapes(prev.shapes);setTexts(prev.texts);
+    setUndoStack(st=>st.slice(0,-1));
+  }
   const[textPos,setTextPos]=useState(null);
   const[textInput,setTextInput]=useState("");
   const[showTextBox,setShowTextBox]=useState(false);
@@ -1772,6 +1780,7 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
       plannedProduct:"",plannedQty:"",plannedUnit:"U",plannedLoteId:"",
       actualProduct:"",actualQty:"",actualUnit:"",actualLoteId:"",stockDebit:null,
       done:false,notes:""};
+    pushUndo();
     setMarkers(m=>[...m,novo]);
     setSelectedId(id);
   }
@@ -1781,12 +1790,14 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
     if(m?.stockDebit&&setProducts&&Number(m.stockDebit.qty)>0){
       estornarLote(setProducts,m.stockDebit.product,m.stockDebit.loteId,m.stockDebit.qty,"Estorno · marcador removido");
     }
+    pushUndo();
     setMarkers(m=>m.filter(mk=>mk.id!==id));if(selectedId===id)setSelectedId(null);
   }
-  function removeShape(id){setShapes(s=>s.filter(sh=>sh.id!==id));}
-  function removeText(id){setTexts(t=>t.filter(tx=>tx.id!==id));}
+  function removeShape(id){pushUndo();setShapes(s=>s.filter(sh=>sh.id!==id));}
+  function removeText(id){pushUndo();setTexts(t=>t.filter(tx=>tx.id!==id));}
   function placeText(){
     if(!textInput.trim()||!textPos)return;
+    pushUndo();
     setTexts(t=>[...t,{id:Date.now()+Math.random(),xPct:textPos.xPct,yPct:textPos.yPct,text:textInput.trim(),color:drawColor}]);
     setTextInput("");setTextPos(null);setShowTextBox(false);
   }
@@ -1848,6 +1859,7 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
     drawStartRef.current=null;
     setDrawingPreview(null);
     if(Math.abs(pos.xPct-start.xPct)<1&&Math.abs(pos.yPct-start.yPct)<1)return; // clique sem arrastar, ignora
+    pushUndo();
     setShapes(s=>[...s,{id:Date.now()+Math.random(),type:mode,x1:start.xPct,y1:start.yPct,x2:pos.xPct,y2:pos.yPct,color:drawColor}]);
   }
   function onWrapClick(e){
@@ -1953,6 +1965,8 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
           DRAW_COLORS.map(c=>h("button",{key:c,onClick:()=>setDrawColor(c),style:{width:18,height:18,borderRadius:"50%",background:c,border:`2px solid ${drawColor===c?P.accent3:"rgba(255,255,255,.2)"}`,cursor:"pointer",transform:drawColor===c?"scale(1.15)":"none"}}))
         )
       ),
+      h("div",{style:{width:1,height:22,background:P.border}}),
+      h("button",{onClick:undo,disabled:!undoStack.length,title:"Desfazer última ação",style:{padding:"6px 12px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:undoStack.length?P.text2:P.text3,cursor:undoStack.length?"pointer":"default",fontSize:12}},"↩ Desfazer"),
       h("div",{style:{fontSize:11,color:P.text3,marginLeft:"auto"}},
         mode==="marker"?"Clique na foto para adicionar um marcador numerado.":mode==="text"?"Clique na foto para posicionar um texto.":"Clique e arraste sobre a foto para desenhar.")
     ),
@@ -8240,7 +8254,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
           ))
         )
       ),
-      h(FinanceReceitaDespesaChart,{months,fmtCurr}),
+      h(FinanceReceitaDespesaChart,{months,fmtCurr,onSelectMonth:(mm,yy)=>{setSelMonth(mm);setSelYear(yy);}}),
       h("div",{style:{fontSize:10,color:P.text3,marginTop:4}},"Barras = valor do mês · Linhas = tendência · Passe o mouse para detalhes")
     ),
 
@@ -9610,7 +9624,7 @@ function SeasonChart({seasonality,maxAvgCount,peakMonths,lowMonths,now,fmtCurr})
   );
 }
 
-function FinanceReceitaDespesaChart({months,fmtCurr}){
+function FinanceReceitaDespesaChart({months,fmtCurr,onSelectMonth}){
   const h=createElement;
   const[hov,setHov]=useState(null);
   const W=600,H=220,padL=44,padR=16,padT=28,padB=32;
@@ -9636,13 +9650,14 @@ function FinanceReceitaDespesaChart({months,fmtCurr}){
       h("line",{x1:padL,y1:yOf(t),x2:W-padR,y2:yOf(t),stroke:P.border,strokeWidth:1,strokeDasharray:t===0?"none":"3,4"}),
       h("text",{x:padL-6,y:yOf(t)+4,textAnchor:"end",fontSize:10,fill:P.text3},fmtT(t))
     )),
-    labels.map((l,i)=>h("text",{key:"xl"+i,x:xOf(i),y:H-padB+14,textAnchor:"middle",fontSize:10,fill:hov===i?P.text:P.text3,fontWeight:hov===i?700:400},l)),
+    labels.map((l,i)=>h("text",{key:"xl"+i,x:xOf(i),y:H-padB+14,textAnchor:"middle",fontSize:10,fill:hov===i?P.text:P.text3,fontWeight:hov===i?700:400,style:{cursor:onSelectMonth?"pointer":"default"},onClick:()=>onSelectMonth&&onSelectMonth(months[i].mm,months[i].yy)},l)),
     SERIES.map((serie,si)=>{
       const offset=(si-SERIES.length/2+0.5)*barW*1.3;
       return months.map((m,i)=>h("rect",{
         key:"b"+si+i,x:xOf(i)+offset-barW/2,y:yOf(m[serie.k]),
         width:barW,height:Math.max(chartH-(yOf(m[serie.k])-padT),1),
-        fill:hov===i?serie.color:`${serie.color}99`,rx:2,
+        fill:hov===i?serie.color:`${serie.color}99`,rx:2,style:{cursor:onSelectMonth?"pointer":"default"},
+        onClick:()=>onSelectMonth&&onSelectMonth(m.mm,m.yy),
         onMouseEnter:()=>setHov(i),onMouseMove:()=>setHov(i)
       }));
     }),
