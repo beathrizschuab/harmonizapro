@@ -3378,9 +3378,78 @@ function _smoothPath(pts){
   }
   return d;
 }
+function ReceitaDespesaComboChart({months,fmtCurr,onSelectMonth}){
+  const h=createElement;
+  const[hov,setHov]=useState(null);
+  const W=600,H=240,padL=44,padR=16,padT=28,padB=32;
+  const data=months.map(m=>({...m,res:m.rec-m.exp}));
+  const labels=data.map(m=>m.m);
+  const allV=data.flatMap(d=>[d.rec,d.exp]);
+  const maxV=Math.max(...allV,1);
+  const rawStep=maxV/4;
+  const mag=Math.pow(10,Math.floor(Math.log10(Math.max(rawStep,1))));
+  const norm=rawStep/mag;
+  const niceNorm=norm<=1?1:norm<=2?2:norm<=2.5?2.5:norm<=5?5:10;
+  const step=niceNorm*mag;
+  const topV=step*4;
+  const ticks=Array.from({length:5},(_,i)=>step*i);
+  const fmtT=v=>v===0?"0":v>=1000?(v/1000).toFixed(v%1000===0?0:1)+"k":String(Math.round(v));
+  const chartW=W-padL-padR;
+  const chartH=H-padT-padB;
+  const xOf=i=>padL+(labels.length>1?(i/(labels.length-1))*chartW:chartW/2);
+  const yOf=v=>padT+chartH-(Math.max(v,0)/topV)*chartH;
+  const barW=Math.min(20,chartW/labels.length*0.24);
+  // linha de resultado (rec-exp) usa a mesma escala do eixo, podendo ficar abaixo de zero se houver prejuízo
+  const yOfSigned=v=>padT+chartH-(v/topV)*chartH;
+  const linePts=data.map((d,i)=>({x:xOf(i),y:yOfSigned(d.res),v:d.res}));
+  const linePath=_smoothPath(linePts);
+  return h("svg",{viewBox:`0 0 ${W} ${H}`,style:{width:"100%",height:230,display:"block",overflow:"visible"},onMouseLeave:()=>setHov(null)},
+    ticks.map((t,i)=>h(Fragment,{key:"t"+i},
+      h("line",{x1:padL,y1:yOf(t),x2:W-padR,y2:yOf(t),stroke:P.border,strokeWidth:1,strokeDasharray:t===0?"none":"3,4"}),
+      h("text",{x:padL-6,y:yOf(t)+4,textAnchor:"end",fontSize:9,fill:P.text3},fmtT(t))
+    )),
+    labels.map((l,i)=>h("text",{key:"xl"+i,x:xOf(i),y:H-padB+14,textAnchor:"middle",fontSize:9.5,fill:(hov===i||data[i].isSel)?P.text:P.text3,fontWeight:(hov===i||data[i].isSel)?700:400,cursor:"pointer",onClick:()=>onSelectMonth&&onSelectMonth(data[i])},l)),
+    // Barras Receita
+    data.map((d,i)=>h("rect",{key:"br"+i,
+      x:xOf(i)-barW*1.1,y:yOf(d.rec),
+      width:barW,height:Math.max(chartH-(yOf(d.rec)-padT),1),
+      fill:hov===i?P.rose:`${P.rose}bb`,rx:2,
+      onMouseEnter:()=>setHov(i),onMouseMove:()=>setHov(i),onClick:()=>onSelectMonth&&onSelectMonth(d),style:{cursor:"pointer"}
+    })),
+    // Barras Despesas
+    data.map((d,i)=>h("rect",{key:"be"+i,
+      x:xOf(i)+barW*0.1,y:yOf(d.exp),
+      width:barW,height:Math.max(chartH-(yOf(d.exp)-padT),1),
+      fill:hov===i?P.red:`${P.red}99`,rx:2,
+      onMouseEnter:()=>setHov(i),onMouseMove:()=>setHov(i),onClick:()=>onSelectMonth&&onSelectMonth(d),style:{cursor:"pointer"}
+    })),
+    // Linha de Resultado (receita − despesas)
+    linePts.length>1&&h(Fragment,null,
+      h("path",{d:linePath,fill:"none",stroke:P.gold,strokeWidth:2.4,strokeLinecap:"round",opacity:hov!=null?0.55:1}),
+      linePts.map((p,i)=>h("circle",{key:"pt"+i,cx:p.x,cy:p.y,r:hov===i?5:3.4,fill:hov===i?P.gold:P.bg2,stroke:P.gold,strokeWidth:2,
+        onMouseEnter:()=>setHov(i),onMouseMove:()=>setHov(i),style:{cursor:"pointer"}}))
+    ),
+    // Legenda
+    h("g",null,
+      h("rect",{x:padL,y:8,width:9,height:9,rx:2,fill:P.rose}),h("text",{x:padL+13,y:16,fontSize:9.5,fill:P.text3},"Receita"),
+      h("rect",{x:padL+66,y:8,width:9,height:9,rx:2,fill:P.red}),h("text",{x:padL+79,y:16,fontSize:9.5,fill:P.text3},"Despesas"),
+      h("line",{x1:padL+146,y1:12,x2:padL+160,y2:12,stroke:P.gold,strokeWidth:2.4}),h("text",{x:padL+164,y:16,fontSize:9.5,fill:P.text3},"Resultado")
+    ),
+    hov!=null&&h(Fragment,{key:"tt"},
+      h("line",{x1:xOf(hov),y1:padT,x2:xOf(hov),y2:H-padB,stroke:P.text3,strokeWidth:1,strokeDasharray:"3,3",opacity:.5}),
+      h("foreignObject",{x:Math.min(Math.max(xOf(hov)-75,0),W-155),y:padT,width:155,height:100},
+        h("div",{xmlns:"http://www.w3.org/1999/xhtml",style:{background:P.text,color:P.accent3,borderRadius:9,padding:"9px 12px",fontSize:11,boxShadow:"0 6px 20px rgba(0,0,0,.35)",lineHeight:1.6}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:6,opacity:.85}},labels[hov]),
+          h("div",{style:{display:"flex",justifyContent:"space-between",gap:14}},h("span",{style:{color:P.rose}},"Receita"),h("span",{style:{fontWeight:600}},fmtCurr(data[hov].rec))),
+          h("div",{style:{display:"flex",justifyContent:"space-between",gap:14}},h("span",{style:{color:"#e07070"}},"Despesas"),h("span",{style:{fontWeight:600}},fmtCurr(data[hov].exp))),
+          h("div",{style:{display:"flex",justifyContent:"space-between",gap:14,marginTop:2,paddingTop:4,borderTop:"1px solid rgba(255,255,255,.2)"}},h("span",{style:{color:P.gold}},"Resultado"),h("span",{style:{fontWeight:700}},fmtCurr(data[hov].res)))
+        )
+      )
+    )
+  );
+}
 function EvolucaoFinanceiraChart({data}){
   const h=createElement;
-  const[hoverI,setHoverI]=useState(null);
   const W=600,H=240,padX=14,padLeft=40,padTop=26,padBot=28;
   const rawMax=Math.max(...data.map(d=>d.value),1);
   // calcula um topo "redondo" para o eixo Y (ex: 20k, 40k, 60k...)
@@ -8266,16 +8335,9 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     ),
 
     h(Card,{style:{marginBottom:18}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Receita vs Despesas (últimos 5 meses)"),
-      h("div",{style:{display:"flex",alignItems:"flex-end",gap:12,height:90}},
-        months.map(m=>{const mx=Math.max(...months.map(x=>Math.max(x.rec,x.exp)),1);return h("div",{key:m.m+m.yy,onClick:()=>{setSelMonth(m.mm);setSelYear(m.yy);},style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5,cursor:"pointer"}},
-          h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",gap:3,width:"100%"}},
-            h("div",{style:{flex:1,height:`${(m.rec/mx)*100}%`,background:`linear-gradient(to top,${P.rose},${P.gold})`,borderRadius:"3px 3px 0 0",opacity:m.isSel?1:.55}}),
-            h("div",{style:{flex:1,height:`${(m.exp/mx)*100}%`,background:`linear-gradient(to top,${P.red},rgba(192,112,112,.3))`,borderRadius:"3px 3px 0 0",opacity:m.isSel?1:.55}})
-          ),
-          h("div",{style:{fontSize:9,color:m.isSel?P.accent:P.text3,textTransform:"uppercase",fontWeight:m.isSel?700:400}},m.m)
-        );})
-      )
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:6}},"Receita vs Despesas (últimos 5 meses)"),
+      h("div",{style:{fontSize:11,color:P.text3,marginBottom:6}},"Clique numa barra ou no mês para ver o detalhe daquele período."),
+      h(ReceitaDespesaComboChart,{months,fmtCurr,onSelectMonth:m=>{setSelMonth(m.mm);setSelYear(m.yy);}})
     ),
 
     // ── Abas agrupadas por categoria ─────────────────────────────────────────
