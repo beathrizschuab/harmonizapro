@@ -3483,7 +3483,7 @@ function EvolucaoFinanceiraChart({data}){
     ),
     hov&&hd&&h("div",{style:{
       position:"absolute",left:leftPct+"%",top:topPct+"%",transform:"translate(-50%, calc(-100% - 14px))",
-      background:P.text,color:P.accent3,borderRadius:10,padding:"10px 14px",fontSize:12,whiteSpace:"nowrap",
+      background:"#2d1518",color:"#F7F1EC",borderRadius:10,padding:"10px 14px",fontSize:12,whiteSpace:"nowrap",
       boxShadow:"0 8px 24px rgba(0,0,0,.35)",pointerEvents:"none",zIndex:20
     }},
       h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:14,marginBottom:6,opacity:.9}},hd.fullLabel||hd.label),
@@ -7335,7 +7335,7 @@ function FluxoCaixaProjetado({patients=[],incomes=[],expenses=[],recurringExpens
           const dow=new Date(hd.iso+"T12:00:00").getDay();
           return h("div",{style:{
             position:"absolute",left:leftPct+"%",top:y+"%",transform:"translate(-50%, calc(-100% - 14px))",
-            background:P.text,color:P.accent3,borderRadius:10,padding:"10px 14px",fontSize:12,whiteSpace:"nowrap",
+            background:"#2d1518",color:"#F7F1EC",borderRadius:10,padding:"10px 14px",fontSize:12,whiteSpace:"nowrap",
             boxShadow:"0 8px 24px rgba(0,0,0,.35)",pointerEvents:"none",zIndex:20
           }},
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:14,marginBottom:6,opacity:.9}},fmtDateFull(hd.iso)+" · "+dowLabels[dow]),
@@ -9306,7 +9306,7 @@ function FaturamentoMesAMes({yoyData,maxMonthVal,colors,fmtCurr}){
         const isHov=hov===m;
         return h("div",{key:m,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5,cursor:"pointer",position:"relative"},
           onMouseEnter:()=>setHov(m),onMouseLeave:()=>setHov(null)},
-          isHov&&h("div",{style:{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",background:P.text,color:P.accent3,borderRadius:8,padding:"8px 12px",fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",pointerEvents:"none",marginBottom:6}},
+          isHov&&h("div",{style:{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",background:"#2d1518",color:"#F7F1EC",borderRadius:8,padding:"8px 12px",fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",pointerEvents:"none",marginBottom:6}},
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:5,opacity:.85}},MONTH_NAMES[m]),
             yoyData.map((d,i)=>h("div",{key:d.year,style:{display:"flex",justifyContent:"space-between",gap:12,marginBottom:2}},
               h("span",{style:{color:colors[i%colors.length],fontWeight:600}},String(d.year)),
@@ -9344,7 +9344,7 @@ function FaturamentoPorDia({yoyData,axisDays,maxDayVal,colors,fmtCurr}){
         const anyVal=yoyData.some(d=>{const dd=d.byDay.find(x=>x.day===day);return dd&&dd.rec>0;});
         return h("div",{key:day,style:{flex:"1 0 auto",minWidth:9,display:"flex",flexDirection:"column",alignItems:"center",gap:3,cursor:"pointer",position:"relative"},
           onMouseEnter:()=>setHov(day),onMouseLeave:()=>setHov(null)},
-          isHov&&anyVal&&h("div",{style:{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",background:P.text,color:P.accent3,borderRadius:8,padding:"8px 12px",fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",pointerEvents:"none",marginBottom:6}},
+          isHov&&anyVal&&h("div",{style:{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",background:"#2d1518",color:"#F7F1EC",borderRadius:8,padding:"8px 12px",fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",pointerEvents:"none",marginBottom:6}},
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:5,opacity:.85}},"Dia "+day),
             yoyData.map((d,i)=>{
               const dd=d.byDay.find(x=>x.day===day);
@@ -9398,7 +9398,7 @@ function HeatmapHorarios({matrix,HM_HOURS,DOW_LABELS,hmMetric,maxCount,maxRevenu
           onMouseEnter:()=>setHov({dow,hr}),onMouseLeave:()=>setHov(null),
           style:{height:30,borderRadius:5,background:bg,border:isHov?`1px solid ${P.accent}`:(isBest?`1px solid ${P.accent3}`:"1px solid transparent"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9.5,color:intensity>0.45?P.bg:P.text3,fontWeight:intensity>0.45?700:400,cursor:val>0?"pointer":"default",position:"relative"}},
           val>0?(hmMetric==="receita"?(val>=1000?Math.round(val/1000)+"k":String(Math.round(val))):String(val)):"",
-          isHov&&val>0&&h("div",{style:{position:"absolute",bottom:"110%",left:"50%",transform:"translateX(-50%)",background:P.text,color:P.accent3,borderRadius:8,padding:"8px 11px",fontSize:11,whiteSpace:"nowrap",zIndex:40,boxShadow:"0 6px 20px rgba(0,0,0,.35)",pointerEvents:"none"}},
+          isHov&&val>0&&h("div",{style:{position:"absolute",bottom:"110%",left:"50%",transform:"translateX(-50%)",background:"#2d1518",color:"#F7F1EC",borderRadius:8,padding:"8px 11px",fontSize:11,whiteSpace:"nowrap",zIndex:40,boxShadow:"0 6px 20px rgba(0,0,0,.35)",pointerEvents:"none"}},
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:5,opacity:.85}},label+" · "+hr+"h"),
             h("div",{style:{display:"flex",justifyContent:"space-between",gap:12,marginBottom:2}},
               h("span",{style:{opacity:.7}},"Atendimentos"),h("span",{style:{fontWeight:600}},cell.count)
@@ -9428,7 +9428,7 @@ function NovasPacientesChart({newPerMonth,maxNovas}){
       const isHov=hov===i;
       return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer",position:"relative"},
         onMouseEnter:()=>setHov(i),onMouseLeave:()=>setHov(null)},
-        isHov&&m.novas>0&&h("div",{style:{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",background:P.text,color:P.accent3,borderRadius:8,padding:"7px 11px",fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",pointerEvents:"none",marginBottom:6}},
+        isHov&&m.novas>0&&h("div",{style:{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",background:"#2d1518",color:"#F7F1EC",borderRadius:8,padding:"7px 11px",fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",pointerEvents:"none",marginBottom:6}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:3,opacity:.85}},m.label),
           h("div",{style:{display:"flex",justifyContent:"space-between",gap:10}},
             h("span",{style:{opacity:.7}},"Novas pacientes"),h("span",{style:{color:P.rose,fontWeight:700}},String(m.novas))
@@ -9458,7 +9458,7 @@ function BarChart6m({monthlyData,maxRec,fmtCurr}){
           onMouseEnter:()=>setHov(i),onMouseLeave:()=>setHov(null)},
           isHov&&m.rec>0&&h("div",{style:{
             position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",
-            background:P.text,color:P.accent3,borderRadius:8,padding:"8px 12px",
+            background:"#2d1518",color:"#F7F1EC",borderRadius:8,padding:"8px 12px",
             fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",
             pointerEvents:"none",marginBottom:6
           }},
@@ -9496,7 +9496,7 @@ function SeasonChart({seasonality,maxAvgCount,peakMonths,lowMonths,now,fmtCurr})
         onMouseEnter:()=>setHov(i),onMouseLeave:()=>setHov(null)},
         isHov&&s.totalCount>0&&h("div",{style:{
           position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",
-          background:P.text,color:P.accent3,borderRadius:8,padding:"9px 12px",
+          background:"#2d1518",color:"#F7F1EC",borderRadius:8,padding:"9px 12px",
           fontSize:11,whiteSpace:"nowrap",zIndex:30,boxShadow:"0 6px 20px rgba(0,0,0,.3)",
           pointerEvents:"none",marginBottom:6
         }},
@@ -9580,7 +9580,7 @@ function UnidadesComboChart({unitData,last6,parseDMY2,fmtCurr,uColors}){
     hov!=null&&h(Fragment,{key:"tt"},
       h("line",{x1:xOf(hov),y1:padT,x2:xOf(hov),y2:H-padB,stroke:P.text3,strokeWidth:1,strokeDasharray:"3,3",opacity:.5}),
       h("foreignObject",{x:Math.min(xOf(hov)-70,W-160),y:padT,width:150,height:100+unitData.length*28},
-        h("div",{xmlns:"http://www.w3.org/1999/xhtml",style:{background:P.text,color:P.accent3,borderRadius:9,padding:"9px 12px",fontSize:11,boxShadow:"0 6px 20px rgba(0,0,0,.35)",lineHeight:1.6}},
+        h("div",{xmlns:"http://www.w3.org/1999/xhtml",style:{background:"#2d1518",color:"#F7F1EC",borderRadius:9,padding:"9px 12px",fontSize:11,boxShadow:"0 6px 20px rgba(0,0,0,.35)",lineHeight:1.6}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:6,opacity:.85}},labels[hov]),
           unitData.map((u,ui)=>{
             const col=uColors[ui%uColors.length];
