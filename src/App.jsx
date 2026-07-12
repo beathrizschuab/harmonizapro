@@ -12324,7 +12324,8 @@ function AppInner({ session, onLogout }) {
   const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
   const h=createElement;
   const todayStr=new Date().toISOString().slice(0,10);
-  const todayApptCount=agenda.filter(a=>a.date===todayStr).length;
+  const todayAppts=agenda.filter(a=>a.date===todayStr);
+  const todayApptCount=todayAppts.length;
   const criticalStock=products.filter(p=>p.status==="critical").length;
 
   // ── Responsive state ──────────────────────────────────────────────────────
