@@ -5016,7 +5016,6 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[editPat,setEditPat]=useState(false);
   const[showIntercorr,setShowIntercorr]=useState(null);
   const[showPlan,setShowPlan]=useState(false);
-  const[editingText,setEditingText]=useState(null); // {id,title,stepsText,notes} | null — edição de texto p/ qualquer tipo de plano
   const[planAnnotating,setPlanAnnotating]=useState(null); // null | "new" | planObj
   const[showNewPkg,setShowNewPkg]=useState(false);
   const[pkgForm,setPkgForm]=useState({name:"",procedure:"",total:4,price:"",notes:""});
@@ -5353,11 +5352,6 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     setMarkerPlanning(null);setMarkerPlanningForSession(null);
   }
 
-  function savePlanText(){
-    if(!editingText)return;
-    upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>pl.id===editingText.id?{...pl,title:editingText.title.trim()||pl.title,steps:editingText.stepsText.split("\n").filter(s=>s.trim()),notes:editingText.notes,updatedAt:new Date().toLocaleDateString("pt-BR")}:pl)}));
-    setEditingText(null);
-  }
   function togglePlanStep(planId,stepIdx){
     upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>{if(pl.id!==planId)return pl;const steps=[...pl.steps];steps[stepIdx]=steps[stepIdx].includes("✓")?steps[stepIdx].replace(" ✓",""):steps[stepIdx]+" ✓";return{...pl,steps};})}));
   }
@@ -5988,8 +5982,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
                       mp&&h("span",{style:{marginLeft:8,fontSize:10,color:P.accent,background:"rgba(157,119,97,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(157,119,97,.3)"}},"📍 "+mpDone+"/"+mpTotal+" marcadores realizados")
                     )
                   ),
-                  h("div",{style:{display:"flex",gap:5,flexShrink:0,flexWrap:"wrap"}},
-                    h("button",{onClick:()=>setEditingText({id:pl.id,title:pl.title||"",stepsText:(pl.steps||[]).join("\n"),notes:pl.notes||""}),title:"Editar título, etapas e observações",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},"✎ Texto"),
+                  h("div",{style:{display:"flex",gap:5,flexShrink:0}},
                     h("button",{onClick:()=>setPlanAnnotating(pl),title:pl.annotation?"Editar anotação visual":"Adicionar foto",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},pl.annotation?"✎ Foto":"📷 Foto"),
                     h("button",{onClick:()=>setMarkerPlanning(mp?pl:"new"),title:mp?"Editar marcadores":"Adicionar marcadores",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},mp?"✎ Marcadores":"📍 Marcadores"),
                     h("button",{onClick:()=>deletePlan(pl.id),style:{padding:"5px 8px",borderRadius:7,background:"transparent",border:"1px solid rgba(192,112,112,.2)",color:P.red,cursor:"pointer",fontSize:11}},"🗑")
@@ -6006,8 +5999,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
                     h("div",{style:{width:14,height:14,borderRadius:3,border:`2px solid ${step.includes("✓")?P.green:P.border}`,background:step.includes("✓")?P.green:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff"}},step.includes("✓")?"✓":""),
                     h("span",{style:{fontSize:12.5,color:step.includes("✓")?P.green:P.text,textDecoration:step.includes("✓")?"line-through":"none"}},step.replace(" ✓",""))
                   ))
-                ),
-                !pl.notes&&(pl.steps||[]).length===0&&h("div",{onClick:()=>setEditingText({id:pl.id,title:pl.title||"",stepsText:(pl.steps||[]).join("\n"),notes:pl.notes||""}),style:{fontSize:11.5,color:P.text3,cursor:"pointer",fontStyle:"italic"}},"＋ Adicionar etapas ou observações em texto")
+                )
               )
             )
           );
@@ -6518,17 +6510,6 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Btn,{variant:"ghost",onClick:()=>setShowPlan(false)},"Cancelar"),
         h("button",{onClick:()=>{if(!planForm.title.trim())return;setPlanAnnotating("new");},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:"transparent",border:`1px solid ${P.gold}`,color:P.gold}},"🖼 Salvar e Anotar Foto"),
         h(Btn,{onClick:addPlanejamento},"Criar Plano")
-      )
-    ),
-    editingText&&h(Modal,{open:true,onClose:()=>setEditingText(null),title:"✎ Editar Texto do Plano",width:480},
-      h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
-        h(Field,{label:"Título do Plano"},h(Inp,{value:editingText.title,onChange:v=>setEditingText(p=>({...p,title:v})),placeholder:"Ex: Protocolo de Harmonização Completa"})),
-        h(Field,{label:"Etapas / Marcadores (uma por linha)"},h(TA,{value:editingText.stepsText,onChange:v=>setEditingText(p=>({...p,stepsText:v})),placeholder:"Toxina Botulínica\nPreenchimento Labial\nBioestimulador...",rows:4})),
-        h(Field,{label:"Observações"},h(TA,{value:editingText.notes,onChange:v=>setEditingText(p=>({...p,notes:v})),placeholder:"Metas, prazos, considerações...",rows:2}))
-      ),
-      h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},
-        h(Btn,{variant:"ghost",onClick:()=>setEditingText(null)},"Cancelar"),
-        h(Btn,{onClick:savePlanText},"Salvar Texto")
       )
     ),
     editPat&&h(Modal,{open:true,onClose:()=>setEditPat(false),title:"✎ Editar Dados da Paciente",width:620},
