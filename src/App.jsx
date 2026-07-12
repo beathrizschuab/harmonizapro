@@ -125,6 +125,8 @@ const CANAIS_AQUISICAO=[
 ];
 // Sub-canais de campanha paga (usado quando canal inclui anúncio pago)
 const CAMPAIGN_CHANNELS=["Instagram","TikTok","Facebook/Meta Ads","Google Ads","Site","WhatsApp","Indicação Direta (boca a boca)","Influencer/Parceria","Evento","Outro"];
+// Paleta única de cores para as 3 ferramentas de anotação sobre foto (Plano com Marcadores, Plano com Foto, Anotação de Foto de Sessão)
+const ANNOTATION_COLORS=["#E1594A","#F5A623","#F8E71C","#7ED321","#4A90E2","#B07FE8","#ffffff","#111111"];
 // Gera estilo de card com fundo colorido translúcido + borda na mesma cor
 const kpiCardStyle=color=>({textAlign:"center",background:`${color}1A`,border:`1px solid ${color}40`});
 const PAY_METHODS=["Pix","Cartão Crédito","Cartão Débito","Dinheiro","Transferência","Pendente"];
@@ -1743,7 +1745,7 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
   const drawStartRef=useRef(null);
   const[drawingPreview,setDrawingPreview]=useState(null);
   const imgWrapRef=useRef();
-  const DRAW_COLORS=["#E1594A","#F5A623","#4A90E2","#7ED321","#ffffff"];
+  const DRAW_COLORS=ANNOTATION_COLORS;
 
   function handleFileUpload(file){
     const r=new FileReader();
@@ -2324,7 +2326,7 @@ function PlanAnnotator({initial,onSave,onClose}){
     {k:"highlight",icon:"▬",label:"Destacar área"},
     {k:"text",icon:"T",label:"Texto"},
   ];
-  const COLORS=["#E1594A","#F5A623","#F8E71C","#7ED321","#4A90E2","#B07FE8","#ffffff","#111111"];
+  const COLORS=ANNOTATION_COLORS;
   const SIZES=[{v:2,l:"S"},{v:4,l:"M"},{v:8,l:"G"}];
 
   return h("div",{style:{position:"fixed",inset:0,background:"rgba(8,4,6,.97)",zIndex:3000,display:"flex",flexDirection:"column",alignItems:"center",padding:"14px 16px",overflow:"auto",gap:10}},
@@ -2580,7 +2582,7 @@ function PhotoAnnotator({photo,onSave,onClose}){
     {k:"text",icon:"T",label:"Texto"},
     {k:"eraser",icon:"⌫",label:"Borracha"},
   ];
-  const COLORS=["#E1594A","#F5A623","#F8E71C","#7ED321","#4A90E2","#9B59B6","#ffffff","#000000"];
+  const COLORS=ANNOTATION_COLORS;
   const SIZES=[{v:2,l:"Fino"},{v:4,l:"Médio"},{v:8,l:"Grosso"}];
 
   return h("div",{onClick:e=>e.target===e.currentTarget&&onClose(),style:{position:"fixed",inset:0,background:"rgba(8,4,6,.97)",zIndex:3000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",padding:"16px",overflow:"auto"}},
@@ -11903,6 +11905,16 @@ function IntercorrenciasGlobal({patients,setPatients,onSelectPatient,onNav,proce
   const[fSev,setFSev]=useState("Todas");
   const[fStatus,setFStatus]=useState("Todos");
   const all=patients.flatMap(p=>(p.intercorrencias||[]).map(ic=>({...ic,patient:p})));
+  // ── Alerta de reincidência: 3+ intercorrências graves/emergenciais com o mesmo produto ou região nos últimos 6 meses ──
+  const recentCutoff=new Date(Date.now()-180*864e5);
+  const gravesRecentes=all.filter(ic=>["Grave","Emergencial"].includes(icSeverityOf(ic))&&(()=>{const d=parseAnyDate(ic.date);return d&&d>=recentCutoff;})());
+  function groupCount(key){
+    const map={};
+    gravesRecentes.forEach(ic=>{const k=ic[key];if(!k)return;map[k]=(map[k]||0)+1;});
+    return Object.entries(map).filter(([,n])=>n>=3).sort((a,b)=>b[1]-a[1]);
+  }
+  const padroesProduto=groupCount("product");
+  const padroesRegiao=groupCount("region");
   const procOptions=["Todos",...Array.from(new Set(all.map(ic=>ic.procedure).filter(Boolean)))];
   const prodOptions=["Todos",...Array.from(new Set(all.map(ic=>ic.product).filter(Boolean)))];
   const filtered=all.filter(ic=>
@@ -11921,6 +11933,17 @@ function IntercorrenciasGlobal({patients,setPatients,onSelectPatient,onNav,proce
   const selStyle={padding:"8px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontSize:12.5,fontFamily:"'Jost',system-ui,sans-serif",cursor:"pointer"};
   return h("div",null,
     h(SectionHeader,{title:"Intercorrências",sub:"Painel clínico de intercorrências da clínica"}),
+    (padroesProduto.length>0||padroesRegiao.length>0)&&h(Card,{style:{marginBottom:18,border:`1px solid ${P.statusRed}55`,background:"rgba(160,48,48,.06)"}},
+      h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:10}},
+        h("span",{style:{fontSize:18}},"⚠️"),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.statusRed}},"Padrão de reincidência nos últimos 6 meses")
+      ),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+        padroesProduto.map(([prod,n])=>h("div",{key:"p-"+prod,style:{fontSize:12.5,color:P.text2}},`💉 ${n}× intercorrência grave/emergencial com "${prod}"`)),
+        padroesRegiao.map(([reg,n])=>h("div",{key:"r-"+reg,style:{fontSize:12.5,color:P.text2}},`📍 ${n}× intercorrência grave/emergencial na região "${reg}"`))
+      ),
+      h("div",{style:{fontSize:11,color:P.text3,marginTop:8}},"Pode indicar lote com problema, técnica a revisar, ou padrão de sensibilidade — vale investigar.")
+    ),
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:18}},
       [{l:"Total Registradas",v:stats.total,c:P.statusPurple},{l:"Em Acompanhamento",v:stats.acomp,c:P.statusBlue},{l:"Resolvidas",v:stats.resolv,c:P.statusGreen},{l:"Graves / Emergenciais",v:stats.graves,c:P.statusRed}].map(s=>
         h(Card,{key:s.l,style:kpiCardStyle(s.c)},
