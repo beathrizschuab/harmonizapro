@@ -3445,8 +3445,8 @@ function MetaDespesasPorCategoria({expenses=[],selMonth,selYear,goals,setGoals,c
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},`${MONTH_NAMES[selMonth]} ${selYear}`)
       ),
       h("div",{style:{fontSize:12,color:P.text3,textAlign:"right"}},
-        h("div",null,"Previsto: "+h("span",{style:{color:P.text,fontWeight:600}},fmtCurr(totalPrevisto))),
-        h("div",{style:{marginTop:2}},"Realizado: "+h("span",{style:{color:totalRealizado>totalPrevisto&&totalPrevisto>0?P.red:P.text,fontWeight:600}},fmtCurr(totalRealizado)))
+        h("div",null,"Previsto: ",h("span",{style:{color:P.text,fontWeight:600}},fmtCurr(totalPrevisto))),
+        h("div",{style:{marginTop:2}},"Realizado: ",h("span",{style:{color:totalRealizado>totalPrevisto&&totalPrevisto>0?P.red:P.text,fontWeight:600}},fmtCurr(totalRealizado)))
       )
     ),
     h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},"Defina o previsto por categoria e acompanhe o gasto real do mês."),
