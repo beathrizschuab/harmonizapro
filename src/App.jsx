@@ -3378,78 +3378,9 @@ function _smoothPath(pts){
   }
   return d;
 }
-function ReceitaDespesaComboChart({months,fmtCurr,onSelectMonth}){
-  const h=createElement;
-  const[hov,setHov]=useState(null);
-  const W=600,H=240,padL=44,padR=16,padT=28,padB=32;
-  const data=months.map(m=>({...m,res:m.rec-m.exp}));
-  const labels=data.map(m=>m.m);
-  const allV=data.flatMap(d=>[d.rec,d.exp]);
-  const maxV=Math.max(...allV,1);
-  const rawStep=maxV/4;
-  const mag=Math.pow(10,Math.floor(Math.log10(Math.max(rawStep,1))));
-  const norm=rawStep/mag;
-  const niceNorm=norm<=1?1:norm<=2?2:norm<=2.5?2.5:norm<=5?5:10;
-  const step=niceNorm*mag;
-  const topV=step*4;
-  const ticks=Array.from({length:5},(_,i)=>step*i);
-  const fmtT=v=>v===0?"0":v>=1000?(v/1000).toFixed(v%1000===0?0:1)+"k":String(Math.round(v));
-  const chartW=W-padL-padR;
-  const chartH=H-padT-padB;
-  const xOf=i=>padL+(labels.length>1?(i/(labels.length-1))*chartW:chartW/2);
-  const yOf=v=>padT+chartH-(Math.max(v,0)/topV)*chartH;
-  const barW=Math.min(20,chartW/labels.length*0.24);
-  // linha de resultado (rec-exp) usa a mesma escala do eixo, podendo ficar abaixo de zero se houver prejuízo
-  const yOfSigned=v=>padT+chartH-(v/topV)*chartH;
-  const linePts=data.map((d,i)=>({x:xOf(i),y:yOfSigned(d.res),v:d.res}));
-  const linePath=_smoothPath(linePts);
-  return h("svg",{viewBox:`0 0 ${W} ${H}`,style:{width:"100%",height:230,display:"block",overflow:"visible"},onMouseLeave:()=>setHov(null)},
-    ticks.map((t,i)=>h(Fragment,{key:"t"+i},
-      h("line",{x1:padL,y1:yOf(t),x2:W-padR,y2:yOf(t),stroke:P.border,strokeWidth:1,strokeDasharray:t===0?"none":"3,4"}),
-      h("text",{x:padL-6,y:yOf(t)+4,textAnchor:"end",fontSize:9,fill:P.text3},fmtT(t))
-    )),
-    labels.map((l,i)=>h("text",{key:"xl"+i,x:xOf(i),y:H-padB+14,textAnchor:"middle",fontSize:9.5,fill:(hov===i||data[i].isSel)?P.text:P.text3,fontWeight:(hov===i||data[i].isSel)?700:400,cursor:"pointer",onClick:()=>onSelectMonth&&onSelectMonth(data[i])},l)),
-    // Barras Receita
-    data.map((d,i)=>h("rect",{key:"br"+i,
-      x:xOf(i)-barW*1.1,y:yOf(d.rec),
-      width:barW,height:Math.max(chartH-(yOf(d.rec)-padT),1),
-      fill:hov===i?P.rose:`${P.rose}bb`,rx:2,
-      onMouseEnter:()=>setHov(i),onMouseMove:()=>setHov(i),onClick:()=>onSelectMonth&&onSelectMonth(d),style:{cursor:"pointer"}
-    })),
-    // Barras Despesas
-    data.map((d,i)=>h("rect",{key:"be"+i,
-      x:xOf(i)+barW*0.1,y:yOf(d.exp),
-      width:barW,height:Math.max(chartH-(yOf(d.exp)-padT),1),
-      fill:hov===i?P.red:`${P.red}99`,rx:2,
-      onMouseEnter:()=>setHov(i),onMouseMove:()=>setHov(i),onClick:()=>onSelectMonth&&onSelectMonth(d),style:{cursor:"pointer"}
-    })),
-    // Linha de Resultado (receita − despesas)
-    linePts.length>1&&h(Fragment,null,
-      h("path",{d:linePath,fill:"none",stroke:P.gold,strokeWidth:2.4,strokeLinecap:"round",opacity:hov!=null?0.55:1}),
-      linePts.map((p,i)=>h("circle",{key:"pt"+i,cx:p.x,cy:p.y,r:hov===i?5:3.4,fill:hov===i?P.gold:P.bg2,stroke:P.gold,strokeWidth:2,
-        onMouseEnter:()=>setHov(i),onMouseMove:()=>setHov(i),style:{cursor:"pointer"}}))
-    ),
-    // Legenda
-    h("g",null,
-      h("rect",{x:padL,y:8,width:9,height:9,rx:2,fill:P.rose}),h("text",{x:padL+13,y:16,fontSize:9.5,fill:P.text3},"Receita"),
-      h("rect",{x:padL+66,y:8,width:9,height:9,rx:2,fill:P.red}),h("text",{x:padL+79,y:16,fontSize:9.5,fill:P.text3},"Despesas"),
-      h("line",{x1:padL+146,y1:12,x2:padL+160,y2:12,stroke:P.gold,strokeWidth:2.4}),h("text",{x:padL+164,y:16,fontSize:9.5,fill:P.text3},"Resultado")
-    ),
-    hov!=null&&h(Fragment,{key:"tt"},
-      h("line",{x1:xOf(hov),y1:padT,x2:xOf(hov),y2:H-padB,stroke:P.text3,strokeWidth:1,strokeDasharray:"3,3",opacity:.5}),
-      h("foreignObject",{x:Math.min(Math.max(xOf(hov)-75,0),W-155),y:padT,width:155,height:100},
-        h("div",{xmlns:"http://www.w3.org/1999/xhtml",style:{background:P.text,color:P.accent3,borderRadius:9,padding:"9px 12px",fontSize:11,boxShadow:"0 6px 20px rgba(0,0,0,.35)",lineHeight:1.6}},
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:13,marginBottom:6,opacity:.85}},labels[hov]),
-          h("div",{style:{display:"flex",justifyContent:"space-between",gap:14}},h("span",{style:{color:P.rose}},"Receita"),h("span",{style:{fontWeight:600}},fmtCurr(data[hov].rec))),
-          h("div",{style:{display:"flex",justifyContent:"space-between",gap:14}},h("span",{style:{color:"#e07070"}},"Despesas"),h("span",{style:{fontWeight:600}},fmtCurr(data[hov].exp))),
-          h("div",{style:{display:"flex",justifyContent:"space-between",gap:14,marginTop:2,paddingTop:4,borderTop:"1px solid rgba(255,255,255,.2)"}},h("span",{style:{color:P.gold}},"Resultado"),h("span",{style:{fontWeight:700}},fmtCurr(data[hov].res)))
-        )
-      )
-    )
-  );
-}
 function EvolucaoFinanceiraChart({data}){
   const h=createElement;
+  const[hoverI,setHoverI]=useState(null);
   const W=600,H=240,padX=14,padLeft=40,padTop=26,padBot=28;
   const rawMax=Math.max(...data.map(d=>d.value),1);
   // calcula um topo "redondo" para o eixo Y (ex: 20k, 40k, 60k...)
@@ -4593,7 +4524,6 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
   const h=createElement;
   const[showEvo,setShowEvo]=useState(false);
   const[evoText,setEvoText]=useState("");
-  const[evoPhotoFiles,setEvoPhotoFiles]=useState([]);
   const[showCond,setShowCond]=useState(false);
   const[condText,setCondText]=useState("");
   const sevCfg=IC_SEVERITY_CFG[icSeverityOf(ic)]||IC_SEVERITY_CFG.Leve;
@@ -4601,17 +4531,9 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
   const evolutions=icEvolutionsOf(ic);
   const conducts=icConductsOf(ic);
   function addEvo(){
-    if(!evoText.trim()&&evoPhotoFiles.length===0)return;
-    const finish=(photos)=>{
-      updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,evolutions:[...(old.evolutions||[]),{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),text:evoText.trim(),photos}]}));
-      setEvoText("");setEvoPhotoFiles([]);setShowEvo(false);
-    };
-    if(evoPhotoFiles.length){
-      Promise.all(evoPhotoFiles.map(f=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,url:e.target.result});r.readAsDataURL(f);}))).then(finish);
-    } else finish([]);
-  }
-  function removeEvoPhoto(evoId,photoId){
-    updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,evolutions:(old.evolutions||[]).map(e=>e.id===evoId?{...e,photos:(e.photos||[]).filter(p=>p.id!==photoId)}:e)}));
+    if(!evoText.trim())return;
+    updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,evolutions:[...(old.evolutions||[]),{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),text:evoText.trim()}]}));
+    setEvoText("");setShowEvo(false);
   }
   function addCond(){
     if(!condText.trim())return;
@@ -4662,30 +4584,17 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
     // Histórico de evolução
     h("div",{style:{marginBottom:10,paddingTop:8,borderTop:`1px solid ${P.border}`}},
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
-        h("span",{style:{fontSize:9.5,color:P.accent,textTransform:"uppercase",letterSpacing:".1em"}},"Histórico de Evolução",evolutions.length>0&&h("span",{style:{marginLeft:6,color:P.text3}},`(${evolutions.length})`)),
+        h("span",{style:{fontSize:9.5,color:P.accent,textTransform:"uppercase",letterSpacing:".1em"}},"Histórico de Evolução"),
         h("button",{onClick:()=>setShowEvo(s=>!s),style:{fontSize:10.5,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"2px 8px",cursor:"pointer"}},showEvo?"✕":"＋ Evolução")
       ),
-      showEvo&&h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:10,background:P.bg3,borderRadius:8,padding:10}},
-        h(TA,{value:evoText,onChange:setEvoText,placeholder:"Descreva a evolução do quadro (melhora, piora, estável)...",rows:2}),
-        h("div",{style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
-          h("label",{style:{fontSize:10.5,color:P.accent,border:`1px solid ${P.border}`,borderRadius:6,padding:"4px 10px",cursor:"pointer"}},"📷 Anexar Fotos",
-            h("input",{type:"file",accept:"image/*",multiple:true,style:{display:"none"},onChange:e=>{setEvoPhotoFiles(f=>[...f,...[...e.target.files]]);e.target.value="";}})
-          ),
-          evoPhotoFiles.map((f,fi)=>h("span",{key:fi,style:{fontSize:10,color:P.text3,background:P.card,border:`1px solid ${P.border}`,borderRadius:12,padding:"2px 9px",display:"flex",alignItems:"center",gap:6}},
-            f.name.length>18?f.name.slice(0,16)+"…":f.name,
-            h("span",{onClick:()=>setEvoPhotoFiles(list=>list.filter((_,i)=>i!==fi)),style:{cursor:"pointer",color:P.red,fontWeight:600}},"✕")
-          ))
-        ),
-        h(Btn,{onClick:addEvo,style:{alignSelf:"flex-end"}},"Salvar Evolução")
+      showEvo&&h("div",{style:{display:"flex",gap:6,marginBottom:8}},
+        h(TA,{value:evoText,onChange:setEvoText,placeholder:"Descreva a evolução do quadro...",rows:2}),
+        h(Btn,{onClick:addEvo,style:{flexShrink:0,alignSelf:"flex-end"}},"Salvar")
       ),
       evolutions.length===0?h("div",{style:{fontSize:11.5,color:P.text3}},"Sem registros de evolução ainda."):
-      h("div",{style:{display:"flex",flexDirection:"column",gap:7}},evolutions.slice().reverse().map((e,i)=>h("div",{key:e.id||i,style:{background:P.bg3,borderLeft:`2px solid ${P.accent}66`,borderRadius:"0 8px 8px 0",padding:"8px 10px"}},
-        h("div",{style:{fontSize:9.5,color:P.text3,marginBottom:e.text||(e.photos||[]).length>0?4:0}},e.date),
-        e.text&&h("div",{style:{fontSize:12.5,color:P.text2,lineHeight:1.5,marginBottom:(e.photos||[]).length>0?7:0}},e.text),
-        (e.photos||[]).length>0&&h("div",{style:{display:"flex",gap:7,flexWrap:"wrap"}},(e.photos||[]).map(ph=>h("div",{key:ph.id,style:{position:"relative"}},
-          h("img",{src:ph.url,alt:ph.name,onClick:()=>window.open(ph.url,"_blank"),style:{width:56,height:56,objectFit:"cover",borderRadius:7,border:`1px solid ${P.border}`,cursor:"pointer"}}),
-          h("button",{onClick:()=>removeEvoPhoto(e.id,ph.id),style:{position:"absolute",top:-6,right:-6,width:17,height:17,borderRadius:"50%",background:P.red,color:"#fff",border:"none",fontSize:9.5,cursor:"pointer",lineHeight:"17px"}},"✕")
-        )))
+      h("div",{style:{display:"flex",flexDirection:"column",gap:6}},evolutions.map((e,i)=>h("div",{key:e.id||i,style:{background:P.bg3,borderRadius:8,padding:"7px 10px"}},
+        h("div",{style:{fontSize:9.5,color:P.text3,marginBottom:2}},e.date),
+        h("div",{style:{fontSize:12.5,color:P.text2}},e.text)
       )))
     ),
     // Histórico de condutas
@@ -4921,74 +4830,31 @@ function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,pr
 // ─── SKINCARE TAB COMPONENT ──────────────────────────────────────────────────
 function SkincareTab({patient,upd,skincareConfig}){
   const h=createElement;
-  const sk=patient.skincare||{produtos:[],historico:[],recomendacoes:""};
+  const sk=patient.skincare||{produtos:[],recomendacoes:"",adesao:"boa"};
   const [showSkForm,setShowSkForm]=useState(false);
   const [skForm,setSkForm]=useState({nome:"",frequencia:"Diário",periodo:"Manhã e Noite",obs:""});
-  const [recText,setRecText]=useState("");
-  const [showDescontinuados,setShowDescontinuados]=useState(false);
-  const [showHistRec,setShowHistRec]=useState(false);
-  const [showHistFull,setShowHistFull]=useState(false);
+  const [recText,setRecText]=useState(sk.recomendacoes||"");
   const FREQ=(skincareConfig&&skincareConfig.frequencias)||["Diário","Noturno","2x por semana","Semanal","Mensal","Conforme necessário"];
   const PERIODOS=["Manhã","Noite","Manhã e Noite","Conforme necessário"];
   const PRODS_SUGERIDOS=(skincareConfig&&skincareConfig.produtos)||["Vitamina C","Retinol","Ácido Glicólico","Ácido Hialurônico","Protetor Solar FPS 50+","Niacinamida","Peptídeos","Bakuchiol","AHA/BHA","Ceramidas","Água Micelar","Hidratante Facial"];
   const adesaoCor={ótima:P.green,boa:"#7aaed4",regular:P.yellow,baixa:P.red};
-  const produtosAtivos=(sk.produtos||[]).filter(x=>x.status!=="descontinuado");
-  const produtosDescontinuados=(sk.produtos||[]).filter(x=>x.status==="descontinuado");
-  // Histórico unificado (produtos + recomendações), mais recente primeiro. Compatível com dados antigos (recomendacoes em texto único, sem histórico).
-  const historico=(sk.historico&&sk.historico.length>0)?sk.historico.slice().reverse():(sk.recomendacoes&&sk.recomendacoes.trim()?[{id:"legacy",date:"—",type:"rec",text:sk.recomendacoes,legacy:true}]:[]);
-  const recomendacoesHist=historico.filter(e=>e.type==="rec");
-  const ultimaRec=recomendacoesHist[0]||null;
   function addProduto(){
     if(!skForm.nome)return;
-    const today=new Date().toLocaleDateString("pt-BR");
-    const novo={id:Date.now(),nome:skForm.nome,frequencia:skForm.frequencia,periodo:skForm.periodo,obs:skForm.obs,adesao:"regular",status:"ativo",addedAt:today,endedAt:null};
-    upd(p=>({...p,skincare:{...(p.skincare||{}),
-      produtos:[...(sk.produtos||[]),novo],
-      historico:[...(sk.historico||[]),{id:Date.now()+1,date:today,type:"produto_add",nome:skForm.nome,text:`Iniciado: ${skForm.nome} · ${skForm.frequencia} · ${skForm.periodo}`+(skForm.obs?" — "+skForm.obs:"")}]
-    }}));
+    const novo={id:Date.now(),nome:skForm.nome,frequencia:skForm.frequencia,periodo:skForm.periodo,obs:skForm.obs,adesao:"regular",addedAt:new Date().toLocaleDateString("pt-BR")};
+    upd(p=>({...p,skincare:{...(p.skincare||{}),produtos:[...(sk.produtos||[]),novo]}}));
     setSkForm({nome:"",frequencia:"Diário",periodo:"Manhã e Noite",obs:""});setShowSkForm(false);
   }
-  function discontinuarProduto(id){
-    const today=new Date().toLocaleDateString("pt-BR");
-    const prod=(sk.produtos||[]).find(x=>x.id===id);
-    if(!window.confirm(`Descontinuar "${prod?.nome}"? Ele sai da lista de produtos ativos e fica registrado no histórico.`))return;
-    upd(p=>({...p,skincare:{...(p.skincare||{}),
-      produtos:(sk.produtos||[]).map(x=>x.id===id?{...x,status:"descontinuado",endedAt:today}:x),
-      historico:[...(sk.historico||[]),{id:Date.now(),date:today,type:"produto_end",nome:prod?.nome,text:`Descontinuado: ${prod?.nome||""}`}]
-    }}));
-  }
-  function reativarProduto(id){
-    const today=new Date().toLocaleDateString("pt-BR");
-    const prod=(sk.produtos||[]).find(x=>x.id===id);
-    upd(p=>({...p,skincare:{...(p.skincare||{}),
-      produtos:(sk.produtos||[]).map(x=>x.id===id?{...x,status:"ativo",endedAt:null}:x),
-      historico:[...(sk.historico||[]),{id:Date.now(),date:today,type:"produto_add",nome:prod?.nome,text:`Reintroduzido: ${prod?.nome||""}`}]
-    }}));
-  }
-  function deleteProduto(id){
-    if(!window.confirm("Excluir este produto permanentemente? Use isso apenas para corrigir um cadastro errado — para uma paciente que parou de usar, prefira \"Descontinuar\" para manter o histórico."))return;
-    upd(p=>({...p,skincare:{...(p.skincare||{}),produtos:(sk.produtos||[]).filter(x=>x.id!==id)}}));
-  }
+  function removeProduto(id){upd(p=>({...p,skincare:{...(p.skincare||{}),produtos:(sk.produtos||[]).filter(x=>x.id!==id)}}));}
   function toggleAdesao(id){
     const opts=["ótima","boa","regular","baixa"];
     upd(p=>({...p,skincare:{...(p.skincare||{}),produtos:(sk.produtos||[]).map(x=>{if(x.id!==id)return x;const i=opts.indexOf(x.adesao||"regular");return{...x,adesao:opts[(i+1)%opts.length]};})}}));
   }
-  function addRecomendacao(){
-    if(!recText.trim())return;
-    const today=new Date().toLocaleDateString("pt-BR");
-    upd(p=>({...p,skincare:{...(p.skincare||{}),historico:[...(sk.historico||[]),{id:Date.now(),date:today,type:"rec",text:recText.trim()}]}}));
-    setRecText("");
-  }
-  const histIcon={produto_add:"🧴",produto_end:"⏹",rec:"📝"};
-  const histColor={produto_add:P.green,produto_end:P.text3,rec:P.accent};
+  function saveRec(){upd(p=>({...p,skincare:{...(p.skincare||{}),recomendacoes:recText}}));}
   return h("div",null,
-    h(SectionHeader,{title:"🧴 Skincare em Uso",sub:"Produtos ativos, adesão e histórico datado de mudanças na rotina"}),
+    h(SectionHeader,{title:"🧴 Skincare em Uso",sub:"Produtos domiciliares e adesão ao protocolo"}),
     h(Card,{style:{marginBottom:14}},
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}},
-        h("div",null,
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Produtos Ativos"),
-          produtosDescontinuados.length>0&&h("div",{style:{fontSize:11,color:P.text3,marginTop:2,cursor:"pointer"},onClick:()=>setShowDescontinuados(s=>!s)},(showDescontinuados?"▾ ":"▸ ")+`${produtosDescontinuados.length} produto(s) descontinuado(s) — ver histórico`)
-        ),
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Produtos em Uso"),
         h(Btn,{onClick:()=>setShowSkForm(v=>!v),style:{fontSize:12}},"＋ Adicionar Produto")
       ),
       showSkForm&&h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`,marginBottom:14}},
@@ -5017,69 +4883,25 @@ function SkincareTab({patient,upd,skincareConfig}){
           h(Btn,{onClick:addProduto,style:{fontSize:12}},"Adicionar")
         )
       ),
-      produtosAtivos.length===0&&!showSkForm?h("div",{style:{textAlign:"center",padding:24,color:P.text3,fontSize:13}},"Nenhum produto ativo no momento."):null,
+      (sk.produtos||[]).length===0&&!showSkForm?h("div",{style:{textAlign:"center",padding:24,color:P.text3,fontSize:13}},"Nenhum produto cadastrado."):null,
       h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-        produtosAtivos.map(prod=>h("div",{key:prod.id,style:{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`,flexWrap:"wrap"}},
+        (sk.produtos||[]).map(prod=>h("div",{key:prod.id,style:{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
           h("div",{style:{fontSize:22,flexShrink:0}},"🧴"),
-          h("div",{style:{flex:1,minWidth:160}},
+          h("div",{style:{flex:1}},
             h("div",{style:{fontSize:14,color:P.text,fontWeight:600}},prod.nome),
             h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},prod.frequencia+" · "+prod.periodo+(prod.obs?" · "+prod.obs:"")),
-            h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},"Em uso desde "+prod.addedAt)
+            h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},"Adicionado em "+prod.addedAt)
           ),
           h("button",{onClick:()=>toggleAdesao(prod.id),title:"Clique para alterar adesão",style:{padding:"4px 12px",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer",background:"transparent",border:`1px solid ${adesaoCor[prod.adesao||"regular"]}44`,color:adesaoCor[prod.adesao||"regular"]}},"Adesão: "+(prod.adesao||"regular")),
-          h("button",{onClick:()=>discontinuarProduto(prod.id),title:"Descontinuar (mantém no histórico)",style:{padding:"4px 10px",borderRadius:7,fontSize:11,cursor:"pointer",background:"transparent",border:`1px solid ${P.border}`,color:P.text3}},"⏹ Descontinuar"),
-          h("button",{onClick:()=>deleteProduto(prod.id),title:"Excluir permanentemente",style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:16,padding:"4px"}},"×")
+          h("button",{onClick:()=>removeProduto(prod.id),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:16,padding:"4px"}},"×")
         ))
-      ),
-      showDescontinuados&&produtosDescontinuados.length>0&&h("div",{style:{marginTop:14,paddingTop:14,borderTop:`1px solid ${P.border}`}},
-        h("div",{style:{fontSize:10.5,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},"Produtos Descontinuados"),
-        h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
-          produtosDescontinuados.map(prod=>h("div",{key:prod.id,style:{display:"flex",alignItems:"center",gap:12,padding:"9px 14px",background:"transparent",borderRadius:10,border:`1px solid ${P.border}`,opacity:.7,flexWrap:"wrap"}},
-            h("div",{style:{fontSize:18,flexShrink:0}},"🧴"),
-            h("div",{style:{flex:1,minWidth:160}},
-              h("div",{style:{fontSize:13,color:P.text,textDecoration:"line-through"}},prod.nome),
-              h("div",{style:{fontSize:11,color:P.text3,marginTop:1}},`Usado de ${prod.addedAt} até ${prod.endedAt||"—"}`)
-            ),
-            h("button",{onClick:()=>reativarProduto(prod.id),title:"Reintroduzir na rotina",style:{padding:"4px 10px",borderRadius:7,fontSize:11,cursor:"pointer",background:"transparent",border:`1px solid ${P.border}`,color:P.accent}},"↺ Reativar"),
-            h("button",{onClick:()=>deleteProduto(prod.id),title:"Excluir permanentemente",style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15,padding:"4px"}},"×")
-          ))
-        )
       )
     ),
-    h(Card,{style:{marginBottom:14}},
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"📝 Recomendações"),
-        recomendacoesHist.length>1&&h("div",{style:{fontSize:11,color:P.text3,cursor:"pointer"},onClick:()=>setShowHistRec(s=>!s)},(showHistRec?"▾ ":"▸ ")+`Histórico (${recomendacoesHist.length})`)
-      ),
-      ultimaRec?h("div",{style:{background:`${P.accent}0d`,border:`1px solid ${P.accent}30`,borderRadius:10,padding:"12px 14px",marginBottom:14}},
-        h("div",{style:{fontSize:10,color:P.accent,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},(ultimaRec.legacy?"Registrada em: ":"Atualizada em: ")+ultimaRec.date),
-        h("div",{style:{fontSize:13.5,color:P.text2,lineHeight:1.6}},ultimaRec.text)
-      ):h("div",{style:{fontSize:13,color:P.text3,marginBottom:14}},"Nenhuma recomendação registrada ainda."),
-      showHistRec&&recomendacoesHist.length>1&&h("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:14}},
-        recomendacoesHist.slice(1).map((e,i)=>h("div",{key:e.id||i,style:{background:P.bg3,borderLeft:`2px solid ${P.border}`,borderRadius:"0 8px 8px 0",padding:"8px 10px"}},
-          h("div",{style:{fontSize:9.5,color:P.text3,marginBottom:3}},e.date),
-          h("div",{style:{fontSize:12.5,color:P.text2,lineHeight:1.5}},e.text)
-        ))
-      ),
-      h("div",{style:{fontSize:10.5,color:P.text3,marginBottom:6}},"Nova recomendação (fica datada e some registro anterior no histórico):"),
-      h("textarea",{value:recText,onChange:e=>setRecText(e.target.value),placeholder:"Ex: Introduzir retinol gradualmente, começar 2x/semana...",rows:3,style:{...IS,width:"100%",resize:"vertical"}}),
+    h(Card,null,
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:12}},"📝 Recomendações & Observações"),
+      h("textarea",{value:recText,onChange:e=>setRecText(e.target.value),placeholder:"Ex: Introduzir retinol gradualmente, começar 2x/semana...",rows:5,style:{...IS,width:"100%",resize:"vertical"}}),
       h("div",{style:{display:"flex",justifyContent:"flex-end",marginTop:8}},
-        h(Btn,{onClick:addRecomendacao,style:{fontSize:12}},"＋ Registrar Recomendação")
-      )
-    ),
-    historico.length>0&&h(Card,null,
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:showHistFull?12:0,cursor:"pointer"},onClick:()=>setShowHistFull(s=>!s)},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"📜 Histórico Completo da Rotina"),
-        h("div",{style:{fontSize:11,color:P.text3}},(showHistFull?"▾ ":"▸ ")+`${historico.length} registro(s)`)
-      ),
-      showHistFull&&h("div",{style:{display:"flex",flexDirection:"column",gap:7}},
-        historico.map((e,i)=>h("div",{key:e.id||i,style:{display:"flex",gap:10,alignItems:"flex-start",background:P.bg3,borderLeft:`2px solid ${histColor[e.type]||P.border}`,borderRadius:"0 8px 8px 0",padding:"8px 10px"}},
-          h("div",{style:{fontSize:15,flexShrink:0}},histIcon[e.type]||"•"),
-          h("div",{style:{flex:1}},
-            h("div",{style:{fontSize:9.5,color:P.text3,marginBottom:2}},e.date),
-            h("div",{style:{fontSize:12.5,color:P.text2,lineHeight:1.5}},e.text)
-          )
-        ))
+        h(Btn,{onClick:saveRec,style:{fontSize:12}},"Salvar Recomendações")
       )
     )
   );
@@ -5194,7 +5016,6 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
   const[editPat,setEditPat]=useState(false);
   const[showIntercorr,setShowIntercorr]=useState(null);
   const[showPlan,setShowPlan]=useState(false);
-  const[editingText,setEditingText]=useState(null); // {id,title,stepsText,notes} | null — edição de texto p/ qualquer tipo de plano
   const[planAnnotating,setPlanAnnotating]=useState(null); // null | "new" | planObj
   const[showNewPkg,setShowNewPkg]=useState(false);
   const[pkgForm,setPkgForm]=useState({name:"",procedure:"",total:4,price:"",notes:""});
@@ -5531,11 +5352,6 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     setMarkerPlanning(null);setMarkerPlanningForSession(null);
   }
 
-  function savePlanText(){
-    if(!editingText)return;
-    upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>pl.id===editingText.id?{...pl,title:editingText.title.trim()||pl.title,steps:editingText.stepsText.split("\n").filter(s=>s.trim()),notes:editingText.notes,updatedAt:new Date().toLocaleDateString("pt-BR")}:pl)}));
-    setEditingText(null);
-  }
   function togglePlanStep(planId,stepIdx){
     upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>{if(pl.id!==planId)return pl;const steps=[...pl.steps];steps[stepIdx]=steps[stepIdx].includes("✓")?steps[stepIdx].replace(" ✓",""):steps[stepIdx]+" ✓";return{...pl,steps};})}));
   }
@@ -6166,8 +5982,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
                       mp&&h("span",{style:{marginLeft:8,fontSize:10,color:P.accent,background:"rgba(157,119,97,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(157,119,97,.3)"}},"📍 "+mpDone+"/"+mpTotal+" marcadores realizados")
                     )
                   ),
-                  h("div",{style:{display:"flex",gap:5,flexShrink:0,flexWrap:"wrap"}},
-                    h("button",{onClick:()=>setEditingText({id:pl.id,title:pl.title||"",stepsText:(pl.steps||[]).join("\n"),notes:pl.notes||""}),title:"Editar título, etapas e observações",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},"✎ Texto"),
+                  h("div",{style:{display:"flex",gap:5,flexShrink:0}},
                     h("button",{onClick:()=>setPlanAnnotating(pl),title:pl.annotation?"Editar anotação visual":"Adicionar foto",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},pl.annotation?"✎ Foto":"📷 Foto"),
                     h("button",{onClick:()=>setMarkerPlanning(mp?pl:"new"),title:mp?"Editar marcadores":"Adicionar marcadores",style:{padding:"5px 10px",borderRadius:7,background:"transparent",border:`1px solid ${P.border}`,color:P.accent,cursor:"pointer",fontSize:11}},mp?"✎ Marcadores":"📍 Marcadores"),
                     h("button",{onClick:()=>deletePlan(pl.id),style:{padding:"5px 8px",borderRadius:7,background:"transparent",border:"1px solid rgba(192,112,112,.2)",color:P.red,cursor:"pointer",fontSize:11}},"🗑")
@@ -6184,8 +5999,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
                     h("div",{style:{width:14,height:14,borderRadius:3,border:`2px solid ${step.includes("✓")?P.green:P.border}`,background:step.includes("✓")?P.green:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff"}},step.includes("✓")?"✓":""),
                     h("span",{style:{fontSize:12.5,color:step.includes("✓")?P.green:P.text,textDecoration:step.includes("✓")?"line-through":"none"}},step.replace(" ✓",""))
                   ))
-                ),
-                !pl.notes&&(pl.steps||[]).length===0&&h("div",{onClick:()=>setEditingText({id:pl.id,title:pl.title||"",stepsText:(pl.steps||[]).join("\n"),notes:pl.notes||""}),style:{fontSize:11.5,color:P.text3,cursor:"pointer",fontStyle:"italic"}},"＋ Adicionar etapas ou observações em texto")
+                )
               )
             )
           );
@@ -6696,17 +6510,6 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Btn,{variant:"ghost",onClick:()=>setShowPlan(false)},"Cancelar"),
         h("button",{onClick:()=>{if(!planForm.title.trim())return;setPlanAnnotating("new");},style:{padding:"9px 16px",borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:"transparent",border:`1px solid ${P.gold}`,color:P.gold}},"🖼 Salvar e Anotar Foto"),
         h(Btn,{onClick:addPlanejamento},"Criar Plano")
-      )
-    ),
-    editingText&&h(Modal,{open:true,onClose:()=>setEditingText(null),title:"✎ Editar Texto do Plano",width:480},
-      h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
-        h(Field,{label:"Título do Plano"},h(Inp,{value:editingText.title,onChange:v=>setEditingText(p=>({...p,title:v})),placeholder:"Ex: Protocolo de Harmonização Completa"})),
-        h(Field,{label:"Etapas / Marcadores (uma por linha)"},h(TA,{value:editingText.stepsText,onChange:v=>setEditingText(p=>({...p,stepsText:v})),placeholder:"Toxina Botulínica\nPreenchimento Labial\nBioestimulador...",rows:4})),
-        h(Field,{label:"Observações"},h(TA,{value:editingText.notes,onChange:v=>setEditingText(p=>({...p,notes:v})),placeholder:"Metas, prazos, considerações...",rows:2}))
-      ),
-      h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}},
-        h(Btn,{variant:"ghost",onClick:()=>setEditingText(null)},"Cancelar"),
-        h(Btn,{onClick:savePlanText},"Salvar Texto")
       )
     ),
     editPat&&h(Modal,{open:true,onClose:()=>setEditPat(false),title:"✎ Editar Dados da Paciente",width:620},
@@ -8335,9 +8138,16 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
     ),
 
     h(Card,{style:{marginBottom:18}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:6}},"Receita vs Despesas (últimos 5 meses)"),
-      h("div",{style:{fontSize:11,color:P.text3,marginBottom:6}},"Clique numa barra ou no mês para ver o detalhe daquele período."),
-      h(ReceitaDespesaComboChart,{months,fmtCurr,onSelectMonth:m=>{setSelMonth(m.mm);setSelYear(m.yy);}})
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Receita vs Despesas (últimos 5 meses)"),
+      h("div",{style:{display:"flex",alignItems:"flex-end",gap:12,height:90}},
+        months.map(m=>{const mx=Math.max(...months.map(x=>Math.max(x.rec,x.exp)),1);return h("div",{key:m.m+m.yy,onClick:()=>{setSelMonth(m.mm);setSelYear(m.yy);},style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5,cursor:"pointer"}},
+          h("div",{style:{flex:1,display:"flex",alignItems:"flex-end",gap:3,width:"100%"}},
+            h("div",{style:{flex:1,height:`${(m.rec/mx)*100}%`,background:`linear-gradient(to top,${P.rose},${P.gold})`,borderRadius:"3px 3px 0 0",opacity:m.isSel?1:.55}}),
+            h("div",{style:{flex:1,height:`${(m.exp/mx)*100}%`,background:`linear-gradient(to top,${P.red},rgba(192,112,112,.3))`,borderRadius:"3px 3px 0 0",opacity:m.isSel?1:.55}})
+          ),
+          h("div",{style:{fontSize:9,color:m.isSel?P.accent:P.text3,textTransform:"uppercase",fontWeight:m.isSel?700:400}},m.m)
+        );})
+      )
     ),
 
     // ── Abas agrupadas por categoria ─────────────────────────────────────────
@@ -12023,9 +11833,10 @@ function App(){
 
   if (!session) return createElement(LoginScreen, { onLogin: () => supabase.auth.getSession().then(({data:{session:s}})=>setSession(s)) });
 
-  return createElement(AppInner, { session, onLogout: () => supabase.auth.signOut() });
+  return createElement(ErrorBoundary, null,
+    createElement(AppInner, { session, onLogout: () => supabase.auth.signOut() })
+  );
 }
-export default App;
 
 // ─── VOUCHER / GIFT CARD ──────────────────────────────────────────────────────
 const DEFAULT_VOUCHER_TEMPLATES=[
@@ -12847,7 +12658,7 @@ function PacientesEmRisco({patients,agenda,onSelectPatient,onNav}){
             h(Avatar,{name:p.name,size:38,src:p.profilePhoto})
           ),
           // Info
-          h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{flex:1,minWidth:160,cursor:"pointer"}},
+          h("div",{style:{flex:1,minWidth:160},onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{flex:1,minWidth:160,cursor:"pointer"}},
             h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:3}},
               h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:13,color:P.text}},p.name),
               h("span",{style:{fontSize:9,padding:"2px 8px",borderRadius:20,background:nc.bg,color:nc.color,fontFamily:"'Jost',sans-serif",fontWeight:400,textTransform:"uppercase",letterSpacing:".05em"}},nc.label)
