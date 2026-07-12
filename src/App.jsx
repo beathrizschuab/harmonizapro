@@ -3644,19 +3644,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
       h("div",{style:{display:"flex",flexDirection:"column",gap:12}},
         h(Card,null,
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:16,color:P.text,marginBottom:12}},"Faturamento — 6m"),
-          h("div",{style:{display:"flex",alignItems:"flex-end",gap:5,height:65}},
-            months.map((m,i)=>{
-              const max=Math.max(...months.map(x=>x.value),1);
-              const hPct=Math.max((m.value/max)*100,m.value>0?5:0);
-              const isCur=i===5;
-              return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,height:"100%"}},
-                h("div",{style:{width:"100%",flex:1,display:"flex",alignItems:"flex-end"}},
-                  h("div",{style:{width:"100%",height:`${hPct}%`,borderRadius:"4px 4px 0 0",background:isCur?"linear-gradient(to top,#5C1F32,#9D7761)":(dark?"#2d1518":"#E1D2C6"),boxShadow:isCur?"0 0 10px rgba(157,119,97,.2)":"none"}})
-                ),
-                h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:8,color:isCur?"#9D7761":P.text3}},m.label)
-              );
-            })
-          )
+          h(BarChart6m,{monthlyData:months.map(m=>({label:m.label,rec:m.value,count:m.sessoes})),maxRec:Math.max(...months.map(m=>m.value),1),fmtCurr})
         ),
         h(Card,null,
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:16,color:P.text,marginBottom:10}},"Status hoje"),
