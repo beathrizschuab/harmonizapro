@@ -12025,6 +12025,7 @@ function App(){
 
   return createElement(AppInner, { session, onLogout: () => supabase.auth.signOut() });
 }
+export default App;
 
 // ─── VOUCHER / GIFT CARD ──────────────────────────────────────────────────────
 const DEFAULT_VOUCHER_TEMPLATES=[
