@@ -12846,7 +12846,7 @@ function PacientesEmRisco({patients,agenda,onSelectPatient,onNav}){
             h(Avatar,{name:p.name,size:38,src:p.profilePhoto})
           ),
           // Info
-          h("div",{style:{flex:1,minWidth:160},onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{flex:1,minWidth:160,cursor:"pointer"}},
+          h("div",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{flex:1,minWidth:160,cursor:"pointer"}},
             h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:3}},
               h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:13,color:P.text}},p.name),
               h("span",{style:{fontSize:9,padding:"2px 8px",borderRadius:20,background:nc.bg,color:nc.color,fontFamily:"'Jost',sans-serif",fontWeight:400,textTransform:"uppercase",letterSpacing:".05em"}},nc.label)
