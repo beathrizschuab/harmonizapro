@@ -1504,7 +1504,7 @@ function LoginScreen({ onLogin }) {
     const { error: err } = await supabase.auth.signInWithPassword({ email, password });
     if (err) { setLoading(false); setError("E-mail ou senha incorretos."); return; }
     setSuccess(true);
-    setTimeout(() => onLogin(), 480); // dá tempo da animação de saída rodar antes de trocar de tela
+    setTimeout(() => onLogin(), 200);
   }
 
   const inputStyle = field => ({
@@ -1522,25 +1522,25 @@ function LoginScreen({ onLogin }) {
       body{background:${P.bg};color:${P.text};font-family:'Jost',system-ui,sans-serif;}
       @keyframes hpCardIn{0%{opacity:0;transform:translateY(22px) scale(.97);}100%{opacity:1;transform:translateY(0) scale(1);}}
       @keyframes hpCardOut{0%{opacity:1;transform:translateY(0) scale(1);}100%{opacity:0;transform:translateY(-14px) scale(.97);}}
-      @keyframes hpOrbFloat1{0%,100%{transform:translate(0,0);}50%{transform:translate(20px,-24px);}}
-      @keyframes hpOrbFloat2{0%,100%{transform:translate(0,0);}50%{transform:translate(-26px,18px);}}
-      @keyframes hpLogoGlow{0%,100%{opacity:.5;}50%{opacity:1;}}
+      @keyframes hpOrbFloat1{0%{transform:translate(0,0);}50%{transform:translate(60px,-70px);}100%{transform:translate(0,0);}}
+      @keyframes hpOrbFloat2{0%{transform:translate(0,0);}50%{transform:translate(-70px,55px);}100%{transform:translate(0,0);}}
+      @keyframes hpLogoPulse{0%,100%{opacity:.6;transform:scale(.85);}50%{opacity:1;transform:scale(1.15);}}
       @keyframes hpSpin{to{transform:rotate(360deg);}}
-      .hp-orb1{animation:hpOrbFloat1 9s ease-in-out infinite;}
-      .hp-orb2{animation:hpOrbFloat2 11s ease-in-out infinite;}
-      .hp-logo-dot{animation:hpLogoGlow 2.4s ease-in-out infinite;}
+      .hp-orb1{animation:hpOrbFloat1 6s ease-in-out infinite;}
+      .hp-orb2{animation:hpOrbFloat2 7s ease-in-out infinite;}
+      .hp-logo-dot{display:inline-block;animation:hpLogoPulse 1.8s ease-in-out infinite;}
       .hp-spin{animation:hpSpin .7s linear infinite;}
     `),
     h("div", {
       style: {
         minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-        background: `radial-gradient(ellipse at 50% 0%, ${P.accent}55 0%, ${P.bg} 65%)`,
+        background: `radial-gradient(ellipse at 50% 0%, ${P.accent}40 0%, ${P.bg} 65%)`,
         position: "relative", overflow: "hidden",
       }
     },
-      // Orbs decorativos flutuando ao fundo
-      h("div", { className: "hp-orb1", style: { position: "absolute", top: "12%", left: "18%", width: 260, height: 260, borderRadius: "50%", background: `radial-gradient(circle,${P.rose}33,transparent 70%)`, filter: "blur(10px)", pointerEvents: "none" } }),
-      h("div", { className: "hp-orb2", style: { position: "absolute", bottom: "10%", right: "14%", width: 300, height: 300, borderRadius: "50%", background: `radial-gradient(circle,${P.gold}2e,transparent 70%)`, filter: "blur(10px)", pointerEvents: "none" } }),
+      // Orbs decorativos flutuando ao fundo — mesma família de cor (vinho/terracota), pra ficar coeso
+      h("div", { className: "hp-orb1", style: { position: "absolute", top: "14%", left: "16%", width: 280, height: 280, borderRadius: "50%", background: `radial-gradient(circle,${P.rose}4a,transparent 70%)`, filter: "blur(6px)", pointerEvents: "none" } }),
+      h("div", { className: "hp-orb2", style: { position: "absolute", bottom: "8%", right: "12%", width: 320, height: 320, borderRadius: "50%", background: `radial-gradient(circle,${P.accent}40,transparent 70%)`, filter: "blur(6px)", pointerEvents: "none" } }),
       h("div", {
         style: {
           width: 380, padding: "48px 40px", background: P.bg2, border: `1px solid ${P.border}`, borderRadius: 20,
@@ -1551,7 +1551,7 @@ function LoginScreen({ onLogin }) {
         h("div", { style: { textAlign: "center", marginBottom: 36 } },
           h("div", { style: { display: "inline-flex", alignItems: "center", gap: 7, fontFamily: "'Cormorant Garamond',serif", fontSize: 34, color: P.rose, letterSpacing: ".04em", lineHeight: 1.1 } },
             "HarmonizaPro",
-            h("span", { className: "hp-logo-dot", style: { fontSize: 20, color: P.gold } }, "✦")
+            h("span", { className: "hp-logo-dot", style: { fontSize: 20, color: P.rose } }, "✦")
           ),
           h("div", { style: { fontSize: 11, color: P.text3, letterSpacing: ".16em", textTransform: "uppercase", marginTop: 6 } }, "Gestão de Clínica")
         ),
@@ -1580,9 +1580,9 @@ function LoginScreen({ onLogin }) {
         error && h("div", { style: { marginBottom: 16, padding: "10px 14px", background: P.statusRedBg, border: `1px solid ${P.statusRed}4d`, borderRadius: 8, fontSize: 13, color: P.statusRed } }, error),
         h("button", {
           onClick: handleLogin, disabled: loading || success,
-          style: { width: "100%", padding: "13px", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, background: `linear-gradient(135deg,${P.rose},${P.gold})`, color: P.accent3, border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: (loading || success) ? "not-allowed" : "pointer", fontFamily: "'Jost',system-ui,sans-serif", opacity: (loading || success) ? .85 : 1, letterSpacing: ".04em", transition: "opacity .15s" }
+          style: { width: "100%", padding: "13px", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, background: `linear-gradient(135deg,${P.rose},${P.accent})`, color: P.accent3, border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: (loading || success) ? "not-allowed" : "pointer", fontFamily: "'Jost',system-ui,sans-serif", opacity: (loading || success) ? .85 : 1, letterSpacing: ".04em", transition: "opacity .15s" }
         },
-          (loading || success) && h("span", { className: "hp-spin", style: { width: 13, height: 13, borderRadius: "50%", border: `2px solid ${P.accent3}66`, borderTopColor: P.accent3, display: "inline-block" } }),
+          (loading || success) && h("span", { className: "hp-spin", style: { width: 13, height: 13, borderRadius: "50%", border: `2px solid ${P.accent3}66`, borderTopColor: P.accent3, display: "inline-block", flexShrink: 0 } }),
           success ? "Bem-vinda!" : loading ? "Entrando..." : "Entrar"
         ),
         h("div", { style: { marginTop: 24, textAlign: "center", fontSize: 12, color: P.text3 } }, "Acesso restrito — somente usuários autorizados.")
@@ -12038,15 +12038,15 @@ function IntercorrenciasGlobal({patients,setPatients,onSelectPatient,onNav,proce
 // ─── ROOT APP (com autenticação) ─────────────────────────────────────────────
 function EnterTransition(){
   const h=createElement;
-  return h("div",{style:{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:P.bg,animation:"hpEnterFade 1.05s ease forwards",pointerEvents:"none"}},
+  return h("div",{style:{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:P.bg,animation:"hpEnterFade 1.8s ease forwards",pointerEvents:"none"}},
     h("style",null,`
-      @keyframes hpEnterFade{0%{opacity:0;}12%{opacity:1;}82%{opacity:1;}100%{opacity:0;}}
-      @keyframes hpEnterLogo{0%{opacity:0;transform:scale(.85);}30%{opacity:1;transform:scale(1);}100%{opacity:1;transform:scale(1.03);}}
-      @keyframes hpEnterRing{0%{transform:scale(.6);opacity:.9;}100%{transform:scale(2.6);opacity:0;}}
+      @keyframes hpEnterFade{0%{opacity:0;}10%{opacity:1;}80%{opacity:1;}100%{opacity:0;}}
+      @keyframes hpEnterLogo{0%{opacity:0;transform:scale(.85);}25%{opacity:1;transform:scale(1);}100%{opacity:1;transform:scale(1.03);}}
+      @keyframes hpEnterRing{0%{transform:scale(.6);opacity:.9;}100%{transform:scale(3.2);opacity:0;}}
     `),
     h("div",{style:{position:"relative",display:"flex",flexDirection:"column",alignItems:"center",gap:10}},
-      h("div",{style:{position:"absolute",width:70,height:70,borderRadius:"50%",border:`2px solid ${P.rose}`,animation:"hpEnterRing 1.05s ease-out forwards"}}),
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:38,color:P.rose,letterSpacing:".04em",animation:"hpEnterLogo 1.05s cubic-bezier(.22,1,.36,1) forwards"}},"HarmonizaPro"),
+      h("div",{style:{position:"absolute",width:70,height:70,borderRadius:"50%",border:`2px solid ${P.rose}`,animation:"hpEnterRing 1.8s ease-out forwards"}}),
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:38,color:P.rose,letterSpacing:".04em",animation:"hpEnterLogo .9s cubic-bezier(.22,1,.36,1) forwards"}},"HarmonizaPro"),
       h("div",{style:{fontSize:11,color:P.text3,letterSpacing:".2em",textTransform:"uppercase"}},"Bem-vinda de volta")
     )
   );
@@ -12072,6 +12072,13 @@ function App(){
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
+        // Dispara a transição de entrada NO MESMO INSTANTE em que a sessão muda (não numa renderização
+        // separada depois) — assim a tela de boas-vindas já nasce por cima do Dashboard, sem piscar.
+        if (event === "SIGNED_IN" && !hadSessionRef.current) {
+          hadSessionRef.current = true;
+          setShowEnter(true);
+          setTimeout(() => setShowEnter(false), 1800);
+        }
         setSession(s);
       } else if (event === "SIGNED_OUT" || !s) {
         setSession(null);
@@ -12080,16 +12087,6 @@ function App(){
     });
     return () => subscription.unsubscribe();
   }, []);
-
-  useEffect(() => {
-    // Só anima a entrada na transição real de "sem sessão" → "com sessão" (login de verdade, não refresh de token)
-    if (session && !hadSessionRef.current) {
-      hadSessionRef.current = true;
-      setShowEnter(true);
-      const t = setTimeout(() => setShowEnter(false), 1050);
-      return () => clearTimeout(t);
-    }
-  }, [session]);
 
   if (authLoading) return createElement("div", {
     style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: P.bg, color: P.text3, fontSize: 14, fontFamily: "sans-serif" }
