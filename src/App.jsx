@@ -1534,13 +1534,13 @@ function LoginScreen({ onLogin }) {
     h("div", {
       style: {
         minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-        background: `radial-gradient(ellipse at 50% 0%, ${P.accent}40 0%, ${P.bg} 65%)`,
+        background: `radial-gradient(ellipse at 50% 0%, #7A294240 0%, ${P.bg} 65%)`,
         position: "relative", overflow: "hidden",
       }
     },
       // Orbs decorativos flutuando ao fundo — mesma família de cor (vinho/terracota), pra ficar coeso
       h("div", { className: "hp-orb1", style: { position: "absolute", top: "14%", left: "16%", width: 280, height: 280, borderRadius: "50%", background: `radial-gradient(circle,${P.rose}4a,transparent 70%)`, filter: "blur(6px)", pointerEvents: "none" } }),
-      h("div", { className: "hp-orb2", style: { position: "absolute", bottom: "8%", right: "12%", width: 320, height: 320, borderRadius: "50%", background: `radial-gradient(circle,${P.accent}40,transparent 70%)`, filter: "blur(6px)", pointerEvents: "none" } }),
+      h("div", { className: "hp-orb2", style: { position: "absolute", bottom: "8%", right: "12%", width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle,#7A294240,transparent 70%)", filter: "blur(6px)", pointerEvents: "none" } }),
       h("div", {
         style: {
           width: 380, padding: "48px 40px", background: P.bg2, border: `1px solid ${P.border}`, borderRadius: 20,
@@ -1580,7 +1580,7 @@ function LoginScreen({ onLogin }) {
         error && h("div", { style: { marginBottom: 16, padding: "10px 14px", background: P.statusRedBg, border: `1px solid ${P.statusRed}4d`, borderRadius: 8, fontSize: 13, color: P.statusRed } }, error),
         h("button", {
           onClick: handleLogin, disabled: loading || success,
-          style: { width: "100%", padding: "13px", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, background: `linear-gradient(135deg,${P.rose},${P.accent})`, color: P.accent3, border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: (loading || success) ? "not-allowed" : "pointer", fontFamily: "'Jost',system-ui,sans-serif", opacity: (loading || success) ? .85 : 1, letterSpacing: ".04em", transition: "opacity .15s" }
+          style: { width: "100%", padding: "13px", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, background: "linear-gradient(135deg,#B8695F,#7A2942)", color: "#F7F1EC", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: (loading || success) ? "not-allowed" : "pointer", fontFamily: "'Jost',system-ui,sans-serif", opacity: (loading || success) ? .85 : 1, letterSpacing: ".04em", transition: "opacity .15s" }
         },
           (loading || success) && h("span", { className: "hp-spin", style: { width: 13, height: 13, borderRadius: "50%", border: `2px solid ${P.accent3}66`, borderTopColor: P.accent3, display: "inline-block", flexShrink: 0 } }),
           success ? "Bem-vinda!" : loading ? "Entrando..." : "Entrar"
