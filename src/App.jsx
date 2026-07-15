@@ -3584,6 +3584,35 @@ function EvolucaoFinanceiraChart({data}){
   );
 }
 
+function MiniFunilConversao({patients,selMonth,selYear,onNav}){
+  const h=createElement;
+  const all=patients.flatMap(p=>(p.orcamentos||[]).map(o=>({...o,patient:p})));
+  const mes=all.filter(o=>{const d=parseAnyDate(o.created);return d&&d.getMonth()===selMonth&&d.getFullYear()===selYear;});
+  const criados=mes.length;
+  const aprovados=mes.filter(o=>o.status==="aprovado"||o.convertedAt).length;
+  const convertidos=mes.filter(o=>o.convertedAt).length;
+  const stages=[
+    {l:"Criados",v:criados,c:P.statusPurple,pct:null},
+    {l:"Aprovados",v:aprovados,c:P.statusBlue,pct:criados>0?Math.round(aprovados/criados*100):0},
+    {l:"Convertidos",v:convertidos,c:P.statusGreen,pct:criados>0?Math.round(convertidos/criados*100):0},
+  ];
+  return h(Card,{style:{marginBottom:13,cursor:onNav?"pointer":"default"},onClick:()=>onNav&&onNav("relatorios")},
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:criados>0?14:4}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text}},"🔻 Funil de Conversão do Mês"),
+      criados===0&&h("div",{style:{fontSize:11,color:P.text3}},"Nenhum orçamento este mês")
+    ),
+    criados>0&&h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+      stages.map((s,i)=>h(Fragment,{key:s.l},
+        h("div",{style:{flex:1,textAlign:"center"}},
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:s.c}},s.v),
+          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginTop:2}},s.l),
+          s.pct!=null&&h("div",{style:{fontSize:10.5,color:s.c,fontWeight:600,marginTop:3}},s.pct+"%")
+        ),
+        i<stages.length-1&&h("div",{style:{fontSize:18,color:P.text3,flexShrink:0}},"→")
+      ))
+    )
+  );
+}
 function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,procedures=[],settings,returnRules,isMobile=false,isTablet=false,goals={},setGoals,incomes=[],expenses=[],products=[]}){
   const h=createElement;
   const today=new Date();
@@ -3756,6 +3785,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
       setGoals&&h(MetaFaturamento,{received:totalRecMonth,selMonth:curM,selYear:curY,goals:goals||{},setGoals,prevMonthReceived:prevMonthRecDash}),
       setGoals&&h(MetaPorProcedimento,{procedures,patients,selMonth:curM,selYear:curY,goals:goals||{},setGoals,compact:true,onNav})
     ),
+    h(MiniFunilConversao,{patients,selMonth:curM,selYear:curY,onNav}),
     // Pacientes atenção (4 grupos)
     h(Card,{style:{marginBottom:13}},
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
@@ -4100,7 +4130,7 @@ function AgendaHourSlotsBase({date,appts,step,dragOver,setDragOver,dragIdRef,onC
   );
 }
 
-function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,proceduresFull,locations,prefill,onConsumePrefill,dark=false}){
+function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures,proceduresFull,locations,prefill,onConsumePrefill,dark=false,waitlist=[],setWaitlist}){
   const[selDate,setSelDate]=useState(todayISO());
   const[viewMonth,setViewMonth]=useState(()=>{const t=new Date();return{y:t.getFullYear(),m:t.getMonth()};});
   const[viewMode,setViewMode]=useState("month");
@@ -4112,6 +4142,8 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
   const[historyAppt,setHistoryAppt]=useState(null);
   const[showGlobalLog,setShowGlobalLog]=useState(false);
   const[globalLogSearch,setGlobalLogSearch]=useState("");
+  const[showWaitlist,setShowWaitlist]=useState(false);
+  const[wlForm,setWlForm]=useState({patientId:"",procedure:"",notes:""});
   // Drag state
   const[dragId,setDragId]=useState(null);
   const[dragOver,setDragOver]=useState(null); // {date, hour} ou null
@@ -4338,6 +4370,10 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
       ),
       h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
         h("button",{onClick:()=>setShowGlobalLog(true),title:"Ver todo o histórico de criações, edições, reagendamentos e exclusões",style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:"transparent",border:`1px solid ${P.border}`,color:P.text2}},"📜 Histórico Geral"),
+        h("button",{onClick:()=>setShowWaitlist(v=>!v),title:"Pacientes esperando vaga num dia lotado",style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:showWaitlist?P.rose:"transparent",border:`1px solid ${showWaitlist?P.rose:P.border}`,color:showWaitlist?P.accent3:P.text2,position:"relative"}},
+          "📋 Lista de Espera",
+          waitlist.length>0&&h("span",{style:{position:"absolute",top:-6,right:-6,background:P.statusRed,color:"#fff",fontSize:9.5,fontWeight:700,borderRadius:10,padding:"1px 5px",lineHeight:1.4}},waitlist.length)
+        ),
         h("button",{onClick:()=>setShowBlockModal(true),style:blockBtnStyle},"🔒 Bloquear Horário"),
         h("button",{onClick:()=>{setEditItem(null);setForm({...blank,date:selDate});setShowNew(true);},style:{padding:"9px 20px",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",transition:"all .15s",background:`linear-gradient(135deg,${P.rose},${P.gold})`,color:P.accent3,border:"none"}},"＋ Novo")
       )
@@ -4346,6 +4382,61 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
     // ── Toggle de views ──
     h("div",{style:{display:"flex",gap:8,marginBottom:16}},
       [{k:"month",l:"Mês"},{k:"week",l:"Semana"},{k:"day",l:"Dia"}].map(v=>h("button",{key:v.k,onClick:()=>setViewMode(v.k),style:{padding:"6px 16px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:viewMode===v.k?P.rose:"transparent",border:`1px solid ${viewMode===v.k?P.rose:P.border}`,color:viewMode===v.k?P.accent3:P.text2}},v.l))
+    ),
+
+    // ── Painel de Lista de Espera ──────────────────────────────────────────────
+    showWaitlist&&h(Card,{style:{marginBottom:16,border:`1px solid ${P.rose}55`}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},`📋 Lista de Espera — ${new Date(selDate+"T12:00:00").toLocaleDateString("pt-BR",{day:"2-digit",month:"long"})}`),
+        h("div",{style:{fontSize:11,color:P.text3}},"Avise automaticamente quem está esperando quando um horário abrir")
+      ),
+      // Form pra adicionar alguém na espera do dia selecionado
+      h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end",marginBottom:14,padding:12,background:P.bg3,borderRadius:10}},
+        h("div",{style:{flex:"1 1 200px"}},
+          h("div",{style:{fontSize:10,color:P.text3,marginBottom:4}},"Paciente"),
+          h(PatientAutocomplete,{value:wlForm.patientName||"",onChange:(name,pat)=>setWlForm(f=>({...f,patientName:name,patientId:pat?pat.id:""})),patients})
+        ),
+        h("div",{style:{flex:"1 1 160px"}},
+          h("div",{style:{fontSize:10,color:P.text3,marginBottom:4}},"Procedimento desejado"),
+          h("input",{value:wlForm.procedure,onChange:e=>setWlForm(f=>({...f,procedure:e.target.value})),placeholder:"Ex: Botox",style:{...IS,width:"100%"}})
+        ),
+        h("div",{style:{flex:"1 1 160px"}},
+          h("div",{style:{fontSize:10,color:P.text3,marginBottom:4}},"Observação"),
+          h("input",{value:wlForm.notes,onChange:e=>setWlForm(f=>({...f,notes:e.target.value})),placeholder:"Ex: prefere de manhã",style:{...IS,width:"100%"}})
+        ),
+        h(Btn,{onClick:()=>{
+          if(!wlForm.patientId)return;
+          const pat=patients.find(p=>p.id===wlForm.patientId);
+          setWaitlist(wl=>[...(wl||[]),{id:Date.now()+Math.random(),date:selDate,patientId:wlForm.patientId,patientName:wlForm.patientName,phone:pat?.phone||"",procedure:wlForm.procedure,notes:wlForm.notes,createdAt:new Date().toLocaleDateString("pt-BR")}]);
+          setWlForm({patientId:"",patientName:"",procedure:"",notes:""});
+        },style:{fontSize:12,flexShrink:0}},"＋ Adicionar")
+      ),
+      // Lista de quem está esperando o dia selecionado
+      (waitlist.filter(w=>w.date===selDate).length===0)
+        ?h("div",{style:{fontSize:12.5,color:P.text3,textAlign:"center",padding:"10px 0"}},"Ninguém na espera para esse dia ainda.")
+        :h("div",{style:{display:"flex",flexDirection:"column",gap:7}},
+          waitlist.filter(w=>w.date===selDate).map((w,i)=>{
+            const phone=(w.phone||"").replace(/\D/g,"");
+            const waMsg=encodeURIComponent(`Olá ${w.patientName.split(" ")[0]}! 🌸 Abriu uma vaga no dia ${new Date(selDate+"T12:00:00").toLocaleDateString("pt-BR")} pra ${w.procedure||"o procedimento que você queria"}. Quer aproveitar? Me avisa que já reservo pra você!`);
+            return h("div",{key:w.id,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:P.bg3,borderRadius:8,border:`1px solid ${P.border}`}},
+              h("div",{style:{width:22,height:22,borderRadius:"50%",background:P.rose,color:P.accent3,fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},i+1),
+              h("div",{style:{flex:1,minWidth:120}},
+                h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},w.patientName),
+                h("div",{style:{fontSize:11,color:P.text3}},[w.procedure,w.notes].filter(Boolean).join(" · ")||"—")
+              ),
+              phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{fontSize:11,padding:"5px 11px",borderRadius:7,background:P.statusGreenBg,color:P.statusGreen,border:`1px solid ${P.statusGreen}44`,textDecoration:"none",fontWeight:600,flexShrink:0}},"💬 Oferecer vaga"),
+              h("button",{onClick:()=>setWaitlist(wl=>(wl||[]).filter(x=>x.id!==w.id)),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15,flexShrink:0}},"✕")
+            );
+          })
+        ),
+      // Resumo de outras datas com espera, pra não esconder o resto
+      waitlist.filter(w=>w.date!==selDate).length>0&&h("div",{style:{marginTop:12,paddingTop:12,borderTop:`1px solid ${P.border}`,fontSize:11.5,color:P.text3}},
+        `Também esperando em outras datas: `,
+        Object.entries(waitlist.filter(w=>w.date!==selDate).reduce((a,w)=>{a[w.date]=(a[w.date]||0)+1;return a;},{})).map(([d,n],i,arr)=>h("span",{key:d},
+          h("button",{onClick:()=>setSelDate(d),style:{background:"none",border:"none",color:P.accent,cursor:"pointer",fontSize:11.5,textDecoration:"underline",padding:0}},`${new Date(d+"T12:00:00").toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})} (${n})`),
+          i<arr.length-1?", ":""
+        ))
+      )
     ),
 
     // ─── VIEW DIA ───────────────────────────────────────────────────────────────
@@ -12467,6 +12558,7 @@ function AppInner({ session, onLogout }) {
   // de agendamentos. Fica separado do array `agenda` para que o histórico sobreviva
   // mesmo quando um agendamento é excluído (o item sai de `agenda`, mas o rastro fica aqui).
   const[agendaLogRaw,setAgendaLog]=useSupaTable("agenda_log",[]);
+  const[waitlistRaw,setWaitlist]=useSupaTable("waitlist",[]); // lista de espera por dia (paciente quer vaga num dia lotado)
   const[expensesRaw,setExpenses,loadingExpenses]=useSupaTable("expenses",INIT_EXPENSES);
   const[recurringExpensesRaw,setRecurringExpenses,loadingRecurringExpenses]=useSupaTable("recurring_expenses",INIT_RECURRING_EXPENSES);
   const[incomesRaw,setIncomes,loadingIncomes]=useSupaTable("incomes",[]);
@@ -12512,6 +12604,7 @@ function AppInner({ session, onLogout }) {
   // Sobrescreve as variáveis originais — todo código abaixo já fica protegido
   const patients=Array.isArray(patientsRaw)?patientsRaw:[];
   const agenda=Array.isArray(agendaRaw)?agendaRaw:[];
+  const waitlist=Array.isArray(waitlistRaw)?waitlistRaw:[];
   const agendaLog=Array.isArray(agendaLogRaw)?agendaLogRaw:[];
   const expenses=Array.isArray(expensesRaw)?expensesRaw:[];
   const recurringExpenses=Array.isArray(recurringExpensesRaw)?recurringExpensesRaw:[];
@@ -12815,7 +12908,7 @@ function AppInner({ session, onLogout }) {
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,onScheduleReturn:handleScheduleReturn,procedures:procedureNames,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses,products}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn,agenda}),
-            page==="agenda"&&h(Agenda,{patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null),dark}),
+            page==="agenda"&&h(Agenda,{patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null),dark,waitlist,setWaitlist}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,setAgendaLog,maquininhas,initialTab:patientDetailTab}),
