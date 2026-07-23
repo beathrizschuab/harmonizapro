@@ -3651,16 +3651,8 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
   const proxAppt=todayAppts.find(a=>{if(!a.time)return false;const[hh,mm]=a.time.split(":").map(Number);return hh*60+mm>nowMin&&a.status!=="Cancelado"&&a.status!=="Realizado";});
   const proxMin=proxAppt?(()=>{const[hh,mm]=proxAppt.time.split(":").map(Number);return hh*60+mm-nowMin;})():null;
   const dark=!!(settings&&settings.darkMode);
-  // Alertas automáticos
-  const alertas=[];
-  const critStock=products.filter(p=>p.status==="critical"||(Array.isArray(p.lotes)&&p.lotes.some(l=>{if(!l.validade)return false;let d=null;try{const[m,y]=String(l.validade).split("/");d=new Date(Number(y),Number(m)-1,1);}catch{d=null;}return d&&d<=new Date(Date.now()+30*864e5);})));
-  if(critStock.length)alertas.push({icon:"ti-alert-triangle",color:P.statusAmber,bg:dark?"rgba(214,137,16,.12)":"rgba(214,137,16,.08)",title:"Estoque crítico",sub:`${critStock.length} item${critStock.length>1?"s":""} requer${critStock.length>1?"em":""} atenção`,action:()=>onNav("estoque")});
-  const retAtrasados=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);});
-  if(retAtrasados.length)alertas.push({icon:"ti-clock-hour-4",color:P.statusBlue,bg:dark?"rgba(46,111,190,.12)":"rgba(46,111,190,.08)",title:"Retornos em atraso",sub:`${retAtrasados.length} paciente${retAtrasados.length>1?"s":""} sem visita além do prazo`,action:()=>onNav("retornos")});
-  const despVencer=(Array.isArray(expenses)?expenses:[]).filter(e=>e.status==="Pendente"&&e.date&&e.date<=new Date(Date.now()+3*864e5).toISOString().slice(0,10));
-  if(despVencer.length)alertas.push({icon:"ti-coin",color:P.statusRed,bg:dark?"rgba(214,69,69,.12)":"rgba(214,69,69,.08)",title:`Conta${despVencer.length>1?"s":""} a vencer`,sub:`${despVencer.length} despesa${despVencer.length>1?"s":""} vencem em 3 dias`,action:()=>onNav("financeiro")});
-  const icAcomp=patients.flatMap(p=>(p.intercorrencias||[]).map(ic=>({...ic,patient:p}))).filter(ic=>icStatusOf(ic)==="Em Acompanhamento");
-  if(icAcomp.length)alertas.push({icon:"ti-stethoscope",color:P.statusRed,bg:dark?"rgba(214,69,69,.12)":"rgba(214,69,69,.08)",title:"Intercorrências ativas",sub:`${icAcomp.length} caso${icAcomp.length>1?"s":""} em acompanhamento`,action:()=>onNav("intercorrencias_global")});
+  // Retorno atrasado por protocolo específico (returnReminderDays) — usado agora dentro de "Pacientes — Atenção"
+  const isProtocolOverdue=p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);};
   // Sparkline SVG
   function Sparkline({data,color}){
     const max=Math.max(...data,1);
@@ -3712,19 +3704,6 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
               h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3}},k.delta)
             )
           :h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:k.deltaColor,marginTop:5}},k.delta)
-      ))
-    ),
-    // Alertas semânticos
-    alertas.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:14}},
-      alertas.map((a,i)=>h("div",{key:i,onClick:a.action,style:{display:"flex",alignItems:"center",gap:11,padding:"9px 13px",borderRadius:9,background:a.bg,borderLeft:`3px solid ${a.color}`,cursor:"pointer",transition:"transform .15s"},
-        onMouseEnter:e=>e.currentTarget.style.transform="translateX(3px)",
-        onMouseLeave:e=>e.currentTarget.style.transform="translateX(0)"},
-        h("i",{className:`ti ${a.icon}`,style:{fontSize:15,color:a.color,flexShrink:0}}),
-        h("div",{style:{flex:1}},
-          h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12,color:a.color}},a.title),
-          h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:1}},a.sub)
-        ),
-        h("i",{className:"ti ti-chevron-right",style:{fontSize:13,color:a.color,opacity:.6}})
       ))
     ),
     // Agenda hoje (timeline) + mini chart
@@ -3798,11 +3777,11 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
           const cg=patients.map(p=>{
             const d=parseDMY(p.lastVisit);const days=d?daysBetween(d,today):null;
             const hasUp=agenda.some(a=>a.patientName===p.name&&a.date>=todayISO2&&a.date<=new Date(today.getTime()+30*864e5).toISOString().slice(0,10));
-            return{...p,_days:days,_inTreatment:hasUp||(days!==null&&days<=60)};
+            return{...p,_days:days,_inTreatment:hasUp||(days!==null&&days<=60),_protocolOverdue:isProtocolOverdue(p)};
           });
           const groups=[
             {label:"Inativas +6m",pts:cg.filter(p=>p._days!==null&&p._days>180&&p.status!=="vip"),color:P.statusRed,bg:dark?"rgba(214,69,69,.1)":"rgba(214,69,69,.07)",icon:"ti-user-off"},
-            {label:"Retorno +3m",pts:cg.filter(p=>p._days!==null&&p._days>90&&p._days<=180&&p.status!=="vip"),color:P.statusAmber,bg:dark?"rgba(214,137,16,.1)":"rgba(214,137,16,.07)",icon:"ti-clock-hour-4"},
+            {label:"Retorno atrasado",pts:cg.filter(p=>p.status!=="vip"&&(p._protocolOverdue||(p._days!==null&&p._days>90&&p._days<=180))),color:P.statusAmber,bg:dark?"rgba(214,137,16,.1)":"rgba(214,137,16,.07)",icon:"ti-clock-hour-4"},
             {label:"Em tratamento",pts:cg.filter(p=>p._inTreatment&&p.status!=="vip"),color:P.statusBlue,bg:dark?"rgba(46,111,190,.1)":"rgba(46,111,190,.07)",icon:"ti-activity"},
             {label:"VIPs",pts:cg.filter(p=>p.status==="vip"),color:P.statusAmber,bg:dark?"rgba(214,137,16,.1)":"rgba(214,137,16,.07)",icon:"ti-star"},
           ];
@@ -3852,8 +3831,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
           );
         })
       )
-    ),
-    h(RetornosPendentes,{patients,returnRules,onSelectPatient,onNav,onScheduleReturn,mini:true})
+    )
   );
 }
 // ─── PATIENT AUTOCOMPLETE ────────────────────────────────────────────────────
