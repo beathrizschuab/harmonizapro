@@ -1536,7 +1536,7 @@ function Avatar({name,size=40,idx=0,src=null}){
   return createElement("div",{style:{width:size,height:size,borderRadius:"50%",background:avColors[idx%avColors.length],display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.32,fontWeight:700,color:P.text3,flexShrink:0,border:`1px solid ${P.border}`}},initials(name));
 }
 function Card({children,style:s,onClick,className}){
-  const el=createElement("div",{onClick,className,style:{background:P.card,border:`0.5px solid ${P.border}`,borderRadius:13,padding:18,transition:"all .18s ease",cursor:onClick?"pointer":"default",...s}},children);
+  const el=createElement("div",{onClick,className,style:{background:P.card,border:`0.5px solid ${P.border}`,borderRadius:13,padding:18,boxShadow:"0 1px 3px rgba(124,58,237,.04), 0 8px 24px rgba(124,58,237,.06)",transition:"all .18s ease",cursor:onClick?"pointer":"default",...s}},children);
   return el;
 }
 // Pill de status semântico
@@ -12322,7 +12322,8 @@ function AppInner({ session, onLogout }) {
   const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
   const h=createElement;
   const todayStr=new Date().toISOString().slice(0,10);
-  const todayApptCount=agenda.filter(a=>a.date===todayStr).length;
+  const todayAppts=agenda.filter(a=>a.date===todayStr);
+  const todayApptCount=todayAppts.length;
   const criticalStock=products.filter(p=>p.status==="critical").length;
 
   // ── Responsive state ──────────────────────────────────────────────────────
