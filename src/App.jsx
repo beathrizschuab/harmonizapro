@@ -8,15 +8,15 @@ const supabase = createClient(SUPA_URL, SUPA_KEY);
 // ─── CONSTANTS & PALETTE ─────────────────────────────────────────────────────
 // ─── PALETA OFICIAL ───────────────────────────────────────────────────────────
 // Noite #221112 · Vinho #7A2942 · Escuro #472325 · Rosa Sec #B8695F
-// Terracota #C9963E · Cacau #9F8475 · Nude #E1D2C6
+// Terracota #C08A46 · Cacau #9F8475 · Nude #E1D2C6
 const P_LIGHT={
   bg:"#F5EFE9",bg2:"#FBF7F4",bg3:"#F0E7DE",
   card:"#FFFFFF",card2:"#F6EEE6",
   border:"rgba(122,41,66,.14)",border2:"rgba(122,41,66,.08)",
   accent:"#7A2942",accent2:"#9D5A52",accent3:"#F7F1EC",
-  rose:"#B8695F",rose2:"#C9963E",
+  rose:"#B8695F",rose2:"#C08A46",
   text:"#241016",text2:"#4A2029",text3:"#9F8475",
-  green:"#2F9E5B",red:"#D64545",yellow:"#D68910",gold:"#C9963E",
+  green:"#2F9E5B",red:"#D64545",yellow:"#D68910",gold:"#C08A46",
   // status colors (light)
   statusGreen:"#2F9E5B",statusGreenBg:"rgba(47,158,91,.12)",
   statusBlue:"#2E6FBE",statusBlueBg:"rgba(46,111,190,.12)",
@@ -32,10 +32,10 @@ const P_DARK={
   bg:"#1c0e10",bg2:"#251215",bg3:"#2d1518",
   card:"#251215",card2:"#2d1518",
   border:"rgba(122,41,66,.15)",border2:"rgba(122,41,66,.08)",
-  accent:"#C9963E",accent2:"#B8695F",accent3:"#F7F1EC",
-  rose:"#B8695F",rose2:"#C9963E",
-  text:"#E1D2C6",text2:"#9F8475",text3:"#5a3a3e",
-  green:"#6dbf8a",red:"#e07070",yellow:"#e0b840",gold:"#c4a96a",
+  accent:"#C08A46",accent2:"#B8695F",accent3:"#F7F1EC",
+  rose:"#B8695F",rose2:"#C08A46",
+  text:"#E1D2C6",text2:"#9F8475",text3:"#957d76",
+  green:"#6dbf8a",red:"#e07070",yellow:"#e0b840",gold:"#C08A46",
   // status colors (dark)
   statusGreen:"#6dbf8a",statusGreenBg:"rgba(109,191,138,.12)",
   statusBlue:"#7aaed4",statusBlueBg:"rgba(122,174,212,.12)",
@@ -219,7 +219,7 @@ function fmtDateShort(iso){
   const[y,m,d]=iso.split("-");
   return `${d}/${m}/${y}`;
 }
-const avColors=["linear-gradient(135deg,#7A2942,#B8695F)","linear-gradient(135deg,#B8695F,#C9963E)","linear-gradient(135deg,#C9963E,#7a2840)","linear-gradient(135deg,#7a2840,#B8695F)","linear-gradient(135deg,#6b3a4a,#9F8475)"];
+const avColors=["linear-gradient(135deg,#7A2942,#B8695F)","linear-gradient(135deg,#B8695F,#C08A46)","linear-gradient(135deg,#C08A46,#7a2840)","linear-gradient(135deg,#7a2840,#B8695F)","linear-gradient(135deg,#6b3a4a,#9F8475)"];
 // ─── ÍCONES DO MENU (substituem emojis) ──────────────────────────────────────
 function NavIcon({name,size=17}){
   const h=createElement;
@@ -416,7 +416,7 @@ function updateIntercorrencia(setPatients,patientId,icId,updater){
 // Critérios automáticos: valor gasto total + nº de sessões (frequência) + nº de indicações feitas
 const LOYALTY_TIERS=[
   {k:"diamante",l:"Diamante",stars:4,color:"#9ec7e8",bg:"rgba(158,199,232,.14)",minScore:85},
-  {k:"ouro",l:"Ouro",stars:3,color:"#c4a96a",bg:"rgba(196,169,106,.14)",minScore:55},
+  {k:"ouro",l:"Ouro",stars:3,color:"#C08A46",bg:"rgba(196,169,106,.14)",minScore:55},
   {k:"prata",l:"Prata",stars:2,color:"#b9c0c9",bg:"rgba(185,192,201,.14)",minScore:28},
   {k:"bronze",l:"Bronze",stars:1,color:"#c08a5a",bg:"rgba(192,138,90,.14)",minScore:0},
 ];
@@ -2828,7 +2828,7 @@ function GlobalSearch({patients,agenda,onSelectPatient,onNav}){
     else if(e.key==="Enter"){e.preventDefault();go(results[sel]);}
     else if(e.key==="Escape"){setOpen(false);setQ("");}
   }
-  const typeColor={paciente:"#C9963E",sessão:P.statusBlue,agenda:P.statusGreen};
+  const typeColor={paciente:"#C08A46",sessão:P.statusBlue,agenda:P.statusGreen};
   const typeIcon={paciente:"ti-user",sessão:"ti-needle",agenda:"ti-calendar"};
   const statusColors={"vip":P.statusAmber,"active":P.statusGreen,"inactive":P.statusRed,"new":P.statusBlue};
   return h("div",{ref,style:{position:"relative",flex:1,maxWidth:340}},
@@ -2850,7 +2850,7 @@ function GlobalSearch({patients,agenda,onSelectPatient,onNav}){
         style:{display:"flex",alignItems:"center",gap:10,padding:"9px 13px",cursor:"pointer",borderBottom:i<results.length-1?`0.5px solid ${P.border}`:"none",background:i===sel?(P.bg3||P.bg2):"transparent",transition:"background .12s"},
         onMouseEnter:()=>setSel(i)},
         r.pat
-          ?h("div",{style:{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,#7A2942,#C9963E)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#fff",flexShrink:0,fontFamily:"'Cormorant Garamond',serif"}},initials(r.pat.name))
+          ?h("div",{style:{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,#7A2942,#C08A46)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#fff",flexShrink:0,fontFamily:"'Cormorant Garamond',serif"}},initials(r.pat.name))
           :h("div",{style:{width:30,height:30,borderRadius:"50%",background:typeColor[r.type]+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
               h("i",{className:`ti ${typeIcon[r.type]}`,style:{fontSize:14,color:typeColor[r.type]}})
             ),
@@ -2912,7 +2912,7 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
       if(diasRestantes<0){
         urgencia=0;urgLabel="Atrasada";urgColor=P.red;urgBg="rgba(192,112,112,.10)";
       }else if(diasRestantes<=7){
-        urgencia=1;urgLabel="Esta semana";urgColor="#c4a96a";urgBg="rgba(196,169,106,.10)";
+        urgencia=1;urgLabel="Esta semana";urgColor="#C08A46";urgBg="rgba(196,169,106,.10)";
       }else if(diasRestantes<=30){
         urgencia=2;urgLabel="Este mês";urgColor="#7aaed4";urgBg="rgba(122,174,212,.10)";
       }else{
@@ -3017,7 +3017,7 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
     // ─── ABA: RETORNO DE PROTOCOLO ────────────────────────────────────────────
     tab==="retorno"&&h(Fragment,null,
       // Resumo em cards
-      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
+      h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
         [{l:"Atrasadas",v:retornos.filter(r=>r.urgencia===0).length,c:P.statusRed,icon:"🔴",f:"urgente"},
          {l:"Esta semana",v:retornos.filter(r=>r.urgencia===1).length,c:P.statusAmber,icon:"🟡",f:"proximo"},
          {l:"Este mês",v:retornos.filter(r=>r.urgencia===2).length,c:P.statusBlue,icon:"🔵",f:"proximo"},
@@ -3094,7 +3094,7 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
         )
       ),
       // Resumo cards
-      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}},
+      h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}},
         [{label:"Alto risco",value:risco.filter(p=>p._nivel==="alto").length,icon:"ti-user-off",color:P.statusRed,bg:dark?"rgba(214,69,69,.1)":"rgba(214,69,69,.07)"},
          {label:"Atenção",value:risco.filter(p=>p._nivel==="medio").length,icon:"ti-clock-hour-4",color:P.statusAmber,bg:dark?"rgba(214,137,16,.1)":"rgba(214,137,16,.07)"},
          {label:"Sem agendamento futuro",value:risco.filter(p=>!p._hasUpcoming).length,icon:"ti-calendar-off",color:P.text3,bg:P.bg3||P.bg2}
@@ -3134,7 +3134,7 @@ function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onSchedul
             // Ações
             h("div",{style:{display:"flex",gap:7,flexShrink:0,alignItems:"center"}},
               h("button",{onClick:()=>{onSelectPatient(p);onNav("prontuario");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.text3,background:"transparent",border:`0.5px solid ${P.border}`,borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>{e.currentTarget.style.color=P.text;e.currentTarget.style.borderColor=P.text3;},onMouseLeave:e=>{e.currentTarget.style.color=P.text3;e.currentTarget.style.borderColor=P.border;}},"Ver prontuário"),
-              h("button",{onClick:()=>{onSelectPatient(p);onNav("agenda");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#C9963E",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background="rgba(157,119,97,.18)",onMouseLeave:e=>e.currentTarget.style.background="rgba(157,119,97,.1)"},"Agendar"),
+              h("button",{onClick:()=>{onSelectPatient(p);onNav("agenda");},style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#C08A46",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:8,padding:"5px 11px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background="rgba(157,119,97,.18)",onMouseLeave:e=>e.currentTarget.style.background="rgba(157,119,97,.1)"},"Agendar"),
               phone&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{display:"inline-flex",alignItems:"center",gap:5,fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:P.statusGreen,background:P.statusGreenBg,border:`0.5px solid ${P.statusGreen}44`,borderRadius:8,padding:"5px 11px",textDecoration:"none",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background=P.statusGreenBg.replace(".12",".2"),onMouseLeave:e=>e.currentTarget.style.background=P.statusGreenBg},
                 h("i",{className:"ti ti-brand-whatsapp",style:{fontSize:13}}),"WhatsApp")
             )
@@ -3177,7 +3177,7 @@ function Aniversariantes({patients,onSelectPatient,onNav}){
             p.status==="vip"&&h("span",{style:{fontSize:10,color:P.gold,background:"rgba(196,169,106,.15)",padding:"2px 7px",borderRadius:10,fontWeight:600,marginLeft:4}},"VIP ✦")
           ),
           p._isToday?h("div",{style:{fontSize:12,color:P.yellow,fontWeight:600,marginTop:3}},"🎉 Hoje é o aniversário dela!")
-            :p._days<=7?h("div",{style:{fontSize:12,color:"#c4a96a",marginTop:3}},"Em "+p._days+" dia"+(p._days>1?"s":""))
+            :p._days<=7?h("div",{style:{fontSize:12,color:"#C08A46",marginTop:3}},"Em "+p._days+" dia"+(p._days>1?"s":""))
             :h("div",{style:{fontSize:12,color:P.text3,marginTop:3}},"Em "+p._days+" dias")
         ),
         h("div",{style:{display:"flex",gap:8,alignItems:"center",flexShrink:0}},
@@ -3189,7 +3189,7 @@ function Aniversariantes({patients,onSelectPatient,onNav}){
   }
   return h("div",null,
     h(SectionHeader,{title:"Aniversariantes",sub:"Idades calculadas automaticamente pela data de nascimento"}),
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}},
       [{icon:"🎂",label:"Hoje",value:todayList.length,color:P.statusAmber},{icon:"🗓️",label:"Esta semana",value:weekList.length,color:P.statusBlue},{icon:"📅",label:"Este mês",value:withBday.filter(p=>p._month===today.getMonth()).length,color:P.statusGreen},{icon:"📊",label:"Com data cadastrada",value:withBday.length,color:P.statusPurple}]
       .map(k=>h(Card,{key:k.label,style:kpiCardStyle(k.color)},h("div",{style:{fontSize:24,marginBottom:6}},k.icon),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:36,color:k.color,lineHeight:1}},k.value),h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},k.label)))
     ),
@@ -3675,7 +3675,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
   const KPIs=[
     {label:"Receita do Mês",value:fmtCurr(totalRecMonth),icon:"ti-trending-up",iconColor:P.statusGreen,iconBg:P.statusGreenBg,delta:recDelta!=null?`${recDelta>=0?"▲":"▼"} ${Math.abs(recDelta).toFixed(0)}% vs ${MONTH_NAMES[prevMNum].slice(0,3)}`:"sem dados anteriores",deltaColor:recDelta!=null&&recDelta>=0?P.statusGreen:P.statusRed,sparkData:months.map(m=>m.value),sparkColor:P.statusGreen,border:`0.5px solid rgba(47,158,91,.28)`,bg:P.statusGreenBg},
     {label:"Sessões Realizadas",value:sessoesMes,icon:"ti-clipboard-list",iconColor:P.statusBlue,iconBg:P.statusBlueBg,delta:"este mês",deltaColor:P.statusBlue,sparkData:months.map(m=>m.sessoes),sparkColor:P.statusBlue,border:`0.5px solid rgba(46,111,190,.28)`,bg:P.statusBlueBg},
-    {label:"Novas Pacientes",value:novasMes,icon:"ti-user-plus",iconColor:"#C9963E",iconBg:"rgba(157,119,97,.12)",delta:"este mês",deltaColor:"#C9963E",sparkData:months.map(m=>m.novas),sparkColor:"#C9963E",border:"0.5px solid rgba(157,119,97,.28)",bg:"rgba(157,119,97,.1)"},
+    {label:"Novas Pacientes",value:novasMes,icon:"ti-user-plus",iconColor:"#C08A46",iconBg:"rgba(157,119,97,.12)",delta:"este mês",deltaColor:"#C08A46",sparkData:months.map(m=>m.novas),sparkColor:"#C08A46",border:"0.5px solid rgba(157,119,97,.28)",bg:"rgba(157,119,97,.1)"},
     {label:"Meta — "+MONTH_NAMES[curM],value:`${Math.round(pctMeta*100)}%`,icon:"ti-target",iconColor:"#B8695F",iconBg:"rgba(122,41,66,.12)",isMeta:true,delta:metaMes>0?`${fmtCurr(totalRecMonth)} de ${fmtCurr(metaMes)}`:"Configure uma meta",deltaColor:P.text3,pctMeta,pctDia,border:"0.5px solid rgba(122,41,66,.28)",bg:"rgba(122,41,66,.1)"},
   ];
   return h("div",null,
@@ -3686,7 +3686,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
         h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,color:P.text3,marginTop:3}},today.toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long",year:"numeric"}))
       ),
       h("div",{style:{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}},
-        proxAppt&&proxMin!=null&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#C9963E",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",padding:"6px 14px",borderRadius:20,whiteSpace:"nowrap"}},`⏱ Próximo em ${proxMin}min · ${proxAppt.patientName}`),
+        proxAppt&&proxMin!=null&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#C08A46",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",padding:"6px 14px",borderRadius:20,whiteSpace:"nowrap"}},`⏱ Próximo em ${proxMin}min · ${proxAppt.patientName}`),
         h("button",{onClick:()=>onNav("agenda"),style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12,background:"#7A2942",color:"#E1D2C6",border:"none",borderRadius:9,padding:"8px 18px",cursor:"pointer",letterSpacing:".04em",transition:"all .18s"},onMouseEnter:e=>{e.currentTarget.style.background="#472325";},onMouseLeave:e=>{e.currentTarget.style.background="#7A2942";}},"+ Novo Agendamento")
       )
     ),
@@ -3706,7 +3706,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
         k.isMeta&&metaMes>0
           ?h("div",{style:{marginTop:8}},
               h("div",{style:{position:"relative",height:6,borderRadius:6,background:dark?"rgba(0,0,0,.25)":"rgba(122,41,66,.12)",overflow:"visible",marginBottom:4}},
-                h("div",{style:{height:"100%",borderRadius:6,background:"linear-gradient(90deg,#7A2942,#C9963E)",width:`${pctMeta*100}%`,transition:"width 1s ease"}}),
+                h("div",{style:{height:"100%",borderRadius:6,background:"linear-gradient(90deg,#7A2942,#C08A46)",width:`${pctMeta*100}%`,transition:"width 1s ease"}}),
                 h("div",{title:"Ritmo esperado para hoje",style:{position:"absolute",top:-3,left:`${pctDia*100}%`,transform:"translateX(-50%)",width:2,height:12,borderRadius:1,background:P.text3,opacity:.6}})
               ),
               h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3}},k.delta)
@@ -3734,7 +3734,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:17,color:P.text}},"Agenda de hoje"),
           h("div",{style:{display:"flex",alignItems:"center",gap:8}},
             h("span",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3}},`${todayAppts.length} atendimento${todayAppts.length!==1?"s":""}`),
-            h("button",{onClick:()=>onNav("agenda"),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#C9963E",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:7,padding:"3px 10px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background="rgba(157,119,97,.18)",onMouseLeave:e=>e.currentTarget.style.background="rgba(157,119,97,.1)"},"Ver tudo →")
+            h("button",{onClick:()=>onNav("agenda"),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#C08A46",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:7,padding:"3px 10px",cursor:"pointer",transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background="rgba(157,119,97,.18)",onMouseLeave:e=>e.currentTarget.style.background="rgba(157,119,97,.1)"},"Ver tudo →")
           )
         ),
         todayAppts.length===0
@@ -3790,7 +3790,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
     h(Card,{style:{marginBottom:13}},
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:400,fontSize:17,color:P.text}},"Pacientes — Atenção"),
-        h("button",{onClick:()=>onNav("pacientes"),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#C9963E",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:7,padding:"3px 10px",cursor:"pointer"}},"Ver todas →")
+        h("button",{onClick:()=>onNav("pacientes"),style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10.5,color:"#C08A46",background:"rgba(157,119,97,.1)",border:"0.5px solid rgba(157,119,97,.2)",borderRadius:7,padding:"3px 10px",cursor:"pointer"}},"Ver todas →")
       ),
       h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}},
         (()=>{
@@ -3904,7 +3904,7 @@ const APPT_FIELD_LABELS={
   duration:"Duração", value:"Valor", status:"Status", obs:"Observações"
 };
 const HIST_TYPE_ICON={create:"✦",reschedule:"📅",status:"↻",value:"💰",procedure:"💉",location:"📍",duration:"⏱",obs:"📝",patientName:"👤",delete:"🗑"};
-const HIST_TYPE_COLOR={create:"#7aad8a",reschedule:"#9b7aad",status:"#7aaed4",value:"#c4a96a",procedure:"#c08a9f",location:"#7a9fc0",duration:"#9c9070",obs:"#9c8682",patientName:"#9d6f56",delete:"#c07070"};
+const HIST_TYPE_COLOR={create:"#7aad8a",reschedule:"#9b7aad",status:"#7aaed4",value:"#C08A46",procedure:"#c08a9f",location:"#7a9fc0",duration:"#9c9070",obs:"#9c8682",patientName:"#9d6f56",delete:"#c07070"};
 function nowBR(){return new Date().toLocaleString("pt-BR");}
 function fmtApptFieldVal(field,v){
   if(field==="value")return fmtCurr(Number(v)||0);
@@ -4474,9 +4474,9 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
           const cnt=agenda.filter(a=>a.date===ds&&!a.blocked).length;
           return h("div",{key:ds,onClick:()=>setSelDate(ds),style:{padding:"8px 4px",textAlign:"center",borderRight:`0.5px solid ${P.border}`,cursor:"pointer",background:isSel?"#7A2942":isToday?"rgba(157,119,97,.08)":"transparent",transition:"background .15s"}},
             h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:isSel?"rgba(255,255,255,.7)":P.text3,textTransform:"uppercase",letterSpacing:".08em"}},["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d.getDay()]),
-            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:isSel?"#fff":isToday?"#C9963E":P.text,marginTop:1}},d.getDate()),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:isSel?"#fff":isToday?"#C08A46":P.text,marginTop:1}},d.getDate()),
             cnt>0&&h("div",{style:{display:"flex",justifyContent:"center",gap:2,marginTop:3}},
-              Array.from({length:Math.min(cnt,4)}).map((_,i)=>h("div",{key:i,style:{width:4,height:4,borderRadius:"50%",background:isSel?"rgba(255,255,255,.6)":"#C9963E"}}))
+              Array.from({length:Math.min(cnt,4)}).map((_,i)=>h("div",{key:i,style:{width:4,height:4,borderRadius:"50%",background:isSel?"rgba(255,255,255,.6)":"#C08A46"}}))
             )
           );
         })
@@ -4500,7 +4500,7 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
     ),
 
     // ─── VIEW MÊS ───────────────────────────────────────────────────────────────
-    viewMode==="month"&&h("div",{style:{display:"grid",gridTemplateColumns:"1fr 320px",gap:18}},
+    viewMode==="month"&&h("div",{className:"resp-grid-21",style:{display:"grid",gridTemplateColumns:"1fr 320px",gap:18}},
       h("div",{style:{background:P.card,border:`1px solid ${P.border}`,borderRadius:12,padding:20}},
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},`${MONTH_NAMES[viewMonth.m]} ${viewMonth.y}`),
@@ -4610,7 +4610,7 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
               if(found)return null;
               return h("div",{style:{marginTop:6,padding:"7px 11px",borderRadius:8,background:"rgba(196,169,106,.12)",border:"1px solid rgba(196,169,106,.3)",display:"flex",alignItems:"center",gap:7}},
                 h("span",{style:{fontSize:14}},"✨"),
-                h("span",{style:{fontSize:12,color:"#c4a96a",lineHeight:1.4}},"Paciente nova — será cadastrada automaticamente ao confirmar.")
+                h("span",{style:{fontSize:12,color:"#C08A46",lineHeight:1.4}},"Paciente nova — será cadastrada automaticamente ao confirmar.")
               );
             })()
           )
@@ -4866,7 +4866,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
       h("input",{value:search,onChange:e=>setSearch(e.target.value),placeholder:"🔍 Buscar por nome, telefone, CPF...",style:{...IS,flex:1,minWidth:200,padding:"8px 14px"}}),
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},filtersBtns.map(fi=>h("button",{key:fi.k,onClick:()=>setFilter(fi.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===fi.k?P.rose:"transparent",border:`1px solid ${filter===fi.k?P.rose:P.border}`,color:filter===fi.k?P.accent3:P.text2}},fi.l)))
     ),
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}},
+    h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}},
       visible.map((p,i)=>{
         const bd_p=p.birthDate?new Date(p.birthDate+"T12:00"):null;
         let calcAge=p.age;if(bd_p&&!isNaN(bd_p)){let a=new Date().getFullYear()-bd_p.getFullYear();const m=new Date().getMonth()-bd_p.getMonth();if(m<0||(m===0&&new Date().getDate()<bd_p.getDate()))a--;calcAge=a;}
@@ -5626,7 +5626,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     upd(p=>({...p,sessions_packages:(p.sessions_packages||[]).map(pkg=>{if(pkg.id!==pkgId||pkg.done<=0)return pkg;return{...pkg,done:pkg.done-1,sessions:(pkg.sessions||[]).slice(0,-1)};})}));
   }
   function deletePackage(pkgId){if(window.confirm("Excluir pacote?"))upd(p=>({...p,sessions_packages:(p.sessions_packages||[]).filter(pkg=>pkg.id!==pkgId)}));}
-  const alertColors={alergia:P.red,hipertensão:"#c07070",diabetes:"#c4a96a",anticoagulante:"#9b7aad",gestante:"#d47090","lidocaína":P.red};
+  const alertColors={alergia:P.red,hipertensão:"#c07070",diabetes:"#C08A46",anticoagulante:"#9b7aad",gestante:"#d47090","lidocaína":P.red};
   function getAlertColor(txt){const t=txt.toLowerCase();for(const[k,v]of Object.entries(alertColors)){if(t.includes(k))return v;}return P.red;}
   return h("div",null,
     h("div",{style:{display:"flex",alignItems:"center",gap:12,marginBottom:22}},
@@ -5710,7 +5710,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       return h("div",null,
         h(Card,{style:{marginBottom:14,border:"1px solid rgba(192,112,112,.35)",background:"rgba(192,112,112,.04)"}},
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:14}},"⚡ Ficha Rápida"),
-          h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}},
+          h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}},
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:"1px solid rgba(192,112,112,.3)"}},h("div",{style:{fontSize:10,color:P.red,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"❤️ Alergias"),h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},patient.allergies||"Nenhuma"),patient.anamnese?.allergiesDetail&&h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},patient.anamnese.allergiesDetail)),
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"🚭 Tabagismo"),h("div",{style:{fontSize:14,color:patient.anamnese?.smoking==="Sim"?P.red:P.text}},patient.anamnese?.smoking||"Não informado"),patient.anamnese?.pregnancy&&patient.anamnese.pregnancy!=="Não"&&h("div",{style:{fontSize:12,color:P.yellow,marginTop:4}},"⚠️ "+patient.anamnese.pregnancy)),
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"💊 Medicações"),h("div",{style:{fontSize:13,color:P.text}},patient.anamnese?.medications||"Nenhuma")),
@@ -6107,7 +6107,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           resolv:all.filter(ic=>icStatusOf(ic)==="Resolvida").length,
           graves:all.filter(ic=>["Grave","Emergencial"].includes(icSeverityOf(ic))).length
         };
-        return h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}},
+        return h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}},
           [{l:"Total",v:all.length,c:P.statusPurple},{l:"Em Acompanhamento",v:stats.acomp,c:P.statusBlue},{l:"Resolvidas",v:stats.resolv,c:P.statusGreen},{l:"Graves/Emergenciais",v:stats.graves,c:P.statusRed}].map(s=>
             h(Card,{key:s.l,style:{...kpiCardStyle(s.c),padding:14}},
               h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:5}},s.l),
@@ -6256,12 +6256,12 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         patient.anamnese.allergiesDetail&&h("div",{style:{fontSize:13,color:P.text2,marginTop:8}},patient.anamnese.allergiesDetail),
         patient.anamnese.contraindications&&patient.anamnese.contraindications!=="Nenhuma"&&h("div",{style:{fontSize:13,color:P.red,marginTop:6}},`Contraindicações: ${patient.anamnese.contraindications}`)
       ),
-      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14}},
+      h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14}},
         [{l:"Tipo de Pele",v:patient.anamnese.skinType},{l:"Fitzpatrick",v:patient.anamnese.fitzpatrick},{l:"Fumante",v:patient.anamnese.smoking},{l:"Gestante/Lactante",v:patient.anamnese.pregnancy},{l:"Histórico de Saúde",v:patient.anamnese.healthHistory},{l:"Medicamentos",v:patient.anamnese.medications},{l:"Procedimentos Anteriores",v:patient.anamnese.previousProcedures||"Nenhum"},{l:"🎵 Estilo Musical",v:patient.anamnese.musicStyle||"—"}].map(f=>h(Card,{key:f.l,style:{padding:"14px 16px"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},f.l),h("div",{style:{fontSize:14,color:P.text}},f.v||"—")))
       ),
       h(Card,{style:{marginTop:14,border:`1px solid ${P.accent}30`,background:`${P.accent}08`}},
         h("div",{style:{fontSize:11,color:P.accent,textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:14}},"💜 Preferências da Paciente"),
-        h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:12}},
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:12}},
           h("div",{style:{background:P.bg3,borderRadius:10,padding:"12px 14px",border:`1px solid ${P.border}`}},
             h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"🕐 Horário Preferido"),
             h("div",{style:{fontSize:13,color:P.text,fontWeight:500}},patient.preferencias?.horario||"Não informado")
@@ -6372,7 +6372,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       },0);
       return h("div",null,
         // KPIs
-        h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:18}},
+        h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:18}},
           [
             {l:"Total Investido",v:fmtCurr(totalSpent),c:P.accent,tip:"Soma de todas as sessões"},
             {l:"Pago",v:fmtCurr(totalPago),c:P.green,tip:"Sessões com status Pago"},
@@ -7043,7 +7043,7 @@ function Estoque({products,setProducts,stockCats,setStockCats}){
     ),
 
     subTab==="injetaveis"?h(Fragment,null,
-      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
+      h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
         [{l:"Nível Crítico",v:critical,c:P.statusRed},{l:"Produtos",v:injetaveis.length,c:P.statusBlue},{l:"Valor em Estoque",v:fmtCurr(totalVal),c:P.statusGreen}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
       ),
       h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
@@ -7168,7 +7168,7 @@ function Estoque({products,setProducts,stockCats,setStockCats}){
       )
     ):h(Fragment,null,
       // ── SUB-ABA INSUMOS/DESCARTÁVEIS: cadastro simplificado, sem lotes/validade ──
-      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
+      h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
         [{l:"Nível Crítico",v:criticalInsumos,c:P.statusRed},{l:"Insumos",v:insumos.length,c:P.statusTeal},{l:"Valor em Estoque",v:fmtCurr(totalValInsumos),c:P.statusGreen}].map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c}},k.v)))
       ),
       h("div",{style:{display:"flex",gap:8,marginBottom:14}},[{k:"all",l:"Todos"},{k:"critical",l:"⚠ Crítico"},{k:"low",l:"⚡ Baixo"},{k:"ok",l:"✓ OK"}].map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))),
@@ -7584,7 +7584,7 @@ function FluxoCaixaProjetado({patients=[],incomes=[],expenses=[],recurringExpens
 
     h(Card,null,
       h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:12}},"Composição da Projeção"),
-      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}},
+      h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}},
         [
           {label:"Sessões futuras (prontuário)",icon:"💉",color:P.green,count:projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="sessao_futura").length,0),value:projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="sessao_futura").reduce((b,e)=>b+e.value,0),0)},
           {label:"Depósitos maquininha agendados",icon:"💳",color:"#7aaed4",count:projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="maquininha").length,0),value:projection.reduce((a,d)=>a+d.events.filter(e=>e.source==="maquininha").reduce((b,e)=>b+e.value,0),0)},
@@ -8335,7 +8335,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
           )
         )
       ),
-      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:14}},
+      h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:14}},
         h("div",{style:{textAlign:"center",padding:"14px 10px",borderRadius:10,background:caixaRealEntradas>=received?"rgba(122,173,138,.12)":"rgba(196,169,106,.1)",border:`1px solid ${caixaRealEntradas>=received?P.green:P.yellow}33`}},
           h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}},"Entrou na Conta"),
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:caixaRealEntradas>=0?P.green:P.red}},fmtCurr(caixaRealEntradas)),
@@ -8515,7 +8515,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
           h(Btn,{onClick:()=>{setEditInc(null);setIncForm(blankInc);setShowNewInc(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Entrada Extra")
         ),
         // ── Resumo: Recebido vs A Receber — clique no card "Recebido" pra colapsar a lista ──
-        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}},
+        h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}},
           h("div",{onClick:()=>setShowRecebidas(v=>!v),title:"Clique para mostrar/ocultar a lista de recebidos",style:{cursor:"pointer",textAlign:"center",padding:"10px 8px",borderRadius:10,background:"rgba(122,173,138,.1)",border:`1px solid ${P.green}33`}},
             h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}},`✓ Recebido ${showRecebidas?"▾":"▸"}`),
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.green}},fmtCurr(totalEntradasRecebidas)),
@@ -8551,7 +8551,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
           h(Btn,{onClick:()=>{setEditExp(null);setForm(blankExp);setShowNewExp(true);},style:{fontSize:12,padding:"6px 14px"}},"＋ Despesa")
         ),
         // ── Resumo: Pago vs A Pagar — clique no card "Pago" pra colapsar a lista ──
-        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}},
+        h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}},
           h("div",{onClick:()=>setShowPagas(v=>!v),title:"Clique para mostrar/ocultar a lista de pagas",style:{cursor:"pointer",textAlign:"center",padding:"10px 8px",borderRadius:10,background:P.bg3,border:`1px solid ${P.border}`}},
             h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}},`✓ Pago ${showPagas?"▾":"▸"}`),
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text2}},fmtCurr(totalDespesasPagas)),
@@ -9443,7 +9443,7 @@ function OrigemFaturamento({patients,selMonth,selYear,parseDMY2}){
     ),
 
     // ── 2 cards: Novas vs Recorrentes ─────────────────────────────────────────
-    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}},
+    h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}},
       h("div",{style:{padding:"14px",borderRadius:10,background:"rgba(155,122,173,.1)",border:"1px solid rgba(155,122,173,.3)"}},
         h("div",{style:{fontSize:12,color:"#9b7aad",fontWeight:600,marginBottom:6}},"🌟 Novas Pacientes"),
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:"#9b7aad"}},fmtCurr(totalNovas)),
@@ -10025,7 +10025,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     // ── ABA GERAL (conteúdo original) ─────────────────────────────────────
     relTab==="geral"&&h("div",null,
     h(OrigemFaturamento,{patients:safePats,selMonth,selYear,parseDMY2}),
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
       [{l:"Total Sessões",v:allS.length,c:P.gold},{l:"Procedimentos",v:[...new Set(allS.map(s=>s.procedure))].length,c:"#7aaed4"},{l:"Fidelização",v:fidPct+"%",c:P.green},{l:"Forecast "+MONTH_NAMES[nextM].slice(0,3),v:fmtCurr(forecastRev),c:P.accent}].map(k=>h(Card,{key:k.l,style:{textAlign:"center"}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:k.c}},k.v)))
     ),
     h(Card,{style:{marginBottom:22,border:"1px solid rgba(92,31,50,.35)"}},
@@ -10136,7 +10136,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
         )
       )
     ),
-    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
+    h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
       h(Card,null,h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:14}},"Ranking de Pacientes"),[...safePats].sort((a,b)=>(b.sessions||[]).reduce((s,x)=>s+(Number(x.value)||0),0)-(a.sessions||[]).reduce((s,x)=>s+(Number(x.value)||0),0)).slice(0,5).map((p,i)=>h("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:12,padding:"9px 0",borderBottom:"1px solid "+P.border}},h("div",{style:{fontSize:16,color:P.accent,fontFamily:"'Cormorant Garamond',serif",minWidth:22}},(i+1)+"°"),h(Avatar,{name:p.name,size:30,idx:i,src:p.profilePhoto}),h("div",{style:{flex:1}},h("div",{style:{fontSize:13,color:P.text}},p.name),h("div",{style:{fontSize:11,color:P.text3}},(p.sessions||[]).length+" sessões")),h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.green}},fmtCurr((p.sessions||[]).reduce((a,s)=>a+(Number(s.value)||0),0)))))),
       h(PagamentosCard,{allS})
     )
@@ -10376,7 +10376,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
       const avgLTV=ltvData.length>0?Math.round(totalLTV/ltvData.length):0;
       const topLTV=ltvData[0]?.ltvProjetado||0;
       const ltvTiers=[
-        {l:"Alto Valor",min:topLTV*0.6,c:"#c4a96a",bg:"rgba(196,169,106,.13)"},
+        {l:"Alto Valor",min:topLTV*0.6,c:"#C08A46",bg:"rgba(196,169,106,.13)"},
         {l:"Médio Valor",min:topLTV*0.3,c:"#7aaed4",bg:"rgba(122,174,212,.13)"},
         {l:"Baixo Valor",min:0,c:P.text3,bg:"rgba(107,77,74,.1)"},
       ];
@@ -10420,7 +10420,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
                   h("div",{style:{fontSize:10,color:P.text3,marginTop:2}},"~"+fmtCurr(ltvMes)+"/mês esperado")
                 )
               ),
-              h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:10}},
+              h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:10}},
                 [
                   {l:"Total gasto",v:fmtCurr(p.totalPago)},
                   {l:"Sessões",v:String(p.nSessoes)},
@@ -10864,7 +10864,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
       });
       const totalRecMes=unitData.reduce((a,u)=>a+u.recMes,0)||1;
       const maxEvo=Math.max(...unitData.flatMap(u=>u.evo.map(e=>e.rec)),1);
-      const uColors=["#7aaed4","#9b7aad","#7aad8a","#c4a96a",P.rose];
+      const uColors=["#7aaed4","#9b7aad","#7aad8a","#C08A46",P.rose];
 
       return h("div",null,
         // Seletor de mês
@@ -10911,7 +10911,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
                 h("div",{style:{height:"100%",width:share+"%",background:col,borderRadius:2,transition:"width .4s"}})
               ),
               // métricas
-              h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}},
+              h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}},
                 [
                   {l:"Sessões",v:String(u.sessMonth.length)},
                   {l:"Pacientes",v:String(u.patsUnicasMes)},
@@ -11046,7 +11046,7 @@ function MargemLucro({allS,parseDMY2,products}){
       ),
 
       // ── Destaques: melhor e pior ──
-      (melhor||pior)&&h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20}},
+      (melhor||pior)&&h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20}},
         melhor&&h("div",{style:{padding:"16px 18px",borderRadius:12,background:"rgba(122,173,138,.1)",border:`1px solid ${P.green}44`}},
           h("div",{style:{fontSize:11,color:P.green,fontWeight:700,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}},"🏆 Maior Margem"),
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text,marginBottom:4}},melhor.proc),
@@ -11159,7 +11159,7 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
   const custoTotalInsumos=insumos.reduce((a,i)=>{const info=getProdInfo(i.product);return a+(Number(info?.cost)||0)*(Number(i.qty)||0);},0);
   return h("div",{style:{background:P.bg3,border:`1px solid ${P.rose}`,borderRadius:12,padding:20,marginBottom:16}},
     h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},isNew?"＋ Novo Procedimento":"✎ Editar: "+form.name),
-    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
+    h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
       h(Field,{label:"Nome do Procedimento"},h(Inp,{value:form.name,onChange:fv("name"),placeholder:"Ex: Preenchimento Labial"})),
       h(Field,{label:"Categoria"},
         h("select",{value:form.categoria||"Outros",onChange:e=>setForm(p=>({...p,categoria:e.target.value})),style:{...IS,width:"100%"}},
@@ -11494,7 +11494,7 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
     ),
 
     // ── ABA SKINCARE ─────────────────────────────────────────────────────────
-    tab==="skincare"&&h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
+    tab==="skincare"&&h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}},
       h(Card,null,
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"🧴 Produtos Cadastrados"),
         h("div",{style:{display:"flex",gap:8,marginBottom:12}},
@@ -11988,7 +11988,7 @@ function PacotesGlobal({patients,setPatients,onSelectPatient,onNav}){
   }
   return h("div",null,
     h(SectionHeader,{title:"Pacotes",sub:"Todos os pacotes de sessões da clínica"}),
-    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}},
       [{l:"Total",v:stats.total,c:P.statusPurple},{l:"Em Andamento",v:stats.andamento,c:P.gold},{l:"Concluídos",v:stats.concluido,c:P.statusGreen},{l:"Novos",v:stats.novo,c:P.statusBlue}].map(s=>
         h(Card,{key:s.l,style:kpiCardStyle(s.c)},
           h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},s.l),
@@ -12063,6 +12063,30 @@ function IntercorrenciasGlobal({patients,setPatients,onSelectPatient,onNav,proce
   }
   const padroesProduto=groupCount("product");
   const padroesRegiao=groupCount("region");
+  // ── Alerta por LOTE: mais preciso que por produto — cruza intercorrência → sessão → lote consumido.
+  // 2+ já é um sinal forte aqui (lote é bem mais específico que "produto"), diferente do limiar de 3+ acima.
+  function icLoteCodigos(ic){
+    const sess=(ic.patient.sessions||[]).find(s=>String(s.id)===String(ic.sessId));
+    if(!sess)return[];
+    const items=(sess.items&&sess.items.length)?sess.items:(sess.loteId?[{loteId:sess.loteId}]:[]);
+    const codigos=new Set();
+    items.forEach(it=>{
+      if(!it.loteId)return;
+      for(const prod of products){
+        const lote=(prod.lotes||[]).find(l=>String(l.id)===String(it.loteId));
+        if(lote){codigos.add(JSON.stringify({codigo:lote.codigo,prodName:prod.name}));break;}
+      }
+    });
+    return[...codigos].map(s=>JSON.parse(s));
+  }
+  const loteMap={};
+  gravesRecentes.forEach(ic=>{icLoteCodigos(ic).forEach(({codigo,prodName})=>{const k=codigo+"||"+prodName;loteMap[k]=(loteMap[k]||0)+1;});});
+  const padroesLote=Object.entries(loteMap).filter(([,n])=>n>=2).sort((a,b)=>b[1]-a[1]).map(([k,n])=>{
+    const[codigo,prodName]=k.split("||");
+    let restante=null;
+    for(const prod of products){const l=(prod.lotes||[]).find(x=>x.codigo===codigo);if(l){restante=l.qtd;break;}}
+    return{codigo,prodName,n,restante};
+  });
   const procOptions=["Todos",...Array.from(new Set(all.map(ic=>ic.procedure).filter(Boolean)))];
   const prodOptions=["Todos",...Array.from(new Set(all.map(ic=>ic.product).filter(Boolean)))];
   const filtered=all.filter(ic=>
@@ -12081,12 +12105,16 @@ function IntercorrenciasGlobal({patients,setPatients,onSelectPatient,onNav,proce
   const selStyle={padding:"8px 12px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text2,fontSize:12.5,fontFamily:"'Jost',system-ui,sans-serif",cursor:"pointer"};
   return h("div",null,
     h(SectionHeader,{title:"Intercorrências",sub:"Painel clínico de intercorrências da clínica"}),
-    (padroesProduto.length>0||padroesRegiao.length>0)&&h(Card,{style:{marginBottom:18,border:`1px solid ${P.statusRed}55`,background:"rgba(214,69,69,.06)"}},
+    (padroesProduto.length>0||padroesRegiao.length>0||padroesLote.length>0)&&h(Card,{style:{marginBottom:18,border:`1px solid ${P.statusRed}55`,background:"rgba(214,69,69,.06)"}},
       h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:10}},
         h("span",{style:{fontSize:18}},"⚠️"),
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.statusRed}},"Padrão de reincidência nos últimos 6 meses")
       ),
       h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+        padroesLote.map(l=>h("div",{key:"l-"+l.codigo,style:{fontSize:12.5,color:P.text,fontWeight:600,background:"rgba(214,69,69,.1)",borderRadius:8,padding:"7px 10px"}},
+          `🔴 ${l.n}× intercorrência grave/emergencial do LOTE ${l.codigo} (${l.prodName})`,
+          l.restante!=null&&h("span",{style:{fontWeight:400,color:P.text2}},l.restante>0?` — ainda há ${l.restante} unidade(s) desse lote no estoque, considere retirar de uso.`:" — lote já esgotado no estoque.")
+        )),
         padroesProduto.map(([prod,n])=>h("div",{key:"p-"+prod,style:{fontSize:12.5,color:P.text2}},`💉 ${n}× intercorrência grave/emergencial com "${prod}"`)),
         padroesRegiao.map(([reg,n])=>h("div",{key:"r-"+reg,style:{fontSize:12.5,color:P.text2}},`📍 ${n}× intercorrência grave/emergencial na região "${reg}"`))
       ),
@@ -12275,7 +12303,7 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav,voucherTe
   const TPL_COLORS=[
     "linear-gradient(135deg,#7aaed4,#9b7aad)","linear-gradient(135deg,#d88aa8,#f0c987)",
     "linear-gradient(135deg,#c0617e,#e0937a)","linear-gradient(135deg,#3f7a5e,#c0617e)",
-    "linear-gradient(135deg,#d49bc4,#f3d39e)","linear-gradient(135deg,#7aad8a,#c4a96a)",
+    "linear-gradient(135deg,#d49bc4,#f3d39e)","linear-gradient(135deg,#7aad8a,#C08A46)",
     `linear-gradient(135deg,${P.rose},${P.gold})`,"linear-gradient(135deg,#9b7aad,#d88aa8)",
   ];
   const blankTpl={emoji:"🎁",label:"",grad:TPL_COLORS[0]};
@@ -12774,11 +12802,11 @@ function AppInner({ session, onLogout }) {
         ? h("div",null,
             h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:300,fontSize:19,color:dark?P.text:"#221112",letterSpacing:".04em",lineHeight:1.1,whiteSpace:"nowrap"}},
               settings.clinicName||"HarmonizaPro",
-              h("span",{style:{color:"#C9963E"}},"✦")
+              h("span",{style:{color:"#C08A46"}},"✦")
             ),
             h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,letterSpacing:".14em",textTransform:"uppercase",marginTop:4}},"Gestão clínica")
           )
-        : h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:"#C9963E"}},"✦"),
+        : h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:"#C08A46"}},"✦"),
       !isMobile&&h("button",{onClick:()=>setSidebarCollapsed(c=>!c),title:sidebarCollapsed?"Expandir":"Recolher",style:{background:"none",border:`0.5px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",padding:"4px 7px",fontSize:12,lineHeight:1,flexShrink:0,transition:"all .15s"},onMouseEnter:e=>e.currentTarget.style.background=P.card,onMouseLeave:e=>e.currentTarget.style.background="none"},sidebarCollapsed?"›":"‹"),
       isMobile&&h("button",{onClick:()=>setSidebarOpen(false),style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:20,padding:"4px",lineHeight:1}},"✕")
     ),
@@ -12823,11 +12851,11 @@ function AppInner({ session, onLogout }) {
     h("div",{style:{padding:sidebarCollapsed&&!isMobile?"10px 7px":"12px 9px",borderTop:`0.5px solid ${P.border}`,flexShrink:0}},
       sidebarCollapsed&&!isMobile
         ? h("div",{style:{display:"flex",justifyContent:"center"}},
-            h("div",{onClick:onLogout,title:"Sair",style:{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#7A2942,#C9963E)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:500,color:"#fff",cursor:"pointer",fontFamily:"'Cormorant Garamond',serif"}},initials(settings.doctorName||"Dra Sofia"))
+            h("div",{onClick:onLogout,title:"Sair",style:{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#7A2942,#C08A46)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:500,color:"#fff",cursor:"pointer",fontFamily:"'Cormorant Garamond',serif"}},initials(settings.doctorName||"Dra Sofia"))
           )
         : h("div",{style:{display:"flex",alignItems:"center",gap:10,padding:"9px 11px",borderRadius:9,background:dark?"rgba(122,41,66,.06)":"rgba(122,41,66,.05)",border:`0.5px solid ${P.border}`,cursor:"pointer",transition:"background .18s"},onMouseEnter:e=>e.currentTarget.style.background=dark?"rgba(122,41,66,.1)":"rgba(122,41,66,.08)",onMouseLeave:e=>e.currentTarget.style.background=dark?"rgba(122,41,66,.06)":"rgba(122,41,66,.05)"},
         h("div",{style:{position:"relative",flexShrink:0}},
-            h("div",{style:{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#7A2942,#C9963E)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontFamily:"'Cormorant Garamond',serif",fontWeight:400}},initials(settings.doctorName||"Dra Sofia")),
+            h("div",{style:{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#7A2942,#C08A46)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontFamily:"'Cormorant Garamond',serif",fontWeight:400}},initials(settings.doctorName||"Dra Sofia")),
             h("div",{title:todayAppts.some(a=>a.status==="Realizado")?"Em atendimento":"Disponível",style:{position:"absolute",bottom:1,right:1,width:9,height:9,borderRadius:"50%",background:todayAppts.some(a=>{const[hh,mm]=(a.time||"00:00").split(":").map(Number);const end=hh*60+mm+(Number(a.duration?.split(" ")[0])||60);const now=new Date();return a.status==="Confirmado"&&now.getHours()*60+now.getMinutes()>=hh*60+mm&&now.getHours()*60+now.getMinutes()<=end;})?"#4a9668":"#9F8475",border:`1.5px solid ${dark?"#1a0c0e":"#FDFAF7"}`,transition:"background .3s"}})
           ),
             h("div",{style:{flex:1,minWidth:0}},
@@ -12897,7 +12925,7 @@ function AppInner({ session, onLogout }) {
             onClick:()=>setSettings(s=>({...s,darkMode:!s.darkMode})),
             title:dark?"Modo claro":"Modo escuro",
             style:{background:"none",border:`0.5px solid ${P.border}`,borderRadius:7,color:P.text3,cursor:"pointer",padding:"6px 8px",fontSize:15,lineHeight:1,transition:"all .15s",flexShrink:0},
-            onMouseEnter:e=>{e.currentTarget.style.background=P.card;e.currentTarget.style.color="#C9963E";},
+            onMouseEnter:e=>{e.currentTarget.style.background=P.card;e.currentTarget.style.color="#C08A46";},
             onMouseLeave:e=>{e.currentTarget.style.background="none";e.currentTarget.style.color=P.text3;}
           },dark?"☀":"🌙"),
           h(SyncIndicator,null)
