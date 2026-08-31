@@ -3503,7 +3503,7 @@ function DespesasPorCategoriaMoM({expenses=[],selMonth,selYear}){
             )
           ),
           h("div",{style:{width:"100%",height:7,background:P.bg3,borderRadius:10,overflow:"hidden"}},
-            h("div",{style:{width:`${Math.min(r.atual/maxVal*100,100)}%`,height:"100%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:10,transition:"width .5s cubic-bezier(.4,0,.2,1)"}})
+            h("div",{style:{width:`${Math.min(r.atual/maxVal*100,100)}%`,height:"100%",background:`linear-gradient(90deg,${P.rose},${P.accent})`,borderRadius:10,transition:"width .5s cubic-bezier(.4,0,.2,1)"}})
           ),
           r.anterior>0&&h("div",{style:{fontSize:10.5,color:P.text3,marginTop:3}},`Mês anterior (${MONTH_NAMES[prevMNum2].slice(0,3)}): ${fmtCurr(r.anterior)}`)
         );
@@ -3651,6 +3651,12 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
   const proxAppt=todayAppts.find(a=>{if(!a.time)return false;const[hh,mm]=a.time.split(":").map(Number);return hh*60+mm>nowMin&&a.status!=="Cancelado"&&a.status!=="Realizado";});
   const proxMin=proxAppt?(()=>{const[hh,mm]=proxAppt.time.split(":").map(Number);return hh*60+mm-nowMin;})():null;
   const dark=!!(settings&&settings.darkMode);
+  // Alertas automáticos (só operacionais — estoque e financeiro; os de paciente já vivem em "Pacientes — Atenção")
+  const alertas=[];
+  const critStock=products.filter(p=>p.status==="critical"||(Array.isArray(p.lotes)&&p.lotes.some(l=>{if(!l.validade)return false;let d=null;try{const[m,y]=String(l.validade).split("/");d=new Date(Number(y),Number(m)-1,1);}catch{d=null;}return d&&d<=new Date(Date.now()+30*864e5);})));
+  if(critStock.length)alertas.push({icon:"ti-alert-triangle",color:P.statusAmber,bg:dark?"rgba(214,137,16,.12)":"rgba(214,137,16,.08)",title:"Estoque crítico",sub:`${critStock.length} item${critStock.length>1?"s":""} requer${critStock.length>1?"em":""} atenção`,action:()=>onNav("estoque")});
+  const despVencer=(Array.isArray(expenses)?expenses:[]).filter(e=>e.status==="Pendente"&&e.date&&e.date<=new Date(Date.now()+3*864e5).toISOString().slice(0,10));
+  if(despVencer.length)alertas.push({icon:"ti-coin",color:P.statusRed,bg:dark?"rgba(214,69,69,.12)":"rgba(214,69,69,.08)",title:`Conta${despVencer.length>1?"s":""} a vencer`,sub:`${despVencer.length} despesa${despVencer.length>1?"s":""} vencem em 3 dias`,action:()=>onNav("financeiro")});
   // Retorno atrasado por protocolo específico (returnReminderDays) — usado agora dentro de "Pacientes — Atenção"
   const isProtocolOverdue=p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);};
   // Sparkline SVG
@@ -3704,6 +3710,19 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
               h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3}},k.delta)
             )
           :h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:k.deltaColor,marginTop:5}},k.delta)
+      ))
+    ),
+    // Alertas operacionais (estoque crítico, contas a vencer)
+    alertas.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:14}},
+      alertas.map((a,i)=>h("div",{key:i,onClick:a.action,style:{display:"flex",alignItems:"center",gap:11,padding:"9px 13px",borderRadius:9,background:a.bg,borderLeft:`3px solid ${a.color}`,cursor:"pointer",transition:"transform .15s"},
+        onMouseEnter:e=>e.currentTarget.style.transform="translateX(3px)",
+        onMouseLeave:e=>e.currentTarget.style.transform="translateX(0)"},
+        h("i",{className:`ti ${a.icon}`,style:{fontSize:15,color:a.color,flexShrink:0}}),
+        h("div",{style:{flex:1}},
+          h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12,color:a.color}},a.title),
+          h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:1}},a.sub)
+        ),
+        h("i",{className:"ti ti-chevron-right",style:{fontSize:13,color:a.color,opacity:.6}})
       ))
     ),
     // Agenda hoje (timeline) + mini chart
@@ -5734,7 +5753,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
             h("button",{onClick:()=>setTab("pacotes"),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid rgba(157,119,97,.3)`,borderRadius:8,padding:"4px 12px",cursor:"pointer"}},"Ver todos →")
           ),
           _pkgs.length===0?h("div",{style:{fontSize:13,color:P.text3}},"Nenhum pacote ativo.")
-          :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},_pkgs.map(pkg=>{const pct=Math.round((pkg.done/pkg.total)*100);return h("div",{key:pkg.id,style:{padding:"12px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}},h("div",null,h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},pkg.name),h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},pkg.procedure)),h("div",{style:{textAlign:"right"}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent}},pkg.done+"/"+pkg.total),h("div",{style:{fontSize:10,color:P.text3}},"sessões"))),h("div",{style:{height:5,borderRadius:3,background:P.border,overflow:"hidden"}},h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:3}})),h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:5}},h("span",{style:{fontSize:10,color:P.text3}},(pkg.total-pkg.done)+" restante(s)"),pkg.price>0&&h("span",{style:{fontSize:10,color:P.accent}},fmtCurr(pkg.price))));})
+          :h("div",{style:{display:"flex",flexDirection:"column",gap:8}},_pkgs.map(pkg=>{const pct=Math.round((pkg.done/pkg.total)*100);return h("div",{key:pkg.id,style:{padding:"12px 14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}},h("div",null,h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},pkg.name),h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},pkg.procedure)),h("div",{style:{textAlign:"right"}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent}},pkg.done+"/"+pkg.total),h("div",{style:{fontSize:10,color:P.text3}},"sessões"))),h("div",{style:{height:5,borderRadius:3,background:P.border,overflow:"hidden"}},h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${P.rose},${P.accent})`,borderRadius:3}})),h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:5}},h("span",{style:{fontSize:10,color:P.text3}},(pkg.total-pkg.done)+" restante(s)"),pkg.price>0&&h("span",{style:{fontSize:10,color:P.accent}},fmtCurr(pkg.price))));})
           )
         ),
         h(Card,{style:{border:`1px solid ${_allVouchers.length>0?"rgba(155,122,173,.4)":P.border}`}},
@@ -6307,7 +6326,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
               h("span",{style:{fontSize:12,color:done?P.green:P.accent,fontWeight:600}},pct+"%")
             ),
             h("div",{style:{height:10,borderRadius:5,background:P.bg3,overflow:"hidden"}},
-              h("div",{style:{height:"100%",width:pct+"%",background:done?"linear-gradient(90deg,"+P.green+","+P.statusGreen+")":"linear-gradient(90deg,"+P.rose+","+P.gold+")",borderRadius:5,transition:"width .5s ease"}})
+              h("div",{style:{height:"100%",width:pct+"%",background:done?"linear-gradient(90deg,"+P.green+","+P.statusGreen+")":"linear-gradient(90deg,"+P.rose+","+P.accent+")",borderRadius:5,transition:"width .5s ease"}})
             )
           ),
           h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
@@ -9457,7 +9476,7 @@ function OrigemFaturamento({patients,selMonth,selYear,parseDMY2}){
             ),
             // Barra total
             h("div",{style:{height:6,borderRadius:3,background:P.bg,overflow:"hidden",marginBottom:6}},
-              h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:3}})
+              h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${P.rose},${P.accent})`,borderRadius:3}})
             ),
             // Nova vs Recorrente breakdown dentro do canal
             (c.novVal>0||c.recVal>0)&&h("div",{style:{display:"flex",gap:10,fontSize:10,color:P.text3}},
@@ -9645,7 +9664,7 @@ function NovasPacientesChart({newPerMonth,maxNovas}){
         ),
         h("div",{style:{fontSize:10,color:isHov?P.rose:P.text3,fontWeight:isHov?700:400}},m.novas>0?m.novas:"—"),
         h("div",{style:{width:"100%",height:66,display:"flex",alignItems:"flex-end"}},
-          h("div",{style:{flex:1,height:h2+"%",background:isHov?`linear-gradient(to top,${P.rose},${P.gold})`:`linear-gradient(to top,${P.rose2},rgba(92,31,50,.3))`,borderRadius:"3px 3px 0 0",transition:"background .2s"}})
+          h("div",{style:{flex:1,height:h2+"%",background:isHov?`linear-gradient(to top,${P.rose},${P.accent})`:`linear-gradient(to top,${P.rose2},rgba(92,31,50,.3))`,borderRadius:"3px 3px 0 0",transition:"background .2s"}})
         ),
         h("div",{style:{fontSize:10,color:isHov?P.text:P.text3,fontWeight:isHov?700:400}},m.label)
       );
@@ -9681,7 +9700,7 @@ function BarChart6m({monthlyData,maxRec,fmtCurr}){
           ),
           h("div",{style:{fontSize:10,color:isHov?P.rose:P.text3,marginBottom:2,fontWeight:isHov?600:400}},m.rec>0?fmtCurr(m.rec):"—"),
           h("div",{style:{width:"100%",height:80,display:"flex",alignItems:"flex-end"}},
-            h("div",{style:{flex:1,height:(hPct||4)+"%",background:isHov?"linear-gradient(to top,"+P.gold+","+P.rose+")":isSelected?"linear-gradient(to top,"+P.rose+","+P.gold+")":"linear-gradient(to top,"+P.rose2+",rgba(92,31,50,.3))",borderRadius:"3px 3px 0 0",transition:"height .4s ease,background .2s ease"}})),
+            h("div",{style:{flex:1,height:(hPct||4)+"%",background:isHov?"linear-gradient(to top,"+P.accent+","+P.rose+")":isSelected?"linear-gradient(to top,"+P.rose+","+P.accent+")":"linear-gradient(to top,"+P.rose2+",rgba(92,31,50,.3))",borderRadius:"3px 3px 0 0",transition:"height .4s ease,background .2s ease"}})),
           h("div",{style:{fontSize:10,color:isSelected?P.accent:P.text3,fontWeight:isSelected?600:400}},m.label)
         );
       })
@@ -9700,7 +9719,7 @@ function SeasonChart({seasonality,maxAvgCount,peakMonths,lowMonths,now,fmtCurr})
       const isLow=lowMonths.some(p=>p.m===i);
       const isCurrent=i===now.getMonth();
       const isHov=hov===i;
-      const barColor=isPeak?`linear-gradient(to top,${P.gold},#f0d9a0)`:isLow?"linear-gradient(to top,#7a8a9a,rgba(122,138,154,.3))":`linear-gradient(to top,${P.rose},rgba(92,31,50,.3))`;
+      const barColor=isPeak?`linear-gradient(to top,${P.statusTeal},${P.statusTeal}66)`:isLow?"linear-gradient(to top,#7a8a9a,rgba(122,138,154,.3))":`linear-gradient(to top,${P.rose},rgba(92,31,50,.3))`;
       return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer",position:"relative"},
         onMouseEnter:()=>setHov(i),onMouseLeave:()=>setHov(null)},
         isHov&&s.totalCount>0&&h("div",{style:{
@@ -9722,10 +9741,10 @@ function SeasonChart({seasonality,maxAvgCount,peakMonths,lowMonths,now,fmtCurr})
           s.years&&s.years.length>0&&h("div",{style:{marginTop:5,paddingTop:5,borderTop:"1px solid rgba(255,255,255,.15)",fontSize:10,opacity:.65}},
             "Anos: "+s.years.join(", ")
           ),
-          isPeak&&h("div",{style:{marginTop:5,color:P.gold,fontWeight:700,fontSize:11}},"🔥 Pico de demanda"),
+          isPeak&&h("div",{style:{marginTop:5,color:P.statusTeal,fontWeight:700,fontSize:11}},"🔥 Pico de demanda"),
           isLow&&h("div",{style:{marginTop:5,color:"#9aafc0",fontSize:11}},"📉 Baixa temporada")
         ),
-        h("div",{style:{fontSize:10,color:isHov?(isPeak?P.gold:P.rose):isPeak?P.gold:P.text3,fontWeight:isPeak||isHov?700:400}},s.totalCount>0?Math.round(s.avgCount*10)/10:"—"),
+        h("div",{style:{fontSize:10,color:isHov?(isPeak?P.statusTeal:P.rose):isPeak?P.statusTeal:P.text3,fontWeight:isPeak||isHov?700:400}},s.totalCount>0?Math.round(s.avgCount*10)/10:"—"),
         h("div",{style:{width:"100%",height:88,display:"flex",alignItems:"flex-end"}},
           h("div",{style:{width:"100%",height:hPct+"%",borderRadius:"3px 3px 0 0",background:barColor,border:isCurrent?`1px solid ${P.accent}`:"none",transition:"height .4s ease",opacity:isHov?1:.85}})
         ),
@@ -9913,7 +9932,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
   const procMap={};
   monthSessions.forEach(s=>{if(!s.procedure)return;if(!procMap[s.procedure])procMap[s.procedure]={count:0,total:0,paid:0,pending:0,cost:0};procMap[s.procedure].count++;procMap[s.procedure].total+=(Number(s.value)||0);if(s.paid){procMap[s.procedure].paid+=(Number(s.value)||0);procMap[s.procedure].cost+=sessionCost(s,products);}else procMap[s.procedure].pending+=(Number(s.value)||0);});
   const procList=Object.entries(procMap).map(([proc,data])=>[proc,{...data,margem:data.paid-data.cost,margemPct:data.paid>0?Math.round(((data.paid-data.cost)/data.paid)*100):0}]).sort((a,b)=>b[1].total-a[1].total);
-  const colors=[P.rose,P.gold,P.accent,P.statusBlue,P.statusGreen,P.statusPurple,P.statusTeal,P.statusAmber];
+  const colors=[P.rose,P.accent2,P.accent,P.statusBlue,P.statusGreen,P.statusPurple,P.statusTeal,P.statusAmber];
   // donut categorias
   const catMap={};
   // Categoriza usando procedimentos cadastrados (dinâmico) ou fallback no CAT_MAP_GLOBAL
@@ -10204,7 +10223,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
                 )
               ),
               h("div",{style:{height:5,borderRadius:3,background:P.bg3,overflow:"hidden",marginBottom:10}},
-                h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:3}})
+                h("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${P.rose},${P.accent})`,borderRadius:3}})
               ),
               h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",fontSize:11.5,color:P.text2,paddingTop:8,borderTop:`1px solid ${P.border}`}},
                 h("span",null,"Custo recompensa: ",h("b",{style:{color:P.text}},r.custoRecompensa>0?fmtCurr(r.custoRecompensa):"—")),
@@ -11077,7 +11096,7 @@ function MargemLucro({allS,parseDMY2,products}){
                   h("div",{style:{fontSize:13,color:P.text,fontWeight:500,marginBottom:5}},d.proc),
                   h("div",{style:{display:"flex",alignItems:"center",gap:8}},
                     h("div",{style:{flex:1,height:5,borderRadius:3,background:P.bg3,overflow:"hidden"}},
-                      h("div",{style:{height:"100%",width:barPct+"%",background:`linear-gradient(90deg,${P.rose},${P.gold})`,borderRadius:3}})
+                      h("div",{style:{height:"100%",width:barPct+"%",background:`linear-gradient(90deg,${P.rose},${P.accent})`,borderRadius:3}})
                     ),
                     h("span",{style:{fontSize:10,color:P.text3,whiteSpace:"nowrap"}},d.count+"x · ticket "+fmtCurr(d.ticketMedio))
                   )
@@ -12005,7 +12024,7 @@ function PacotesGlobal({patients,setPatients,onSelectPatient,onNav}){
               h("span",{style:{fontSize:11,color:done?P.green:P.accent,fontWeight:600}},pct+"%")
             ),
             h("div",{style:{height:8,borderRadius:4,background:P.bg3,overflow:"hidden"}},
-              h("div",{style:{height:"100%",width:pct+"%",background:done?"linear-gradient(90deg,"+P.green+","+P.statusGreen+")":"linear-gradient(90deg,"+P.rose+","+P.gold+")",borderRadius:4,transition:"width .4s ease"}})
+              h("div",{style:{height:"100%",width:pct+"%",background:done?"linear-gradient(90deg,"+P.green+","+P.statusGreen+")":"linear-gradient(90deg,"+P.rose+","+P.accent+")",borderRadius:4,transition:"width .4s ease"}})
             )
           ),
           h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
