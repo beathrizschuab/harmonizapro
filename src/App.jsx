@@ -12868,8 +12868,21 @@ function AppInner({ session, onLogout }) {
     });
     handleNav("agenda");
   }
+  function handleSchedulePackage(e){
+  const hoje=todayISO();
+  setApptPrefill({
+    patientName:e.patientName,
+    procedure:e.procedure,
+    date:e.nextISO<hoje?hoje:e.nextISO,
+    location:locationNames[0]||"",
+    value:String(e.valorSessao?Math.round(e.valorSessao):""),
+    status:"Confirmado",
+    obs:`Sessão ${e.done+1}/${e.total} · ${e.name}`
+  });
+  handleNav("agenda");
+}
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
+  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",sessoes:"Controle de Sessões",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
   const settings = settingsData;
 
   const dark=!!(settingsData&&settingsData.darkMode);
@@ -13059,6 +13072,7 @@ function AppInner({ session, onLogout }) {
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,setAgendaLog,maquininhas,initialTab:patientDetailTab}),
             page==="estoque"&&h(Estoque,{products,setProducts,stockCats,setStockCats}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products,maquininhas,setMaquininhas}),
+            page==="sessoes"&&h(ControleSessoes,{patients,setPatients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav,onSchedule:handleSchedulePackage}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
             page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda,products,vouchers,goals:goalsData,setGoals}),
