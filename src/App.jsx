@@ -13650,7 +13650,7 @@ function AppInner({ session, onLogout }) {
   handleNav("agenda");
 }
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Início",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",retencao:"Retenção de pacientes",whatsapp:"WhatsApp",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Financeiro",pacotes_global:"Pacotes",sessoes:"Sessões",precificadora:"Precificadora",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
+  const pageTitles={dashboard:"Início",aniversariantes:"Aniversariantes",retornos:"Relacionamento",retencao:"Relacionamento",whatsapp:"Relacionamento",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Financeiro",pacotes_global:"Pacotes e sessões",sessoes:"Pacotes e sessões",precificadora:"Precificadora",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
   const settings = settingsData;
 
   const dark=!!(settingsData&&settingsData.darkMode);
@@ -13661,15 +13661,12 @@ function AppInner({ session, onLogout }) {
       {k:"pacientes",l:"Pacientes",ti:"ti-users"},
     ]},
     {label:"Atendimento",items:[
-      {k:"sessoes",l:"Sessões",ti:"ti-list-check"},
-      {k:"pacotes_global",l:"Pacotes",ti:"ti-box"},
+      {k:"sessoes",group:"pacsess",l:"Pacotes e sessões",ti:"ti-package"},
       {k:"vouchers",l:"Vouchers e gift cards",ti:"ti-ticket"},
       {k:"intercorrencias_global",l:"Intercorrências",ti:"ti-alert-triangle",badge:patients.flatMap(p=>p.intercorrencias||[]).filter(ic=>icStatusOf(ic)==="Em Acompanhamento").length||null,badgeColor:P.statusRed},
     ]},
     {label:"Relacionamento",items:[
-      {k:"whatsapp",l:"WhatsApp",ti:"ti-brand-whatsapp"},
-      {k:"retornos",l:"Retornos & Risco",ti:"ti-clock-hour-4",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
-      {k:"retencao",l:"Retenção de pacientes",ti:"ti-repeat"},
+      {k:"retornos",group:"relac",l:"Retornos e mensagens",ti:"ti-heart-handshake",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
       {k:"aniversariantes",l:"Aniversariantes",ti:"ti-cake",badge:(()=>{const t=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===t.getMonth()&&bd.getDate()===t.getDate();}).length||null;})(),badgeColor:P.statusAmber},
     ]},
     {label:"Gestão",items:[
@@ -13683,6 +13680,12 @@ function AppInner({ session, onLogout }) {
     ]},
   ];
   const nav=navGroups.flatMap(g=>g.items);
+  // Áreas com várias telas: aparecem como um item no menu e como abas no topo da página
+  const PAGE_AREAS={
+    relac:[{k:"retornos",l:"Retornos e risco"},{k:"retencao",l:"Retenção de pacientes"},{k:"whatsapp",l:"Mensagens WhatsApp"}],
+    pacsess:[{k:"sessoes",l:"Controle de sessões"},{k:"pacotes_global",l:"Pacotes"}],
+  };
+  const currentArea=Object.keys(PAGE_AREAS).find(a=>PAGE_AREAS[a].some(t=>t.k===page))||null;
 
   // largura real do sidebar conforme estado
   const sideW=sidebarCollapsed&&!isMobile?64:238;
@@ -13720,7 +13723,7 @@ function AppInner({ session, onLogout }) {
       navGroups.map(group=>h(Fragment,{key:group.label},
         (!sidebarCollapsed||isMobile)&&h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,opacity:.85,textTransform:"uppercase",letterSpacing:".14em",padding:"14px 10px 5px"}},group.label),
         group.items.map(item=>{
-          const isActive=page===item.k||(item.k==="pacientes"&&page==="prontuario");
+          const isActive=page===item.k||(item.k==="pacientes"&&page==="prontuario")||(item.group&&item.group===currentArea);
           const bdColor=item.badgeColor||P.statusRed;
           return h("div",{
             key:item.k,
@@ -13847,6 +13850,7 @@ function AppInner({ session, onLogout }) {
         ),
         // Conteúdo principal
         h("div",{style:{flex:1,overflowY:"auto",padding:isMobile?12:24}},
+          currentArea&&h(TabBar,{tabs:PAGE_AREAS[currentArea],active:page,onChange:handleNav}),
           h(ErrorBoundary,{key:page},
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,onScheduleReturn:handleScheduleReturn,procedures:procedureNames,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses,products}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
