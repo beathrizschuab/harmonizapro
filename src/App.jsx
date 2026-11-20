@@ -10094,6 +10094,36 @@ function UnidadesComboChart({unitData,last6,parseDMY2,fmtCurr,uColors}){
 }
 
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
+// ─── Relatórios: navegação por grupo (nomes simples + explicação de cada relatório) ───
+const REL_GROUPS=[
+  {k:"visao",l:"Visão geral",ti:"ti-layout-dashboard",items:[{k:"geral",l:"Resumo do mês",d:"Procedimentos, receita e origem dos pacientes no mês escolhido."}]},
+  {k:"fin",l:"Financeiro",ti:"ti-coin",items:[
+    {k:"margem",l:"Margem de lucro",d:"Quanto sobra de cada procedimento depois dos custos."},
+    {k:"orcamento_despesas",l:"Despesas por categoria",d:"Para onde vai o dinheiro da clínica."},
+    {k:"yoy",l:"Comparativo anual",d:"Compare este ano com os anteriores, mês a mês."}]},
+  {k:"pac",l:"Pacientes",ti:"ti-users",items:[
+    {k:"ltv",l:"Valor por paciente",d:"Quanto cada paciente já gastou na clínica (LTV) e quem são as melhores."},
+    {k:"churn",l:"Retenção",d:"Quem continua voltando e quem deixou de vir (churn)."},
+    {k:"indicacoes",l:"Indicações",d:"Quem mais indica novas pacientes e quanto isso rendeu."}]},
+  {k:"ope",l:"Agenda e vendas",ti:"ti-calendar-stats",items:[
+    {k:"horarios",l:"Horários e sazonalidade",d:"Dias e horários mais cheios, e os meses fortes e fracos do ano."},
+    {k:"unidades",l:"Por unidade",d:"Resultado de cada local de atendimento."},
+    {k:"funil",l:"Orçamentos",d:"Quantos orçamentos viraram atendimento e quantos foram perdidos."}]},
+];
+function RelNav({active,onChange}){
+  const h=createElement;
+  const g=REL_GROUPS.find(x=>x.items.some(i=>i.k===active))||REL_GROUPS[0];
+  const it=g.items.find(i=>i.k===active)||g.items[0];
+  const dk=P.bg===P_DARK.bg;
+  const pill=(on,extra)=>({display:"inline-flex",alignItems:"center",gap:8,padding:"8px 16px",borderRadius:10,fontSize:13,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",border:`0.5px solid ${on?"transparent":P.border}`,background:on?(dk?"#C08A46":"linear-gradient(135deg,#8A3050,#6A2038)"):P.card,color:on?(dk?"#221112":"#FFF8F2"):P.text2,fontWeight:on?500:400,whiteSpace:"nowrap",flexShrink:0,...extra});
+  return h("div",{style:{marginBottom:22}},
+    h("div",{style:{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}},
+      REL_GROUPS.map(x=>h("button",{key:x.k,onClick:()=>onChange(x.items[0].k),style:pill(x.k===g.k)},h("i",{className:"ti "+x.ti,style:{fontSize:16}}),x.l))),
+    g.items.length>1&&h("div",{style:{display:"flex",gap:22,marginTop:12,borderBottom:`0.5px solid ${P.border}`,overflowX:"auto"}},
+      g.items.map(i=>h("button",{key:i.k,onClick:()=>onChange(i.k),style:{background:"none",border:"none",padding:"8px 2px",marginBottom:-1,cursor:"pointer",fontSize:13,fontFamily:"'Jost',system-ui,sans-serif",whiteSpace:"nowrap",color:i.k===it.k?P.text:P.text3,fontWeight:i.k===it.k?500:400,borderBottom:`2px solid ${i.k===it.k?"#C08A46":"transparent"}`}},i.l))),
+    h("div",{style:{fontSize:12.5,color:P.text3,marginTop:12,display:"flex",alignItems:"center",gap:7}},h("i",{className:"ti ti-info-circle",style:{fontSize:15}}),it.d)
+  );
+}
 function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient, onNav, procedures = [], settings, agenda = [], products = [], vouchers = [], goals = {}, setGoals}){
   const now=new Date();
   const[selMonth,setSelMonth]=useState(now.getMonth());
@@ -10203,21 +10233,10 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
     finally{ setExportingPdf(false); }
   }
   return h("div",null,
-    h(SectionHeader,{title:"Relatórios",sub:"Análise completa da clínica",action:h(Btn,{variant:"ghost",onClick:handleExportPDF,disabled:exportingPdf,style:{fontSize:12,padding:"8px 16px"}},exportingPdf?"Gerando...":"📄 Exportar PDF")}),
+    h(SectionHeader,{title:"Relatórios",sub:"Escolha o que quer entender: faturamento, pacientes ou agenda",action:h(Btn,{variant:"ghost",onClick:handleExportPDF,disabled:exportingPdf,style:{fontSize:12,padding:"8px 16px"}},exportingPdf?"Gerando...":"📄 Exportar PDF")}),
 
     // ── Abas de relatório ──────────────────────────────────────────────────
-    h(TabBar,{active:relTab,onChange:setRelTab,tabs:[
-      {k:"geral",       l:"Geral",                icon:"rel_geral"},
-      {k:"indicacoes",  l:"Indicações",           icon:"rel_indicacoes"},
-      {k:"funil",       l:"Funil de Orçamentos",  icon:"rel_funil"},
-      {k:"orcamento_despesas",l:"Despesas p/ Categoria",icon:"rel_despesas"},
-      {k:"yoy",         l:"Comparativo Anual",    icon:"rel_yoy"},
-      {k:"horarios",    l:"Horários",             icon:"rel_horarios"},
-      {k:"ltv",         l:"LTV Pacientes",        icon:"rel_ltv"},
-      {k:"churn",       l:"Churn & Retenção",     icon:"rel_churn"},
-      {k:"unidades",    l:"Por Unidade",          icon:"rel_unidades"},
-      {k:"margem",      l:"Margem de Lucro",      icon:"rel_ltv"},
-    ]}),
+    h(RelNav,{active:relTab,onChange:setRelTab}),
 
     // ── ABA GERAL (conteúdo original) ─────────────────────────────────────
     relTab==="geral"&&h("div",null,
@@ -11454,7 +11473,7 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
 
 function Configuracoes({patients=[],setPatients=()=>{},procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas=[],setMaquininhas,stockCats,setStockCats}){
   const h=createElement;
-  const[tab,setTab]=useState("procedimentos");
+  const[tab,setTab]=useState("clinica");
   const[newLoc,setNewLoc]=useState("");
   const[newSkProd,setNewSkProd]=useState("");
   const[newSkFreq,setNewSkFreq]=useState("");
@@ -11556,15 +11575,23 @@ function Configuracoes({patients=[],setPatients=()=>{},procedures,setProcedures,
   function addSkFreq(){const t=newSkFreq.trim();if(t&&!skFreqs.includes(t)){setSkincareConfig(s=>({...(s||{}),produtos:skProds,frequencias:[...skFreqs,t]}));setNewSkFreq("");}}
   function delSkFreq(f){setSkincareConfig(s=>({...(s||{}),produtos:skProds,frequencias:skFreqs.filter(x=>x!==f)}));}
 
-  const TABS=[{k:"procedimentos",l:"🩺 Procedimentos"},{k:"locais",l:"📍 Locais"},{k:"estoque",l:"📦 Estoque"},{k:"skincare",l:"🧴 Skincare"},{k:"maquininhas",l:"💳 Maquininhas"},{k:"clinica",l:"👩‍⚕️ Clínica"}];
+  const TABS=[
+    {k:"clinica",l:"Clínica e aparência",ti:"ti-building-community",d:"Nome da clínica, da profissional e tema claro ou escuro."},
+    {k:"procedimentos",l:"Procedimentos",ti:"ti-stethoscope",d:"Catálogo de procedimentos, valores e prazo de retorno de cada um."},
+    {k:"maquininhas",l:"Maquininhas e taxas",ti:"ti-credit-card",d:"Suas máquinas de cartão, taxas e prazo para o dinheiro cair."},
+    {k:"estoque",l:"Categorias de estoque",ti:"ti-package",d:"Grupos usados para organizar os produtos injetáveis."},
+    {k:"skincare",l:"Skincare",ti:"ti-bottle",d:"Produtos e frequências disponíveis nas receitas de skincare."},
+    {k:"locais",l:"Locais de atendimento",ti:"ti-map-pin",d:"Unidades ou salas onde os atendimentos acontecem."}];
+  const curTab=TABS.find(t=>t.k===tab)||TABS[0];
 
   // Formulário de procedimento (novo ou edição)
   return h("div",null,
-    h(SectionHeader,{title:"Configurações",sub:"Gerencie procedimentos, locais e dados da clínica"}),
-    // Tab bar
-    h("div",{style:{display:"flex",gap:6,marginBottom:20,borderBottom:`1px solid ${P.border}`,paddingBottom:0}},
-      TABS.map(t=>h("button",{key:t.k,onClick:()=>setTab(t.k),style:{padding:"9px 18px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===t.k?P.rose:"transparent"}`,color:tab===t.k?P.rose:P.text2,cursor:"pointer",fontSize:13,fontFamily:"'Jost',system-ui,sans-serif",fontWeight:tab===t.k?600:400,marginBottom:-1,transition:"all .15s"}},t.l))
+    h(SectionHeader,{title:"Configurações",sub:"Ajuste os dados da clínica, o catálogo e as formas de recebimento"}),
+    // Navegação das configurações
+    h("div",{style:{display:"flex",gap:20,marginBottom:6,borderBottom:`0.5px solid ${P.border}`,overflowX:"auto"}},
+      TABS.map(t=>h("button",{key:t.k,onClick:()=>setTab(t.k),style:{display:"inline-flex",alignItems:"center",gap:8,padding:"10px 2px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===t.k?"#C08A46":"transparent"}`,color:tab===t.k?P.text:P.text3,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",flexShrink:0,fontFamily:"'Jost',system-ui,sans-serif",fontWeight:tab===t.k?500:400,marginBottom:-1}},h("i",{className:"ti "+t.ti,style:{fontSize:16}}),t.l))
     ),
+    h("div",{style:{fontSize:12.5,color:P.text3,margin:"12px 0 20px",display:"flex",alignItems:"center",gap:7}},h("i",{className:"ti ti-info-circle",style:{fontSize:15}}),curTab.d),
 
     // ── ABA PROCEDIMENTOS ────────────────────────────────────────────────────
     tab==="procedimentos"&&h("div",null,
@@ -11803,13 +11830,13 @@ function Configuracoes({patients=[],setPatients=()=>{},procedures,setProcedures,
     ),
 
     // ── ABA CLÍNICA ──────────────────────────────────────────────────────────
-    tab==="clinica"&&h(Card,{style:{maxWidth:480}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"👩‍⚕️ Dados da Clínica"),
-      h(Field,{label:"Nome da Profissional"},h(Inp,{value:settings.doctorName||"",onChange:v=>setSettings(s=>({...s,doctorName:v})),placeholder:"Dra. Sofia"})),
-      h(Field,{label:"Título / Profissão"},h(Inp,{value:settings.doctorTitle||"",onChange:v=>setSettings(s=>({...s,doctorTitle:v})),placeholder:"Médica Responsável"})),
-      h(Field,{label:"Nome da Clínica"},h(Inp,{value:settings.clinicName||"",onChange:v=>setSettings(s=>({...s,clinicName:v})),placeholder:"HarmonizaPro"})),
+    tab==="clinica"&&h(Card,{style:{maxWidth:620}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:16}},"Identificação"),
+      h(Field,{label:"Nome da profissional"},h(Inp,{value:settings.doctorName||"",onChange:v=>setSettings(s=>({...s,doctorName:v})),placeholder:"Ex.: Dra. Sofia"})),
+      h(Field,{label:"Profissão ou título"},h(Inp,{value:settings.doctorTitle||"",onChange:v=>setSettings(s=>({...s,doctorTitle:v})),placeholder:"Médica Responsável"})),
+      h(Field,{label:"Nome da clínica"},h(Inp,{value:settings.clinicName||"",onChange:v=>setSettings(s=>({...s,clinicName:v})),placeholder:"HarmonizaPro"})),
       h("div",{style:{marginTop:20,paddingTop:16,borderTop:`1px solid ${P.border}`}},
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:12}},"🎨 Aparência"),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:12}},"Aparência"),
         h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",borderRadius:10,background:P.bg3,border:`1px solid ${P.border}`}},
           h("div",null,
             h("div",{style:{fontSize:13.5,fontWeight:500,color:P.text}},"Modo Escuro"),
@@ -11831,12 +11858,15 @@ function Configuracoes({patients=[],setPatients=()=>{},procedures,setProcedures,
           )
         )
       ),
-      h("div",{style:{marginTop:20,paddingTop:16,borderTop:`1px solid ${P.border}`}},
-        h("div",{style:{fontSize:13,color:P.text,marginBottom:6}},"Migrar imagens antigas para o Storage"),
-        h("div",{style:{fontSize:11.5,color:P.text3,marginBottom:10}},"Move fotos e documentos antigos (salvos dentro do banco) para o Storage. Rode uma vez, com o app aberto só nesta tela."),
-        h(Btn,{variant:"ghost",onClick:async()=>{const n=await migrateLegacyImages(patients,setPatients);alert(n+" arquivo(s) migrado(s).");}},"Migrar agora")
+      h("details",{style:{marginTop:22,paddingTop:14,borderTop:`1px solid ${P.border}`}},
+        h("summary",{style:{cursor:"pointer",fontSize:13,color:P.text2,listStyle:"none",display:"flex",alignItems:"center",gap:7}},h("i",{className:"ti ti-tool",style:{fontSize:15}}),"Avançado (manutenção do sistema)"),
+        h("div",{style:{marginTop:14}},
+          h("div",{style:{fontSize:13,color:P.text,marginBottom:6}},"Migrar imagens antigas para o Storage"),
+          h("div",{style:{fontSize:11.5,color:P.text3,marginBottom:10}},"Move fotos e documentos antigos (salvos dentro do banco) para o Storage. Rode uma vez, com o app aberto só nesta tela."),
+          h(Btn,{variant:"ghost",onClick:async()=>{const n=await migrateLegacyImages(patients,setPatients);alert(n+" arquivo(s) migrado(s).");}},"Migrar agora")
+        )
       ),
-      h("div",{style:{fontSize:12,color:P.green,marginTop:12}},"✓ Salvo automaticamente")
+      h("div",{style:{fontSize:12,color:P.green,marginTop:12}},"Alterações salvas automaticamente")
     )
   );
 }
