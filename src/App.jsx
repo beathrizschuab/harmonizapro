@@ -13650,29 +13650,33 @@ function AppInner({ session, onLogout }) {
   handleNav("agenda");
 }
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",retencao:"Retenção",whatsapp:"WhatsApp",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",sessoes:"Controle de Sessões",precificadora:"Precificadora",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
+  const pageTitles={dashboard:"Início",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",retencao:"Retenção de pacientes",whatsapp:"WhatsApp",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Financeiro",pacotes_global:"Pacotes",sessoes:"Sessões",precificadora:"Precificadora",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
   const settings = settingsData;
 
   const dark=!!(settingsData&&settingsData.darkMode);
   const navGroups=[
-    {label:"Principal",items:[
-      {k:"dashboard",l:"Dashboard",ti:"ti-layout-dashboard"},
+    {label:"Dia a dia",items:[
+      {k:"dashboard",l:"Início",ti:"ti-layout-dashboard"},
       {k:"agenda",l:"Agenda",ti:"ti-calendar",badge:todayApptCount||null,badgeColor:P.statusBlue},
       {k:"pacientes",l:"Pacientes",ti:"ti-users"},
-      {k:"aniversariantes",l:"Aniversariantes",ti:"ti-cake",badge:(()=>{const t=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===t.getMonth()&&bd.getDate()===t.getDate();}).length||null;})(),badgeColor:P.statusAmber},
-      {k:"retornos",l:"Retornos & Risco",ti:"ti-clock-hour-4",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
-      {k:"retencao",l:"Retenção",ti:"ti-repeat"},
-      {k:"whatsapp",l:"WhatsApp",ti:"ti-brand-whatsapp"},
     ]},
-    {label:"Clínica",items:[
-      {k:"estoque",l:"Estoque",ti:"ti-package",badge:criticalStock||null,badgeColor:P.statusRed},
-      {k:"financeiro",l:"Financeiro",ti:"ti-coin"},
+    {label:"Atendimento",items:[
+      {k:"sessoes",l:"Sessões",ti:"ti-list-check"},
       {k:"pacotes_global",l:"Pacotes",ti:"ti-box"},
-{k:"sessoes",l:"Controle de Sessões",ti:"ti-list-check"},
-{k:"precificadora",l:"Precificadora",ti:"ti-calculator"},
-      {k:"vouchers",l:"Vouchers",ti:"ti-ticket"},
-      {k:"relatorios",l:"Relatórios",ti:"ti-chart-bar"},
+      {k:"vouchers",l:"Vouchers e gift cards",ti:"ti-ticket"},
       {k:"intercorrencias_global",l:"Intercorrências",ti:"ti-alert-triangle",badge:patients.flatMap(p=>p.intercorrencias||[]).filter(ic=>icStatusOf(ic)==="Em Acompanhamento").length||null,badgeColor:P.statusRed},
+    ]},
+    {label:"Relacionamento",items:[
+      {k:"whatsapp",l:"WhatsApp",ti:"ti-brand-whatsapp"},
+      {k:"retornos",l:"Retornos & Risco",ti:"ti-clock-hour-4",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
+      {k:"retencao",l:"Retenção de pacientes",ti:"ti-repeat"},
+      {k:"aniversariantes",l:"Aniversariantes",ti:"ti-cake",badge:(()=>{const t=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===t.getMonth()&&bd.getDate()===t.getDate();}).length||null;})(),badgeColor:P.statusAmber},
+    ]},
+    {label:"Gestão",items:[
+      {k:"financeiro",l:"Financeiro",ti:"ti-coin"},
+      {k:"relatorios",l:"Relatórios",ti:"ti-chart-bar"},
+      {k:"precificadora",l:"Precificadora",ti:"ti-calculator"},
+      {k:"estoque",l:"Estoque",ti:"ti-package",badge:criticalStock||null,badgeColor:P.statusRed},
     ]},
     {label:"Sistema",items:[
       {k:"config",l:"Configurações",ti:"ti-settings"},
