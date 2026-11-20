@@ -13175,34 +13175,24 @@ function computeRetention({patients,agenda,returnRules,procedures,products}){
   return{months,rr,rrPrev,ret6,ret6prev,inactive,ltvInactive,react,reactValue,procRates,tasks,insights,first};
 }
 
-function Retencao({patients,agenda,returnRules,proceduresFull,products,settings,waTemplates,setWaTemplates,waLog,setWaLog,onSelectPatient,onNav}){
-  const h=createElement;
-  const[filter,setFilter]=useState("todos");
-  const[showTpl,setShowTpl]=useState(false);
-  const[tplDraft,setTplDraft]=useState(waTemplates);
-  const data=useMemo(()=>computeRetention({patients,agenda,returnRules,procedures:proceduresFull,products}),[patients,agenda,returnRules,proceduresFull,products]);
-  const log=Array.isArray(waLog)?waLog:[];
+function buildWaPending(data,log,waTemplates,settings){
   const logKeys=new Set(log.map(l=>l.key));
   const now=new Date();
   const recentlySent=pid=>log.some(l=>l.patientId===pid&&l.status==="enviada"&&rdDiff(new Date(l.at),now)<14);
-  const rc=v=>v==null?P.text3:v>=70?P.statusGreen:v>=50?P.statusAmber:P.statusRed;
-  const delta=(a,b)=>`${a-b>=0?"+":""}${a-b} pts`;
-
-  const pending=data.tasks
+  return data.tasks
     .filter(t=>!logKeys.has(t.key))
     .filter(t=>!((t.type==="retorno"||t.type==="reativacao")&&recentlySent(t.patient.id)))
-    .map(t=>({...t,msg:fillTemplate(waTemplates[t.type],{primeiro_nome:data.first(t.patient.name),clinica:settings.clinicName||"",...t.vars})}));
-  const shown=filter==="todos"?pending:pending.filter(t=>t.type===filter);
+    .map(t=>({...t,msg:fillTemplate(waTemplates[t.type],{primeiro_nome:data.first(t.patient.name),clinica:(settings&&settings.clinicName)||"",...t.vars})}));
+}
 
-  function record(t,status){
-    setWaLog(prev=>[...(Array.isArray(prev)?prev:[]),{id:Date.now()+Math.random(),key:t.key,patientId:t.patient.id,patientName:t.patient.name,type:t.type,status,at:new Date().toISOString()}].slice(-1000));
-  }
-  function send(t){
-    const link=waLink(t.patient.phone,t.msg);
-    if(!link){alert("Esta paciente está sem telefone cadastrado.");return;}
-    window.open(link,"_blank","noopener");
-    record(t,"enviada");
-  }
+function Retencao({patients,agenda,returnRules,proceduresFull,products,settings,waTemplates,waLog,onNav}){
+  const h=createElement;
+  const data=useMemo(()=>computeRetention({patients,agenda,returnRules,procedures:proceduresFull,products}),[patients,agenda,returnRules,proceduresFull,products]);
+  const log=Array.isArray(waLog)?waLog:[];
+  const pending=buildWaPending(data,log,waTemplates,settings);
+  const rc=v=>v==null?P.text3:v>=70?P.statusGreen:v>=50?P.statusAmber:P.statusRed;
+  const delta=(a,b)=>`${a-b>=0?"+":""}${a-b} pts`;
+  const typeCounts={};pending.forEach(t=>{typeCounts[t.type]=(typeCounts[t.type]||0)+1;});
 
   const{rr,rrPrev,ret6,ret6prev}=data;
   const kpis=[
@@ -13211,10 +13201,9 @@ function Retencao({patients,agenda,returnRules,proceduresFull,products,settings,
     {l:"Inativas +90 dias",v:String(data.inactive.length),sub:`${fmtCurr(data.ltvInactive)} em histórico`,c:data.inactive.length?P.statusAmber:P.statusGreen},
     {l:"Reativadas no mês",v:String(data.react.length),sub:`${fmtCurr(data.reactValue)} recuperados`,c:P.statusGreen},
   ];
-  const typeCounts={};pending.forEach(t=>{typeCounts[t.type]=(typeCounts[t.type]||0)+1;});
 
   return h("div",null,
-    h(SectionHeader,{title:"Retenção",sub:"Quem volta, quem está sumindo e quem você deve chamar hoje",action:h(Btn,{variant:"ghost",onClick:()=>{setTplDraft(waTemplates);setShowTpl(true);}},"Modelos de mensagem")}),
+    h(SectionHeader,{title:"Retenção",sub:"Quem volta, quem está sumindo e onde estão as oportunidades"}),
 
     h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:18}},
       kpis.map(k=>h(Card,{key:k.l,style:{...kpiCardStyle(k.c),textAlign:"center"}},
@@ -13265,12 +13254,60 @@ function Retencao({patients,agenda,returnRules,proceduresFull,products,settings,
     ),
 
     h(Card,null,
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}},
         h("div",null,
-          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Fila de mensagens de WhatsApp"),
-          h("div",{style:{fontSize:11.5,color:P.text3,marginTop:2}},"Revise e envie com 1 clique. Quem já recebeu mensagem nos últimos 14 dias não volta para a fila.")
-        )
-      ),
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Mensagens de WhatsApp"),
+          h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},pending.length===0?"Nenhuma mensagem pendente.":`${pending.length} pendente(s): `+Object.entries(typeCounts).map(([k,n])=>`${n} ${(WA_TYPES[k]||{}).l||k}`).join(" · "))
+        ),
+        h(Btn,{onClick:()=>onNav("whatsapp"),style:{fontSize:12}},"Abrir WhatsApp")
+      )
+    )
+  );
+}
+
+function WhatsAppPage({patients,agenda,returnRules,proceduresFull,products,settings,waTemplates,setWaTemplates,waLog,setWaLog,onSelectPatient,onNav}){
+  const h=createElement;
+  const[filter,setFilter]=useState("todos");
+  const[showTpl,setShowTpl]=useState(false);
+  const[tplDraft,setTplDraft]=useState(waTemplates);
+  const data=useMemo(()=>computeRetention({patients,agenda,returnRules,procedures:proceduresFull,products}),[patients,agenda,returnRules,proceduresFull,products]);
+  const log=Array.isArray(waLog)?waLog:[];
+  const pending=buildWaPending(data,log,waTemplates,settings);
+  const shown=filter==="todos"?pending:pending.filter(t=>t.type===filter);
+  const typeCounts={};pending.forEach(t=>{typeCounts[t.type]=(typeCounts[t.type]||0)+1;});
+  const sent=log.filter(l=>l.status==="enviada");
+  const todayStr=localISO();
+  const sentToday=sent.filter(l=>localISO(new Date(l.at))===todayStr).length;
+  const sentWeek=sent.filter(l=>rdDiff(new Date(l.at),new Date())<7).length;
+
+  function record(t,status){
+    setWaLog(prev=>[...(Array.isArray(prev)?prev:[]),{id:Date.now()+Math.random(),key:t.key,patientId:t.patient.id,patientName:t.patient.name,type:t.type,status,at:new Date().toISOString()}].slice(-1000));
+  }
+  function send(t){
+    const link=waLink(t.patient.phone,t.msg);
+    if(!link){alert("Esta paciente está sem telefone cadastrado.");return;}
+    window.open(link,"_blank","noopener");
+    record(t,"enviada");
+  }
+
+  const kpis=[
+    {l:"Pendentes",v:String(pending.length),c:pending.length?P.statusAmber:P.statusGreen},
+    {l:"Enviadas hoje",v:String(sentToday),c:P.statusGreen},
+    {l:"Enviadas na semana",v:String(sentWeek),c:P.statusBlue},
+  ];
+
+  return h("div",null,
+    h(SectionHeader,{title:"WhatsApp",sub:"Mensagens prontas para enviar com 1 clique: confirmações, retornos, reativações, pós e aniversários",action:h(Btn,{variant:"ghost",onClick:()=>{setTplDraft(waTemplates);setShowTpl(true);}},"Modelos de mensagem")}),
+
+    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:18}},
+      kpis.map(k=>h(Card,{key:k.l,style:{...kpiCardStyle(k.c),textAlign:"center"}},
+        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c,lineHeight:1}},k.v)
+      ))
+    ),
+
+    h(Card,null,
+      h("div",{style:{fontSize:11.5,color:P.text3,marginBottom:10}},"Revise e envie. Quem já recebeu mensagem de retorno ou reativação nos últimos 14 dias não volta para a fila."),
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}},
         [["todos","Todas",pending.length],...Object.entries(WA_TYPES).map(([k,v])=>[k,v.l,typeCounts[k]||0])].map(([k,l,n])=>
           h("button",{key:k,onClick:()=>setFilter(k),style:{padding:"5px 13px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===k?P.rose:"transparent",border:`1px solid ${filter===k?P.rose:P.border}`,color:filter===k?P.accent3:P.text2}},`${l} (${n})`)
@@ -13297,9 +13334,9 @@ function Retencao({patients,agenda,returnRules,proceduresFull,products,settings,
             )
           );
         }),
-      log.length>0&&h("div",{style:{marginTop:16,paddingTop:12,borderTop:`1px solid ${P.border}`}},
+      sent.length>0&&h("div",{style:{marginTop:16,paddingTop:12,borderTop:`1px solid ${P.border}`}},
         h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"Últimos envios"),
-        [...log].filter(l=>l.status==="enviada").reverse().slice(0,6).map(l=>h("div",{key:l.id,style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text3,padding:"3px 0"}},
+        [...sent].reverse().slice(0,8).map(l=>h("div",{key:l.id,style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text3,padding:"3px 0"}},
           h("span",null,`${l.patientName} · ${(WA_TYPES[l.type]||{}).l||l.type}`),
           h("span",null,new Date(l.at).toLocaleDateString("pt-BR"))
         ))
@@ -13529,7 +13566,7 @@ function AppInner({ session, onLogout }) {
   handleNav("agenda");
 }
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",retencao:"Retenção",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",sessoes:"Controle de Sessões",precificadora:"Precificadora",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
+  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",retencao:"Retenção",whatsapp:"WhatsApp",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",sessoes:"Controle de Sessões",precificadora:"Precificadora",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
   const settings = settingsData;
 
   const dark=!!(settingsData&&settingsData.darkMode);
@@ -13541,6 +13578,7 @@ function AppInner({ session, onLogout }) {
       {k:"aniversariantes",l:"Aniversariantes",ti:"ti-cake",badge:(()=>{const t=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===t.getMonth()&&bd.getDate()===t.getDate();}).length||null;})(),badgeColor:P.statusAmber},
       {k:"retornos",l:"Retornos & Risco",ti:"ti-clock-hour-4",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
       {k:"retencao",l:"Retenção",ti:"ti-repeat"},
+      {k:"whatsapp",l:"WhatsApp",ti:"ti-brand-whatsapp"},
     ]},
     {label:"Clínica",items:[
       {k:"estoque",l:"Estoque",ti:"ti-package",badge:criticalStock||null,badgeColor:P.statusRed},
@@ -13715,7 +13753,8 @@ function AppInner({ session, onLogout }) {
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,onScheduleReturn:handleScheduleReturn,procedures:procedureNames,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses,products}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn,agenda}),
-            page==="retencao"&&h(Retencao,{patients,agenda,returnRules,proceduresFull:procedures,products,settings,waTemplates,setWaTemplates,waLog,setWaLog,onSelectPatient:handleSelectPatient,onNav:handleNav}),
+            page==="retencao"&&h(Retencao,{patients,agenda,returnRules,proceduresFull:procedures,products,settings,waTemplates,waLog,onNav:handleNav}),
+            page==="whatsapp"&&h(WhatsAppPage,{patients,agenda,returnRules,proceduresFull:procedures,products,settings,waTemplates,setWaTemplates,waLog,setWaLog,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="agenda"&&h(Agenda,{patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null),dark,waitlist,setWaitlist}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
