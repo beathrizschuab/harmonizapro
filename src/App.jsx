@@ -12575,7 +12575,126 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav,voucherTe
     )
   );
 }
+// ─── CONTROLE DE SESSÕES (pacotes + protocolos com intervalo) ─────────────────
+function ControleSessoes({patients=[],setPatients,agenda=[],onSelectPatient,onNav,onSchedule}){
+  const h=createElement;
+  const[filter,setFilter]=useState("todos");
+  const[search,setSearch]=useState("");
+  const today=new Date(); today.setHours(12,0,0,0);
+  const todayStr=today.toISOString().slice(0,10);
+  const fmtBR=d=>d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
 
+  const entries=patients.flatMap(p=>(p.sessions_packages||[]).map(pk=>{
+    const interval=Number(pk.intervalDays)||30;
+    const dates=(pk.sessions||[]).map(s=>parseAnyDate(s.date)).filter(Boolean).sort((a,b)=>a-b);
+    const last=dates.length?dates[dates.length-1]:null;
+    const base=last||parseAnyDate(pk.created)||today;
+    const next=new Date(base);
+    if(last)next.setDate(next.getDate()+interval);
+    next.setHours(12,0,0,0);
+    const dias=Math.round((next-today)/864e5); // negativo = atrasada
+    const concluido=pk.done>=pk.total;
+    const agendada=agenda.find(a=>!a.blocked&&(a.patientName||"").trim().toLowerCase()===p.name.trim().toLowerCase()&&a.procedure===pk.procedure&&a.date>=todayStr&&a.status!=="Cancelado");
+    let status,label,color,bg;
+    if(concluido){status="concluido";label="Concluído";color=P.text3;bg=P.bg3;}
+    else if(agendada){status="agendada";label="Agendada "+fmtBR(new Date(agendada.date+"T12:00"));color=P.statusBlue;bg=P.statusBlueBg;}
+    else if(dias<0){status="atrasado";label="Atrasada "+Math.abs(dias)+"d";color=P.statusRed;bg=P.statusRedBg;}
+    else if(dias<=7){status="breve";label=dias===0?"Sessão hoje":"Em "+dias+"d";color=P.statusAmber;bg=P.statusAmberBg;}
+    else{status="emdia";label="Em dia · "+fmtBR(next);color=P.statusGreen;bg=P.statusGreenBg;}
+    const restantes=pk.total-pk.done;
+    const valorSessao=pk.price>0&&pk.total>0?pk.price/pk.total:0;
+    return{...pk,patient:p,patientName:p.name,interval,last,next,dias,concluido,agendada,status,label,color,bg,restantes,saldoValor:valorSessao*restantes,valorSessao,nextISO:next.toISOString().slice(0,10)};
+  }));
+
+  const ativos=entries.filter(e=>!e.concluido);
+  const kpis=[
+    {l:"Em andamento",v:ativos.length,c:P.statusBlue},
+    {l:"Atrasadas",v:entries.filter(e=>e.status==="atrasado").length,c:P.statusRed},
+    {l:"Próximos 7 dias",v:entries.filter(e=>e.status==="breve").length,c:P.statusAmber},
+    {l:"Saldo a realizar",v:fmtCurr(ativos.reduce((a,e)=>a+e.saldoValor,0)),c:P.statusGreen},
+  ];
+  const filters=[{k:"todos",l:"Todos"},{k:"atrasado",l:"Atrasadas"},{k:"breve",l:"Próximas"},{k:"agendada",l:"Agendadas"},{k:"emdia",l:"Em dia"},{k:"concluido",l:"Concluídos"}];
+  const order={atrasado:0,breve:1,emdia:2,agendada:3,concluido:4};
+  const list=entries
+    .filter(e=>filter==="todos"||e.status===filter)
+    .filter(e=>!search||(e.patientName+" "+e.name+" "+e.procedure).toLowerCase().includes(search.toLowerCase()))
+    .sort((a,b)=>(order[a.status]-order[b.status])||(a.dias-b.dias));
+
+  function updPkg(e,fn){
+    setPatients(prev=>prev.map(p=>p.id!==e.patient.id?p:{...p,sessions_packages:(p.sessions_packages||[]).map(pk=>pk.id===e.id?fn(pk):pk)}));
+  }
+  function darCheck(e){
+    if(e.concluido)return;
+    updPkg(e,pk=>{const done=Math.min(pk.done+1,pk.total);return{...pk,done,sessions:[...(pk.sessions||[]),{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),num:done}]};});
+  }
+  function desfazer(e){
+    if(e.done<=0)return;
+    updPkg(e,pk=>({...pk,done:pk.done-1,sessions:(pk.sessions||[]).slice(0,-1)}));
+  }
+  function editarIntervalo(e){
+    const v=window.prompt(`Intervalo entre sessões de "${e.name}" (em dias):`,String(e.interval));
+    const n=Number(v);
+    if(!v||!n||n<1)return;
+    updPkg(e,pk=>({...pk,intervalDays:n}));
+  }
+
+  const btn=(color,filled)=>({fontSize:11.5,padding:"6px 12px",borderRadius:8,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filled?color:"transparent",border:`1px solid ${filled?color:P.border}`,color:filled?"#fff":P.text2,whiteSpace:"nowrap"});
+
+  return h("div",null,
+    h(SectionHeader,{title:"Controle de Sessões",sub:"Pacotes e protocolos em andamento, com a data prevista da próxima sessão"}),
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}},
+      kpis.map(k=>h(Card,{key:k.l,style:kpiCardStyle(k.c)},
+        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:k.c}},k.v)
+      ))
+    ),
+    h("div",{style:{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}},
+      h("input",{value:search,onChange:e=>setSearch(e.target.value),placeholder:"Buscar paciente, pacote ou procedimento...",style:{...IS,flex:1,minWidth:200,padding:"8px 14px"}}),
+      filters.map(f=>h("button",{key:f.k,onClick:()=>setFilter(f.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===f.k?P.rose:"transparent",border:`1px solid ${filter===f.k?P.rose:P.border}`,color:filter===f.k?P.accent3:P.text2}},f.l))
+    ),
+    list.length===0&&h(Card,{style:{textAlign:"center",padding:40}},
+      h("i",{className:"ti ti-list-check",style:{fontSize:30,color:P.text3}}),
+      h("div",{style:{color:P.text3,fontSize:14,marginTop:10}},entries.length===0?"Nenhum pacote ou protocolo cadastrado. Crie na ficha da paciente, aba Pacotes.":"Nada encontrado neste filtro.")
+    ),
+    h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+      list.map(e=>{
+        const pct=Math.round((e.done/e.total)*100);
+        const phone=(e.patient.phone||"").replace(/\D/g,"");
+        const waMsg=encodeURIComponent(`Olá ${e.patientName.split(" ")[0]}! Está na hora da sua próxima sessão de ${e.procedure} (${e.done+1}/${e.total}). Vamos agendar?`);
+        return h(Card,{key:e.patient.id+"-"+e.id,style:{borderLeft:`3px solid ${e.color}`,padding:"14px 18px"}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap",marginBottom:10}},
+            h("div",{style:{minWidth:0,flex:1}},
+              h("div",{onClick:()=>{onSelectPatient(e.patient,"pacotes");onNav("prontuario");},style:{fontSize:11,color:P.rose2,textTransform:"uppercase",letterSpacing:".1em",cursor:"pointer",marginBottom:3}},e.patientName),
+              h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},e.name),
+              h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},e.procedure+" · a cada "+e.interval+" dias"+(e.last?" · última em "+e.last.toLocaleDateString("pt-BR"):" · nenhuma sessão feita"))
+            ),
+            h("span",{style:{fontSize:11,padding:"4px 12px",borderRadius:20,background:e.bg,color:e.color,fontWeight:600,whiteSpace:"nowrap"}},e.label)
+          ),
+          h("div",{style:{display:"flex",alignItems:"center",gap:12,marginBottom:12}},
+            h("div",{style:{flex:1,height:8,borderRadius:4,background:P.bg3,overflow:"hidden"}},
+              h("div",{style:{height:"100%",width:pct+"%",background:e.concluido?P.green:`linear-gradient(90deg,${P.rose},${P.accent})`,borderRadius:4,transition:"width .4s"}})
+            ),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,minWidth:48,textAlign:"right"}},e.done+"/"+e.total)
+          ),
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}},
+            h("div",{style:{fontSize:11.5,color:P.text3,display:"flex",gap:14,flexWrap:"wrap"}},
+              !e.concluido&&h("span",null,"Próxima prevista: ",h("b",{style:{color:P.text2}},e.next.toLocaleDateString("pt-BR"))),
+              !e.concluido&&h("span",null,e.restantes+" sessão(ões) restante(s)"),
+              e.saldoValor>0&&!e.concluido&&h("span",null,"Saldo: ",h("b",{style:{color:P.green}},fmtCurr(Math.round(e.saldoValor))))
+            ),
+            h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+              !e.concluido&&!e.agendada&&h("button",{onClick:()=>onSchedule(e),style:btn(P.rose,true)},"Agendar próxima"),
+              !e.concluido&&h("button",{onClick:()=>darCheck(e),style:btn(P.green,false)},"Dar check"),
+              e.done>0&&h("button",{onClick:()=>desfazer(e),style:btn(P.text3,false)},"Desfazer"),
+              h("button",{onClick:()=>editarIntervalo(e),style:btn(P.text3,false)},"Intervalo"),
+              !e.concluido&&phone&&(e.status==="atrasado"||e.status==="breve")&&h("a",{href:`https://wa.me/55${phone}?text=${waMsg}`,target:"_blank",rel:"noreferrer",style:{...btn(P.statusGreen,false),textDecoration:"none",color:P.statusGreen,border:`1px solid ${P.statusGreen}55`}},"WhatsApp")
+            )
+          )
+        );
+      })
+    )
+  );
+}
 function AppInner({ session, onLogout }) {
   const[patientsRaw,setPatients,loadingPatients]=useSupaTable("patients",INIT_PATIENTS);
   const[agendaRaw,setAgenda,loadingAgenda]=useSupaTable("agenda",INIT_AGENDA);
