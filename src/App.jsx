@@ -12885,6 +12885,7 @@ function AppInner({ session, onLogout }) {
       {k:"estoque",l:"Estoque",ti:"ti-package",badge:criticalStock||null,badgeColor:P.statusRed},
       {k:"financeiro",l:"Financeiro",ti:"ti-coin"},
       {k:"pacotes_global",l:"Pacotes",ti:"ti-box"},
+{k:"sessoes",l:"Controle de Sessões",ti:"ti-list-check"},
       {k:"vouchers",l:"Vouchers",ti:"ti-ticket"},
       {k:"relatorios",l:"Relatórios",ti:"ti-chart-bar"},
       {k:"intercorrencias_global",l:"Intercorrências",ti:"ti-alert-triangle",badge:patients.flatMap(p=>p.intercorrencias||[]).filter(ic=>icStatusOf(ic)==="Em Acompanhamento").length||null,badgeColor:P.statusRed},
