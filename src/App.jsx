@@ -396,7 +396,8 @@ const addMinToTime=(time,mins)=>{
 const apptEndTime=a=>a&&a.time?addMinToTime(a.time,durationToMin(a.duration)):"";
 const parseDMY=s=>parseAnyDate(s); // unificado: usa a mesma lógica de parseAnyDate (ver definição mais abaixo, função hoisted)
 const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
-const todayISO=()=>new Date().toISOString().slice(0,10);
+function localISO(d){d=d||new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
+const todayISO=()=>localISO();
 const dmyToISO=s=>{const d=parseDMY(s);return d?d.toISOString().slice(0,10):"";};
 const isoToBR=s=>{if(!s)return"";const[y,m,d]=s.split("-");return d&&m&&y?`${d}/${m}/${y}`:s;};
 // Atualiza uma intercorrência (por id) tanto na lista global do paciente quanto na sessão de origem,
@@ -1340,15 +1341,18 @@ function ajustarDebitoInsumosAuto(setProducts, currentProducts, prevDebits, next
 }
 
 
-function stripPhotos(data) {
-  if (!Array.isArray(data)) return data;
-  return data.map(item => {
-    if (!item || typeof item !== "object") return item;
-    const out = { ...item };
-    if (typeof out.profilePhoto === "string" && out.profilePhoto.startsWith("data:")) out.profilePhoto = null;
-    if (Array.isArray(out.sessions)) out.sessions = out.sessions.map(s => ({
-      ...s, photos: Array.isArray(s.photos) ? s.photos.filter(p => !(typeof p==="string"&&p.startsWith("data:"))) : (s.photos||[])
-    }));
+function stripPhotos(data){
+  if(data==null||typeof data!=="object")return data;
+  // Strings base64 soltas continuam sendo descartadas (comportamento antigo).
+  // Itens antigos {url:"data:..."} NÃO são apagados aqui: só saem do banco depois de migrados para o Storage.
+  const isLegacyStr=x=>typeof x==="string"&&x.startsWith("data:");
+  return walkStored(data,o=>{
+    const out={...o};
+    if(out.stored&&out.path)out.url=null;
+    if(out.baseImagePath)out.baseImage=null;
+    if(out.profilePhotoPath)out.profilePhoto=null;
+    else if(typeof out.profilePhoto==="string"&&(out.profilePhoto.startsWith("data:")||out.profilePhoto.startsWith("blob:")))out.profilePhoto=null;
+    ["photos","docs"].forEach(k=>{if(Array.isArray(out[k]))out[k]=out[k].filter(x=>!isLegacyStr(x));});
     return out;
   });
 }
@@ -1383,6 +1387,82 @@ async function getUserId() {
   return session?.user?.id || null;
 }
 
+// ─── STORAGE DE ARQUIVOS (fotos/docs) ────────────────────────────────────────
+const STORAGE_BUCKET="clinic-files";
+async function dataUrlToBlob(dataUrl){const r=await fetch(dataUrl);return r.blob();}
+function walkStored(node,fn){
+  if(Array.isArray(node))return node.map(n=>walkStored(n,fn));
+  if(node&&typeof node==="object"){const o={};for(const k in node)o[k]=walkStored(node[k],fn);return fn(o);}
+  return node;
+}
+async function uploadToStorage(file,folder,name){
+  const uid=await getUserId();
+  if(!uid)throw new Error("Sessão expirada. Entre novamente.");
+  const ext=name&&name.includes(".")?name.split(".").pop().toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,5):"bin";
+  const path=`${uid}/${folder}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext||"bin"}`;
+  const{error}=await supabase.storage.from(STORAGE_BUCKET).upload(path,file,{contentType:file.type||undefined,upsert:false});
+  if(error)throw error;
+  return path;
+}
+async function signPaths(paths){
+  const list=[...new Set((paths||[]).filter(Boolean))];
+  if(!list.length)return{};
+  const{data,error}=await supabase.storage.from(STORAGE_BUCKET).createSignedUrls(list,60*60*24*7);
+  if(error||!data)return{};
+  const map={};
+  data.forEach(x=>{if(x&&x.path&&x.signedUrl)map[x.path]=x.signedUrl;});
+  return map;
+}
+// Aceita File/Blob OU item já lido {name,type,url:"data:..."} (é o que o MediaGallery entrega)
+async function filesToStored(files,folder){
+  const items=await Promise.all((files||[]).map(async f=>{
+    let blob=f;
+    if(!(f instanceof Blob)&&f&&typeof f.url==="string"&&f.url.startsWith("data:"))blob=await dataUrlToBlob(f.url);
+    const name=f.name||"arquivo";
+    const path=await uploadToStorage(blob,folder,name);
+    return{id:Date.now()+Math.random(),name,type:blob.type||f.type||"",date:new Date().toLocaleDateString("pt-BR"),stored:true,path,url:null};
+  }));
+  const urls=await signPaths(items.map(i=>i.path));
+  return items.map(i=>({...i,url:urls[i.path]||null}));
+}
+function storagePathFromUrl(u){const m=String(u||"").match(/\/object\/sign\/clinic-files\/([^?]+)/);return m?decodeURIComponent(m[1]):null;}
+async function persistImage(src,folder){
+  if(!src||typeof src!=="string")return{path:null};
+  try{
+    if(src.startsWith("data:")){
+      const blob=await dataUrlToBlob(src);
+      const ext=(blob.type.split("/")[1]||"jpg").replace("jpeg","jpg");
+      return{path:await uploadToStorage(blob,folder,"img."+ext)};
+    }
+    return{path:storagePathFromUrl(src)};
+  }catch(e){console.warn("[storage] persistImage",e);return{path:null};}
+}
+async function packMarkerPlan(data,folder){const{path}=await persistImage(data&&data.baseImage,folder);return path?{...data,baseImagePath:path}:data;}
+async function packAnnotation(data,folder){const{path}=await persistImage(data&&data.baseImage,folder);return path?{...data,baseImagePath:path}:data;}
+function collectStoredPaths(root){
+  const out=new Set();
+  (function walk(n){
+    if(Array.isArray(n))return n.forEach(walk);
+    if(n&&typeof n==="object"){
+      if(n.stored&&n.path)out.add(n.path);
+      if(n.baseImagePath)out.add(n.baseImagePath);
+      if(n.profilePhotoPath)out.add(n.profilePhotoPath);
+      Object.values(n).forEach(walk);
+    }
+  })(root);
+  return[...out];
+}
+function hydrateStored(root,map){
+  if(!map||!Object.keys(map).length)return root;
+  return walkStored(root,o=>{
+    let out=o;
+    if(o.stored&&o.path&&map[o.path])out={...out,url:map[o.path]};
+    if(o.baseImagePath&&map[o.baseImagePath])out={...out,baseImage:map[o.baseImagePath]};
+    if(o.profilePhotoPath&&map[o.profilePhotoPath])out={...out,profilePhoto:map[o.profilePhotoPath]};
+    return out;
+  });
+}
+
 async function supaRead(key) {
   const uid = await getUserId();
   if (!uid) { _setSupaOk(false); return null; }
@@ -1400,16 +1480,29 @@ async function supaRead(key) {
   } catch(e) { _setSupaOk(false); console.warn("[sync] read exception", key, e); return null; }
 }
 
+async function supaReadMeta(key){
+  const uid=await getUserId();
+  if(!uid)return null;
+  try{
+    const{data,error}=await supabase.from("app_data").select("value,updated_at").eq("key",key).eq("user_id",uid).maybeSingle();
+    if(error||!data)return null;
+    let val=data.value;
+    if(typeof val==="string"){try{val=JSON.parse(val);}catch{}}
+    return{value:val,updatedAt:data.updated_at};
+  }catch{return null;}
+}
+
 async function supaWrite(key, value) {
   const uid = await getUserId();
   if (!uid) { _setSupaOk(false); return false; }
   try {
     const clean = stripPhotos(value);
-    const { error } = await supabase.from("app_data")
-      .upsert({ key, user_id: uid, value: clean, updated_at: new Date().toISOString() }, { onConflict: "key,user_id" });
+    const { data, error } = await supabase.from("app_data")
+      .upsert({ key, user_id: uid, value: clean, updated_at: new Date().toISOString() }, { onConflict: "key,user_id" })
+      .select("updated_at").maybeSingle();
     if (error) { _setSupaOk(false); console.warn("[sync] write error", key, error.message); return false; }
     _setSupaOk(true);
-    return true;
+    return (data && data.updated_at) || true;
   } catch(e) { _setSupaOk(false); console.warn("[sync] write exception", key, e); return false; }
 }
 
@@ -1418,31 +1511,49 @@ function useSupaTable(key, initFallback = []) {
   const [data, setDataRaw] = useState(initFallback);
   const [synced, setSynced] = useState(false);
   const wantArray = Array.isArray(initFallback);
-  // Ref que marca se houve escrita local antes do supaRead terminar.
-  // Evita que o dado remoto (desatualizado) sobrescreva escritas recentes.
   const localWrittenRef = useRef(false);
+  const knownTsRef = useRef(null);
+  const pendingRef = useRef(0);
+  const shapeOk = remote => wantArray ? Array.isArray(remote) : (!Array.isArray(remote) && remote && typeof remote === "object");
 
   useEffect(() => {
     let cancelled = false;
     localWrittenRef.current = false;
-    supaRead(key).then(remote => {
+    supaReadMeta(key).then(res => {
       if (cancelled) return;
       setSynced(true);
-      if (!localWrittenRef.current && remote !== null) {
-        const remoteIsArray = Array.isArray(remote);
-        const shapeOk = wantArray ? remoteIsArray : (!remoteIsArray && remote && typeof remote === "object");
-        if (shapeOk) setDataRaw(remote);
-        else console.warn("[sync] formato inesperado para", key, "— mantendo fallback", remote);
+      if (!res) return;
+      knownTsRef.current = res.updatedAt;
+      if (!localWrittenRef.current && res.value !== null) {
+        if (shapeOk(res.value)) setDataRaw(res.value);
+        else console.warn("[sync] formato inesperado para", key, res.value);
       }
     });
     return () => { cancelled = true; };
+  }, [key]);
+
+  // Ao voltar para a aba/janela, relê o servidor se outro dispositivo salvou algo mais novo
+  useEffect(() => {
+    const refresh = async () => {
+      if (document.visibilityState !== "visible" || pendingRef.current > 0) return;
+      const res = await supaReadMeta(key);
+      if (!res || res.value == null || !shapeOk(res.value)) return;
+      if (res.updatedAt && knownTsRef.current && new Date(res.updatedAt) > new Date(knownTsRef.current)) {
+        knownTsRef.current = res.updatedAt;
+        setDataRaw(res.value);
+      }
+    };
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => { document.removeEventListener("visibilitychange", refresh); window.removeEventListener("focus", refresh); };
   }, [key]);
 
   const setData = useCallback((valOrFn) => {
     localWrittenRef.current = true;
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
-      supaWrite(key, next);
+      pendingRef.current++;
+      supaWrite(key, next).then(ts => { if (ts && typeof ts === "string") knownTsRef.current = ts; }).finally(() => { pendingRef.current--; });
       try { localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next))); } catch {}
       return next;
     });
@@ -2239,6 +2350,7 @@ function PlanAnnotator({initial,onSave,onClose}){
   useEffect(()=>{
     if(!baseImage)return;
     const img=new Image();
+    img.crossOrigin="anonymous";
     img.onload=()=>{
       imgRef.current=img;
       if(!initial?.canvasW){
@@ -2475,6 +2587,7 @@ function PhotoAnnotator({photo,onSave,onClose}){
     const canvas=canvasRef.current;
     if(!canvas)return;
     const img=new Image();
+    img.crossOrigin="anonymous";
     img.onload=()=>{
       imgRef.current=img;
       // Fit canvas to modal (max 900x700)
@@ -2764,7 +2877,7 @@ function SyncIndicator(){
     title:ok?"Dados sincronizados — aparecem em todos os dispositivos":"Sem sincronizacao com servidor. Verifique a tabela app_data no Supabase."
   },
     h("div",{style:{width:7,height:7,borderRadius:"50%",background:ok?"#7aad8a":"#c07070"}}),
-    h("span",{style:{fontSize:11,color:ok?"#7aad8a":"#c07070",fontWeight:500,whiteSpace:"nowrap"}},ok?"Nuvem 2713":"Sem sync")
+    h("span",{style:{fontSize:11,color:ok?"#7aad8a":"#c07070",fontWeight:500,whiteSpace:"nowrap"}},ok?"Nuvem \u2713":"Sem sync")
   );
 }
 
@@ -2791,7 +2904,7 @@ function GlobalSearch({patients,agenda,onSelectPatient,onNav}){
         if(!seen.has("p"+p.id)){
           seen.add("p"+p.id);
           const lastSess=[...(p.sessions||[])].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];
-          const nextAppt=agenda.filter(a=>a.patientName===p.name&&a.date>=new Date().toISOString().slice(0,10)).sort((a,b)=>a.date.localeCompare(b.date))[0];
+          const nextAppt=agenda.filter(a=>a.patientName===p.name&&a.date>=localISO()).sort((a,b)=>a.date.localeCompare(b.date))[0];
           out.push({type:"paciente",label:p.name,sub:lastSess?`Última visita: ${lastSess.date} · ${lastSess.procedure}`:"Sem sessões",extra:nextAppt?`Próximo: ${nextAppt.date} ${nextAppt.time}`:null,status:p.status,pat:p,id:p.id});
         }
       }
@@ -2878,7 +2991,7 @@ function GlobalSearch({patients,agenda,onSelectPatient,onNav}){
 function RetornosPendentes({patients,returnRules,onSelectPatient,onNav,onScheduleReturn,mini=false,agenda=[]}){
   const h=createElement;
   const today=new Date();
-  const todayStr=today.toISOString().slice(0,10);
+  const todayStr=localISO(today);
   const[filter,setFilter]=useState("todos"); // todos | urgente | proximo | ok
   // ── Aba ativa na página completa: "retorno" (protocolo agendado) ou "risco" (score de abandono) ──
   const[tab,setTab]=useState("retorno");
@@ -3616,7 +3729,7 @@ function MiniFunilConversao({patients,selMonth,selYear,onNav}){
 function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,procedures=[],settings,returnRules,isMobile=false,isTablet=false,goals={},setGoals,incomes=[],expenses=[],products=[]}){
   const h=createElement;
   const today=new Date();
-  const todayStr=today.toISOString().slice(0,10);
+  const todayStr=localISO(today);
   const todayBirthdays=patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===today.getMonth()&&bd.getDate()===today.getDate();});
   const allS=patients.flatMap(p=>p.sessions||[]);
   const totalPend=allS.filter(s=>!s.paid).reduce((a,s)=>a+Number(s.value||0),0);
@@ -3640,7 +3753,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
   });
   const sessoesMes=allS.filter(s=>inCurMonth(s.date)).length;
   const novasMes=patients.filter(p=>{const s=(p.sessions||[]);return s.some(ss=>inCurMonth(ss.date))&&!s.some(ss=>{const dt=parseAnyDate(ss.date);return dt&&(dt.getFullYear()<curY||(dt.getFullYear()===curY&&dt.getMonth()<curM));});}).length;
-  const metaMes=Number((goals&&goals.monthly)||0);
+  const metaMes=Number((goals&&goals[`${curY}-${String(curM+1).padStart(2,"0")}`])||0);
   const pctMeta=metaMes>0?Math.min(totalRecMonth/metaMes,1):0;
   const diasNoMes=new Date(curY,curM+1,0).getDate();
   const diaAtual=today.getDate();
@@ -3792,7 +3905,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
       ),
       h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}},
         (()=>{
-          const todayISO2=today.toISOString().slice(0,10);
+          const todayISO2=localISO(today);
           const cg=patients.map(p=>{
             const d=parseDMY(p.lastVisit);const days=d?daysBetween(d,today):null;
             const hasUp=agenda.some(a=>a.patientName===p.name&&a.date>=todayISO2&&a.date<=new Date(today.getTime()+30*864e5).toISOString().slice(0,10));
@@ -4704,9 +4817,9 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
   const stCfg=IC_STATUS_CFG[icStatusOf(ic)]||IC_STATUS_CFG["Em Acompanhamento"];
   const evolutions=icEvolutionsOf(ic);
   const conducts=icConductsOf(ic);
-  function addEvoPhotos(files){
-    const readers=files.map(f=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,url:e.target.result});r.readAsDataURL(f);}));
-    Promise.all(readers).then(news=>setEvoPhotos(p=>[...p,...news]));
+  async function addEvoPhotos(files){
+    try{const news=await filesToStored(files,`patients/${patient.id}/intercorrencias`);setEvoPhotos(p=>[...p,...news]);}
+    catch(e){alert("Não foi possível enviar a foto: "+(e.message||e));}
   }
   function removeEvoPhotoPending(fid){setEvoPhotos(p=>p.filter(ph=>ph.id!==fid));}
   function removeEvoPhoto(evoId,fid){
@@ -4727,9 +4840,11 @@ function IntercorrenciaCard({ic,patient,setPatients,showPatientName=false,onSele
   }
   function changeStatus(v){updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,status:v}));}
   function changeReaval(v){updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,nextReavaliacao:v}));}
-  function addPhotos(files){
-    const readers=files.map(f=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,url:e.target.result});r.readAsDataURL(f);}));
-    Promise.all(readers).then(news=>{updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,photos:[...(old.photos||[]),...news]}));});
+  async function addPhotos(files){
+    try{
+      const news=await filesToStored(files,`patients/${patient.id}/intercorrencias`);
+      updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,photos:[...(old.photos||[]),...news]}));
+    }catch(e){alert("Não foi possível enviar a foto: "+(e.message||e));}
   }
   function removePhoto(fid){updateIntercorrencia(setPatients,patient.id,ic.id,old=>({...old,photos:(old.photos||[]).filter(ph=>ph.id!==fid)}));}
   return h(Card,{style:{marginBottom:14,border:`1px solid ${sevCfg.color}33`}},
@@ -4832,6 +4947,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   function fvBirth(v){setForm(p=>({...p,birthDate:v,age:calcAgeFromBirth(v)}));}
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const[profPhoto,setProfPhoto]=useState(null);
+  const[profPhotoFile,setProfPhotoFile]=useState(null);
   const today=new Date();
   const h=createElement;
   const filtersBtns=[{k:"all",l:"Todos"},{k:"vip",l:"VIP"},{k:"active",l:"Ativas"},{k:"treatment",l:"Tratamento"},{k:"return",l:"Retorno"},{k:"inactive",l:"Inativas"}];
@@ -4848,11 +4964,20 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
     const mf=filter==="all"||(p._autoStatus||p.status)===filter;
     return ms&&mf;
   }).sort((a,b)=>a.name.localeCompare(b.name,"pt-BR",{sensitivity:"base"}));
-  function addPatient(){
-    const np={id:Date.now(),...form,age:Number(form.age),profilePhoto:profPhoto,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
+  async function addPatient(){
+    const newId=Date.now();
+    let photoPatch={profilePhoto:null};
+    if(profPhotoFile){
+      try{
+        const path=await uploadToStorage(profPhotoFile,`patients/${newId}/profile`,profPhotoFile.name);
+        const u=await signPaths([path]);
+        photoPatch={profilePhoto:u[path]||null,profilePhotoPath:path};
+      }catch(e){alert("Não foi possível enviar a foto: "+(e.message||e));}
+    }
+    const np={id:newId,...form,age:Number(form.age),...photoPatch,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
       complaints:form.complaints.split(",").map(s=>s.trim()).filter(Boolean),tags:[],
       anamnese:{healthHistory:form.healthHistory,medications:form.medications,smoking:form.smoking,pregnancy:form.pregnancy,previousProcedures:form.previousProcedures,skinType:form.skinType,fitzpatrick:form.fitzpatrick,allergiesDetail:form.allergiesDetail,contraindications:form.contraindications,musicStyle:form.musicStyle,importantAlerts:form.allergies&&form.allergies!=="Nenhuma"?[form.allergies]:[]},preferencias:{horario:form.prefHorario||"Sem preferência",contato:form.prefContato||"Sem preferência",fotos:form.prefFotos||"Autoriza somente para prontuário",obs:form.prefObs||""}};
-    setPatients(prev=>[...prev,{...np,origem:form.origem||"nova",canalAquisicao:form.canalAquisicao||"",indicadoPor:form.indicadoPor||"",canalCampanha:form.origem==="campanha"?(form.canalCampanha||form.canalAquisicao||""):""}]);setShowNew(false);setForm(blank);setProfPhoto(null);
+    setPatients(prev=>[...prev,{...np,origem:form.origem||"nova",canalAquisicao:form.canalAquisicao||"",indicadoPor:form.indicadoPor||"",canalCampanha:form.origem==="campanha"?(form.canalCampanha||form.canalAquisicao||""):""}]);setShowNew(false);setForm(blank);setProfPhoto(null);setProfPhotoFile(null);
   }
   return h("div",null,
     h(SectionHeader,{title:"Pacientes",sub:`${patients.length} pacientes cadastrados`,action:h("div",{style:{display:"flex",gap:8}},
@@ -4898,7 +5023,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
     h(Modal,{open:showNew,onClose:()=>setShowNew(false),title:"✦ Novo Paciente",width:620},
       h("div",{style:{display:"flex",alignItems:"center",gap:16,marginBottom:20,padding:14,background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
         profPhoto?h("img",{src:profPhoto,alt:"foto",style:{width:64,height:64,borderRadius:"50%",objectFit:"cover",border:`2px solid ${P.rose}`}}):h("div",{style:{width:64,height:64,borderRadius:"50%",background:P.card2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,border:`2px dashed ${P.border}`}},"👤"),
-        h(UploadZone,{onFiles:f=>f[0]&&setProfPhoto(URL.createObjectURL(f[0])),label:"Foto de perfil",multiple:false})
+        h(UploadZone,{onFiles:f=>{if(f[0]){setProfPhoto(URL.createObjectURL(f[0]));setProfPhotoFile(f[0]);}},label:"Foto de perfil",multiple:false})
       ),
       h("div",{style:{fontSize:11,textTransform:"uppercase",letterSpacing:".12em",color:P.accent,borderBottom:`1px solid ${P.border}`,paddingBottom:8,marginBottom:14}},"Dados Pessoais"),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
@@ -5306,6 +5431,14 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       return{...p,items,value:total>0?String(total):p.value};
     });
   }
+  function sItemPatch(idx,patch){
+    setSForm(p=>{
+      const items=[...(p.items||[])];
+      items[idx]={...items[idx],...patch};
+      const total=items.reduce((a,it)=>a+(Number(it.value)||0),0);
+      return{...p,items,value:total>0?String(total):p.value};
+    });
+  }
   // Adiciona novo item ao array de procedimentos
   function sItemAdd(){
     setSForm(p=>({...p,items:[...(p.items||[]),{...blankItem}]}));
@@ -5514,9 +5647,11 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       planejamento:(p.planejamento||[]).map(pl=>pl.sessionId===id?{...pl,sessionId:null}:pl)
     }));
   }
-  function addMedia(sessId,files,type){
-    const readers=files.map(f=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,type:f.type,url:e.target.result,date:new Date().toLocaleDateString("pt-BR")});r.readAsDataURL(f);}));
-    Promise.all(readers).then(news=>{upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,[type]:[...(s[type]||[]),...news]}:s)}));});
+  async function addMedia(sessId,files,type){
+    try{
+      const news=await filesToStored(files,`patients/${patient.id}/${type}`);
+      upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,[type]:[...(s[type]||[]),...news]}:s)}));
+    }catch(e){alert("Não foi possível enviar o arquivo: "+(e.message||e));}
   }
   function removeMedia(sessId,fid,type){upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===sessId?{...s,[type]:(s[type]||[]).filter(f=>f.id!==fid)}:s)}));}
   function openIntercorrFromSession(s){
@@ -5551,7 +5686,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
       setShowIntercorr(null);setIcForm(blankIc);
     };
     if(photoFiles.length){
-      Promise.all(photoFiles.map(f=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({id:Date.now()+Math.random(),name:f.name,url:e.target.result});r.readAsDataURL(f);}))).then(finish);
+      filesToStored(photoFiles,`patients/${patient.id}/intercorrencias`).then(finish).catch(e=>alert("Não foi possível enviar as fotos: "+(e.message||e)));
     } else finish([]);
   }
   function addPlanejamento(){
@@ -5559,11 +5694,13 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
     setShowPlan(false);setPlanForm({title:"",steps:"",notes:""});
   }
-  function savePlanAnnotation(planId,annotData){
+  async function savePlanAnnotation(planId,annotData){
+    annotData=await packAnnotation(annotData,`patients/${patient.id}/plans`);
     upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>pl.id===planId?{...pl,annotation:annotData,updatedAt:new Date().toLocaleDateString("pt-BR")}:pl)}));
     setPlanAnnotating(null);
   }
-  function savePlanAnnotationNew(annotData){
+  async function savePlanAnnotationNew(annotData){
+    annotData=await packAnnotation(annotData,`patients/${patient.id}/plans`);
     const pl={id:Date.now(),title:planForm.title||"Planejamento Visual",steps:planForm.steps.split("\n").filter(s=>s.trim()),notes:planForm.notes,done:false,created:new Date().toLocaleDateString("pt-BR"),annotation:annotData};
     upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
     setPlanAnnotating(null);setShowPlan(false);setPlanForm({title:"",steps:"",notes:""});
@@ -5579,12 +5716,14 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
     });
     upd(p=>({...p,planejamento:(p.planejamento||[]).filter(pl=>pl.id!==id)}));
   }
-  function saveMarkerPlanNew(data){
+  async function saveMarkerPlanNew(data){
+    data=await packMarkerPlan(data,`patients/${patient.id}/plans`);
     const pl={id:Date.now(),title:markerPlanningForSession?"Mapa Facial · Sessão":"Mapa Facial",steps:[],notes:"",done:false,created:new Date().toLocaleDateString("pt-BR"),markerPlan:data,sessionId:markerPlanningForSession||null};
     upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
     setMarkerPlanning(null);setMarkerPlanningForSession(null);
   }
-  function saveMarkerPlan(planId,data){
+  async function saveMarkerPlan(planId,data){
+    data=await packMarkerPlan(data,`patients/${patient.id}/plans`);
     upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>pl.id===planId?{...pl,markerPlan:data,updatedAt:new Date().toLocaleDateString("pt-BR")}:pl)}));
     setMarkerPlanning(null);setMarkerPlanningForSession(null);
   }
@@ -5641,7 +5780,14 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h("div",{style:{position:"relative",flexShrink:0}},
           h(Avatar,{name:patient.name,size:70,idx:patient.id,src:patient.profilePhoto}),
           h("div",{onClick:()=>document.getElementById(`pp-${patient.id}`).click(),style:{position:"absolute",bottom:0,right:0,width:22,height:22,borderRadius:"50%",background:P.rose,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:11,border:`2px solid ${P.bg2}`}},"✎"),
-          h("input",{id:`pp-${patient.id}`,type:"file",accept:"image/*",style:{display:"none"},onChange:e=>{if(e.target.files[0])upd(p=>({...p,profilePhoto:URL.createObjectURL(e.target.files[0])}));}})
+          h("input",{id:`pp-${patient.id}`,type:"file",accept:"image/*",style:{display:"none"},onChange:async e=>{
+            const f=e.target.files[0];if(!f)return;
+            try{
+              const path=await uploadToStorage(f,`patients/${patient.id}/profile`,f.name);
+              const u=await signPaths([path]);
+              upd(p=>({...p,profilePhotoPath:path,profilePhoto:u[path]||null}));
+            }catch(err){alert("Não foi possível enviar a foto: "+(err.message||err));}
+          }})
         ),
         h("div",{style:{flex:1,minWidth:200}},
           h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}},
@@ -6567,7 +6713,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
                 ),
                 h(Field,{label:"Produto",half:true},
                   h("div",null,
-                    h("select",{value:item.product,onChange:e=>sItemSet(idx,"product",e.target.value)&&sItemSet(idx,"loteId","")&&sItemSet(idx,"qtdUsada",""),style:{...IS}},products.map(p=>typeof p==="string"?h("option",{key:p,value:p},p):h("option",{key:p.name||p,value:p.name||p},p.name||p))),
+                    h("select",{value:item.product,onChange:e=>sItemPatch(idx,{product:e.target.value,loteId:"",qtdUsada:""}),style:{...IS}},products.map(p=>typeof p==="string"?h("option",{key:p,value:p},p):h("option",{key:p.name||p,value:p.name||p},p.name||p))),
                     _lts.length>0&&h("div",{style:{marginTop:4,display:"flex",gap:4,flexWrap:"wrap"}},
                       _lts.map(l=>h("span",{key:l.id,style:{fontSize:10,padding:"1px 7px",borderRadius:8,background:"rgba(122,173,138,.1)",color:P.green,border:"1px solid rgba(122,173,138,.2)"}},l.codigo+": "+l.qtd+(l.validade?" · val "+l.validade:"")))
                     )
@@ -7990,7 +8136,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
         dayOfMonth:Number(form.dayOfMonth)||1,
         notes:form.notes||"",
         active:true,
-        startDate:form.date||new Date().toISOString().slice(0,10),
+        startDate:form.date||localISO(),
       };
       setRecurringExpenses(prev=>[...(Array.isArray(prev)?prev:[]),rule]);
       const novas=generateRecurringExpenses([rule],expenses,new Date());
@@ -8004,7 +8150,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       const baseCents=Math.floor(totalCents/n);
       const restoCents=totalCents-baseCents*n;
       const groupId=Date.now();
-      const baseDate=form.date||new Date().toISOString().slice(0,10);
+      const baseDate=form.date||localISO();
       const novasParcelas=Array.from({length:n},(_,i)=>({
         id:groupId+i+1,
         desc:`${form.desc} (${i+1}/${n})`,
@@ -8597,7 +8743,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
         },0);
       const recLiquida=recBruta-totalDescontos;
       // Custo de produtos: despesas categoria Produtos do mês
-      const custoProdutos=monthExpenses.filter(e=>e.cat==="Produtos"&&e.status!=="Cancelado").reduce((a,e)=>a+Number(e.value||0),0);
+      const custoProdutos=monthCostProdutos; // consumo real (produto da sessão + ficha de insumos), igual à Margem
       const lucroBruto=recLiquida-custoProdutos;
       const margemBruta=recLiquida>0?Math.round((lucroBruto/recLiquida)*100):0;
       // Despesas operacionais (tudo exceto Produtos)
@@ -9114,7 +9260,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
 
       // Depósitos pendentes (data de depósito no futuro ou este mês, ainda não caiu)
       const today=new Date();
-      const todayISO2=today.toISOString().slice(0,10);
+      const todayISO2=localISO(today);
       const depositsFuturos=mesesList.filter(m=>m.mes>=new Date().toISOString().slice(0,7));
       const totalFuturo=depositsFuturos.reduce((a,m)=>a+m.liquido,0);
 
@@ -10515,7 +10661,7 @@ function Relatorios({patients = [], incomes = [], expenses = [], onSelectPatient
               ),
               h("div",{style:{display:"flex",alignItems:"center",gap:10}},
                 h("span",{style:{fontSize:11,color:P.yellow,fontWeight:600}},p.diasSemVir+"d sem vir"),
-                p.pphone&&h("a",{href:`https://wa.me/55${(p.phone||"").replace(/\D/g,"")}?text=Olá ${p.name.split(" ")[0]}! Sentimos sua falta. Que tal agendar um retorno? 🌸`,target:"_blank",rel:"noopener noreferrer",style:{fontSize:11,padding:"5px 12px",borderRadius:8,background:"rgba(122,173,138,.15)",border:"1px solid rgba(122,173,138,.3)",color:P.green,textDecoration:"none",cursor:"pointer"}},"💬 Reativar")
+                p.phone&&h("a",{href:`https://wa.me/55${(p.phone||"").replace(/\D/g,"")}?text=Olá ${p.name.split(" ")[0]}! Sentimos sua falta. Que tal agendar um retorno? 🌸`,target:"_blank",rel:"noopener noreferrer",style:{fontSize:11,padding:"5px 12px",borderRadius:8,background:"rgba(122,173,138,.15)",border:"1px solid rgba(122,173,138,.3)",color:P.green,textDecoration:"none",cursor:"pointer"}},"💬 Reativar")
               )
             ))
           )
@@ -11252,7 +11398,7 @@ function ProcForm({initial,onSave,onCancel,cats,products=[]}){
 }
 
 
-function Configuracoes({procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas=[],setMaquininhas,stockCats,setStockCats}){
+function Configuracoes({patients=[],setPatients=()=>{},procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas=[],setMaquininhas,stockCats,setStockCats}){
   const h=createElement;
   const[tab,setTab]=useState("procedimentos");
   const[newLoc,setNewLoc]=useState("");
@@ -11631,6 +11777,11 @@ function Configuracoes({procedures,setProcedures,locations,setLocations,products
           )
         )
       ),
+      h("div",{style:{marginTop:20,paddingTop:16,borderTop:`1px solid ${P.border}`}},
+        h("div",{style:{fontSize:13,color:P.text,marginBottom:6}},"Migrar imagens antigas para o Storage"),
+        h("div",{style:{fontSize:11.5,color:P.text3,marginBottom:10}},"Move fotos e documentos antigos (salvos dentro do banco) para o Storage. Rode uma vez, com o app aberto só nesta tela."),
+        h(Btn,{variant:"ghost",onClick:async()=>{const n=await migrateLegacyImages(patients,setPatients);alert(n+" arquivo(s) migrado(s).");}},"Migrar agora")
+      ),
       h("div",{style:{fontSize:12,color:P.green,marginTop:12}},"✓ Salvo automaticamente")
     )
   );
@@ -11937,8 +12088,11 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia,clinicName}){
     annotating&&h(PhotoAnnotator,{
       photo:annotating.photo,
       onClose:()=>setAnnotating(null),
-      onSave:newPhoto=>{
-        upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===annotating.sessId?{...s,photos:[...(s.photos||[]),newPhoto]}:s)}));
+      onSave:async newPhoto=>{
+        try{
+          const[stored]=await filesToStored([newPhoto],`patients/${patient.id}/photos`);
+          upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===annotating.sessId?{...s,photos:[...(s.photos||[]),{...stored,annotated:true}]}:s)}));
+        }catch(e){alert("Não foi possível salvar a anotação: "+(e.message||e));}
         setAnnotating(null);
       }
     }),
@@ -12425,7 +12579,7 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav,voucherTe
           ? h("div",{style:{fontSize:12,color:P.text3,padding:"8px 0"}},"Nenhum voucher ativo encontrado com esse termo.")
           : redeemMatches.map(v=>h("div",{key:v.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:P.bg3,borderRadius:8,marginBottom:6,border:`1px solid ${P.border}`}},
               h("div",null,
-                h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},v.toName+" · "+h("span",{style:{fontFamily:"monospace",color:P.accent}},v.code)),
+                h("div",{style:{fontSize:13,color:P.text,fontWeight:600}},v.toName," · ",h("span",{style:{fontFamily:"monospace",color:P.accent}},v.code)),
                 h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},v.type==="valor"?("Saldo: "+fmtCurr(Number(v.value)-Number(v.usedValue||0))):("🎁 "+(v.procedures||[]).join(", ")))
               ),
               h(Btn,{onClick:()=>openRedeem(v),style:{fontSize:12,padding:"6px 14px"}},"Resgatar")
@@ -12534,7 +12688,7 @@ function Vouchers({patients,vouchers,setVouchers,onSelectPatient,onNav,voucherTe
     // ── Modal: Confirmar Resgate ────────────────────────────────────────────
     redeemTarget&&h(Modal,{open:!!redeemTarget,onClose:()=>setRedeemTarget(null),title:"Confirmar Resgate",width:420},
       h("div",{style:{marginBottom:14}},
-        h("div",{style:{fontSize:13,color:P.text,marginBottom:4}},redeemTarget.toName+" · "+h("span",{style:{fontFamily:"monospace",color:P.accent}},redeemTarget.code)),
+        h("div",{style:{fontSize:13,color:P.text,marginBottom:4}},redeemTarget.toName," · ",h("span",{style:{fontFamily:"monospace",color:P.accent}},redeemTarget.code)),
         redeemTarget.type==="valor"
           ?h("div",{style:{fontSize:12,color:P.text3}},"Saldo disponível: "+fmtCurr(Number(redeemTarget.value)-Number(redeemTarget.usedValue||0)))
           :h("div",{style:{fontSize:12,color:P.text3}},"Procedimentos: "+(redeemTarget.procedures||[]).join(", "))
@@ -12799,6 +12953,376 @@ function Precificadora({settings,setSettings,proceduresFull=[],setProcedures,pro
     )
   );
 }
+// ─── MIGRAÇÃO: imagens antigas (base64 dentro do banco) → Supabase Storage ───
+async function migrateLegacyImages(patients,setPatients){
+  const results={};let count=0;
+  const cache=new Map();
+  const isLeg=x=>x&&typeof x==="object"&&!x.stored&&typeof x.url==="string"&&x.url.startsWith("data:");
+  const moveList=async(list,folder)=>{
+    if(!Array.isArray(list)||!list.some(isLeg))return list;
+    const res=[];
+    for(const it of list){
+      if(!isLeg(it)){res.push(it);continue;}
+      try{
+        let st=it.id!=null?cache.get(it.id):null;
+        if(!st){const[o]=await filesToStored([it],folder);st={path:o.path,url:o.url};if(it.id!=null)cache.set(it.id,st);count++;}
+        res.push({...it,stored:true,path:st.path,url:st.url});
+      }catch(e){console.warn("[migração] falhou em um arquivo",e);res.push(it);}
+    }
+    return res;
+  };
+  const moveIc=async(ic,folder)=>{
+    if(!ic||typeof ic!=="object")return ic;
+    let out=ic;
+    if(Array.isArray(ic.photos))out={...out,photos:await moveList(ic.photos,folder)};
+    if(Array.isArray(ic.evolutions))out={...out,evolutions:await Promise.all(ic.evolutions.map(async ev=>Array.isArray(ev.photos)?{...ev,photos:await moveList(ev.photos,folder)}:ev))};
+    return out;
+  };
+  for(const p of patients){
+    try{
+      const base=`patients/${p.id}`;
+      const sessions=[];
+      for(const s of (p.sessions||[])){
+        let ns={...s};
+        ns.photos=await moveList(s.photos,base+"/photos");
+        ns.docs=await moveList(s.docs,base+"/docs");
+        if(Array.isArray(s.intercorrencias))ns.intercorrencias=await Promise.all(s.intercorrencias.map(ic=>moveIc(ic,base+"/intercorrencias")));
+        sessions.push(ns);
+      }
+      const intercorrencias=Array.isArray(p.intercorrencias)?await Promise.all(p.intercorrencias.map(ic=>moveIc(ic,base+"/intercorrencias"))):p.intercorrencias;
+      const planejamento=[];
+      for(const pl of (p.planejamento||[])){
+        let npl=pl;
+        if(pl.markerPlan&&typeof pl.markerPlan.baseImage==="string"&&pl.markerPlan.baseImage.startsWith("data:")&&!pl.markerPlan.baseImagePath){
+          npl={...npl,markerPlan:await packMarkerPlan(pl.markerPlan,base+"/plans")};count++;
+        }
+        if(pl.annotation&&typeof pl.annotation.baseImage==="string"&&pl.annotation.baseImage.startsWith("data:")&&!pl.annotation.baseImagePath){
+          npl={...npl,annotation:await packAnnotation(pl.annotation,base+"/plans")};count++;
+        }
+        planejamento.push(npl);
+      }
+      results[p.id]={sessions,intercorrencias,planejamento};
+    }catch(e){console.warn("[migração] paciente",p&&p.id,e);}
+  }
+  if(count>0)setPatients(prev=>prev.map(p=>results[p.id]?{...p,sessions:results[p.id].sessions,intercorrencias:results[p.id].intercorrencias,planejamento:results[p.id].planejamento}:p));
+  return count;
+}
+
+// ─── RETENÇÃO & WHATSAPP ─────────────────────────────────────────────────────
+const WA_TYPES={
+  confirmacao:{l:"Confirmação",icon:"ti-calendar-check",c:"statusBlue"},
+  retorno:{l:"Retorno",icon:"ti-clock-hour-4",c:"statusAmber"},
+  reativacao:{l:"Reativação",icon:"ti-user-off",c:"statusRed"},
+  pos:{l:"Pós-procedimento",icon:"ti-heartbeat",c:"statusTeal"},
+  aniversario:{l:"Aniversário",icon:"ti-cake",c:"statusPurple"},
+};
+const DEFAULT_WA_TEMPLATES={
+  confirmacao:"Oi {primeiro_nome}! Passando para confirmar seu horário de {procedimento} amanhã, {data}, às {hora}. Posso confirmar? 🌸",
+  retorno:"Oi {primeiro_nome}! Está chegando a hora do seu retorno de {procedimento}. Quer que eu reserve um horário para você? 🌸",
+  reativacao:"Oi {primeiro_nome}! Faz um tempinho que não nos vemos. Como você está? Quer agendar uma avaliação do seu {procedimento}? 🌸",
+  pos:"Oi {primeiro_nome}! Como você está se sentindo depois do {procedimento} de ontem? Qualquer dúvida, é só me chamar. 🌸",
+  aniversario:"Oi {primeiro_nome}! 🎂 Feliz aniversário! Que seu novo ano seja lindo e cheio de saúde. Um abraço da {clinica}. 🌸",
+};
+function fillTemplate(tpl,vars){return String(tpl||"").replace(/\{(\w+)\}/g,(m,k)=>vars[k]!=null?vars[k]:m);}
+function waLink(phone,msg){
+  let d=String(phone||"").replace(/\D/g,"");
+  if(!d)return null;
+  if(!(d.startsWith("55")&&d.length>=12))d="55"+d;
+  return `https://wa.me/${d}?text=${encodeURIComponent(msg)}`;
+}
+function rdDiff(a,b){return Math.round((b-a)/864e5);}
+
+function computeRetention({patients,agenda,returnRules,procedures,products}){
+  const T=new Date();T.setHours(12,0,0,0);
+  const todayStr=localISO(T);
+  const pats=(patients||[]).map(p=>({p,v:(p.sessions||[]).map(s=>({s,d:parseAnyDate(s.date)})).filter(x=>x.d).sort((a,b)=>a.d-b.d)})).filter(x=>x.v.length>0);
+  const hasUpcoming=name=>(agenda||[]).some(a=>!a.blocked&&a.patientName===name&&a.date>=todayStr&&a.status!=="Cancelado");
+  const paidTotal=p=>(p.sessions||[]).filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0);
+  const first=n=>String(n||"").trim().split(" ")[0];
+
+  // 1) Taxa de retorno por mês: voltou em até 90 dias depois da última sessão do mês
+  const months=[];
+  for(let k=11;k>=0;k--){
+    const ref=new Date(T.getFullYear(),T.getMonth()-k,1,12);
+    const y=ref.getFullYear(),m=ref.getMonth();
+    const end=new Date(y,m+1,0,12);
+    let cohort=0,returned=0;
+    pats.forEach(({v})=>{
+      const inM=v.filter(x=>x.d.getFullYear()===y&&x.d.getMonth()===m);
+      if(!inM.length)return;
+      const anchor=inM[inM.length-1].d;
+      cohort++;
+      if(v.some(x=>x.d>anchor&&rdDiff(anchor,x.d)<=90))returned++;
+    });
+    months.push({label:MONTH_NAMES[m].slice(0,3),y,m,cohort,returned,rate:cohort>0?Math.round(returned/cohort*100):null,closed:rdDiff(end,T)>=90});
+  }
+  const closedM=months.filter(x=>x.closed&&x.cohort>0);
+  const rr=closedM[closedM.length-1]||null;
+  const rrPrev=closedM[closedM.length-2]||null;
+
+  // 2) Retenção 6 meses: quem começou há 6+ meses e ainda veio nos últimos 6 meses
+  const retention=ref=>{
+    const cut=new Date(ref);cut.setDate(cut.getDate()-180);
+    const base=pats.filter(({v})=>v[0].d<=cut);
+    if(!base.length)return null;
+    const kept=base.filter(({v})=>v.some(x=>x.d>cut&&x.d<=ref)).length;
+    return{rate:Math.round(kept/base.length*100),base:base.length,kept};
+  };
+  const ref30=new Date(T);ref30.setDate(ref30.getDate()-30);
+  const ret6=retention(T),ret6prev=retention(ref30);
+
+  // 3) Inativas (+90 dias, sem agendamento futuro)
+  const inactive=pats.map(({p,v})=>({p,last:v[v.length-1],dias:rdDiff(v[v.length-1].d,T)}))
+    .filter(x=>x.dias>90&&!hasUpcoming(x.p.name))
+    .map(x=>({...x,ltv:paidTotal(x.p)})).sort((a,b)=>b.ltv-a.ltv);
+  const ltvInactive=inactive.reduce((a,x)=>a+x.ltv,0);
+
+  // 4) Reativadas no mês: sessão neste mês com intervalo >90 dias desde a anterior
+  const react=[];
+  pats.forEach(({p,v})=>{
+    for(let i=1;i<v.length;i++){
+      const cur=v[i];
+      if(cur.d.getFullYear()===T.getFullYear()&&cur.d.getMonth()===T.getMonth()&&rdDiff(v[i-1].d,cur.d)>90){react.push({p,s:cur.s});break;}
+    }
+  });
+  const reactValue=react.reduce((a,x)=>a+(x.s.paid?Number(x.s.value)||0:0),0);
+
+  // 5) Retorno por procedimento (janela = prazo de manutenção da regra × 1,2)
+  const winDays=name=>{
+    const r=(returnRules||[]).find(x=>x.procedure===name);
+    const po=(procedures||[]).find(x=>typeof x==="object"&&x.name===name);
+    const d=Number(r&&r.maintenanceDays)||Number(po&&po.maintenanceDays)||Number(r&&r.revisionDays)||90;
+    return Math.round(d*1.2);
+  };
+  const procMap={};
+  pats.forEach(({v})=>v.forEach((x,i)=>{
+    const name=x.s.procedure;if(!name)return;
+    const win=winDays(name),age=rdDiff(x.d,T);
+    if(age<win||age>365)return;
+    if(!procMap[name])procMap[name]={name,n:0,ok:0};
+    procMap[name].n++;
+    if(v.slice(i+1).some(y=>y.d>x.d&&rdDiff(x.d,y.d)<=win))procMap[name].ok++;
+  }));
+  const procRates=Object.values(procMap).filter(x=>x.n>=2).map(x=>({...x,rate:Math.round(x.ok/x.n*100)})).sort((a,b)=>b.rate-a.rate);
+
+  // 6) Fila de WhatsApp
+  const tasks=[];
+  const tomorrow=new Date(T);tomorrow.setDate(tomorrow.getDate()+1);
+  const tomStr=localISO(tomorrow);
+  (agenda||[]).filter(a=>!a.blocked&&a.date===tomStr&&(a.status==="Confirmado"||a.status==="Aguardando")).forEach(a=>{
+    const p=(patients||[]).find(x=>x.name===a.patientName);
+    if(!p)return;
+    tasks.push({key:`confirmacao_${a.id}`,type:"confirmacao",patient:p,sub:`${a.procedure} · amanhã às ${a.time}`,urg:0,vars:{procedimento:a.procedure,data:isoToBR(a.date),hora:a.time}});
+  });
+  const withReturn=new Set();
+  pats.forEach(({p,v})=>{
+    const last=v[v.length-1];
+    const days=Number(last.s.returnReminderDays)||0;
+    if(!days)return;
+    const left=days-rdDiff(last.d,T);
+    if(left<=7&&left>=-45&&!hasUpcoming(p.name)){
+      withReturn.add(p.id);
+      tasks.push({key:`retorno_${p.id}_${last.s.id}`,type:"retorno",patient:p,
+        sub:left<0?`Retorno atrasado ${-left}d · ${last.s.procedure}`:left===0?`Retorno hoje · ${last.s.procedure}`:`Retorno em ${left}d · ${last.s.procedure}`,
+        urg:left<0?1:2,vars:{procedimento:last.s.procedure}});
+    }
+  });
+  inactive.forEach(x=>{
+    if(withReturn.has(x.p.id))return;
+    tasks.push({key:`reativacao_${x.p.id}_${localISO(x.last.d)}`,type:"reativacao",patient:x.p,sub:`${x.dias} dias sem vir · histórico ${fmtCurr(x.ltv)}`,urg:1,vars:{procedimento:x.last.s.procedure||"procedimento"}});
+  });
+  pats.forEach(({p,v})=>{
+    const last=v[v.length-1];
+    if(rdDiff(last.d,T)===1)tasks.push({key:`pos_${p.id}_${last.s.id}`,type:"pos",patient:p,sub:`${last.s.procedure} · ontem`,urg:2,vars:{procedimento:last.s.procedure}});
+  });
+  (patients||[]).forEach(p=>{
+    if(!p.birthDate)return;
+    const bd=new Date(p.birthDate+"T12:00");
+    if(!isNaN(bd)&&bd.getMonth()===T.getMonth()&&bd.getDate()===T.getDate())
+      tasks.push({key:`aniversario_${p.id}_${T.getFullYear()}`,type:"aniversario",patient:p,sub:"Aniversário hoje",urg:0,vars:{}});
+  });
+  tasks.sort((a,b)=>a.urg-b.urg);
+
+  // 7) Insights por regra (sem IA externa)
+  const insights=[];
+  const lowProc=[...procRates].filter(x=>x.n>=3).sort((a,b)=>a.rate-b.rate)[0];
+  if(lowProc&&lowProc.rate<50)insights.push({tone:"statusRed",icon:"ti-repeat",text:`${lowProc.name} tem retorno de ${lowProc.rate}% (${lowProc.ok} de ${lowProc.n}). Vale ativar lembrete de retorno ou oferecer pacote de manutenção.`});
+  const topProc=procRates.filter(x=>x.n>=3)[0];
+  if(topProc&&topProc.rate>=80)insights.push({tone:"statusGreen",icon:"ti-thumb-up",text:`${topProc.name} é seu procedimento com melhor retorno (${topProc.rate}%). Use como porta de entrada para outros protocolos.`});
+  if(inactive.length){
+    const paidSess=(patients||[]).flatMap(p=>(p.sessions||[]).filter(s=>s.paid));
+    const ticket=paidSess.length?paidSess.reduce((a,s)=>a+(Number(s.value)||0),0)/paidSess.length:0;
+    const n20=Math.max(1,Math.round(inactive.length*0.2));
+    insights.push({tone:"statusAmber",icon:"ti-user-off",text:`${inactive.length} paciente(s) sem vir há mais de 90 dias somam ${fmtCurr(ltvInactive)} em histórico. Reativar 20% delas (${n20}) rende cerca de ${fmtCurr(Math.round(n20*ticket))} em uma sessão cada.`});
+  }
+  if(ret6&&ret6prev&&ret6.rate<ret6prev.rate)insights.push({tone:"statusAmber",icon:"ti-trending-down",text:`A retenção de 6 meses caiu de ${ret6prev.rate}% para ${ret6.rate}% em 30 dias. Priorize a fila de retornos atrasados abaixo.`});
+  const atrasados=tasks.filter(t=>t.type==="retorno"&&t.urg===1).length;
+  if(atrasados)insights.push({tone:"statusRed",icon:"ti-clock-exclamation",text:`${atrasados} retorno(s) atrasado(s) sem agendamento. Cada um é receita de manutenção parada.`});
+  // margem dos últimos 90 dias
+  const cutoff=new Date(T);cutoff.setDate(cutoff.getDate()-90);
+  const mm={};
+  (patients||[]).forEach(p=>(p.sessions||[]).forEach(s=>{
+    const d=parseAnyDate(s.date);
+    if(!s.paid||!d||d<cutoff||!s.procedure)return;
+    if(!mm[s.procedure])mm[s.procedure]={name:s.procedure,n:0,rec:0,cost:0};
+    mm[s.procedure].n++;mm[s.procedure].rec+=Number(s.value)||0;mm[s.procedure].cost+=sessionCost(s,products);
+  }));
+  const lowMargin=Object.values(mm).filter(x=>x.n>=3&&x.rec>0&&x.cost>0).map(x=>({...x,pct:Math.round((x.rec-x.cost)/x.rec*100)})).sort((a,b)=>a.pct-b.pct)[0];
+  if(lowMargin&&lowMargin.pct<35)insights.push({tone:"statusAmber",icon:"ti-coin",text:`${lowMargin.name} está com margem de ${lowMargin.pct}% nos últimos 90 dias. Revise o preço na Precificadora ou o custo dos insumos.`});
+  const stockAlert=(products||[]).filter(p=>typeof p==="object"&&(p.status==="critical"||(p.lotes||[]).some(l=>l.qtd>0&&calcValidadeAlerta(l.validade,60)))).length;
+  if(stockAlert)insights.push({tone:"statusBlue",icon:"ti-package",text:`${stockAlert} produto(s) em nível crítico ou com lote perto do vencimento. Confira o Estoque antes dos próximos procedimentos.`});
+
+  return{months,rr,rrPrev,ret6,ret6prev,inactive,ltvInactive,react,reactValue,procRates,tasks,insights,first};
+}
+
+function Retencao({patients,agenda,returnRules,proceduresFull,products,settings,waTemplates,setWaTemplates,waLog,setWaLog,onSelectPatient,onNav}){
+  const h=createElement;
+  const[filter,setFilter]=useState("todos");
+  const[showTpl,setShowTpl]=useState(false);
+  const[tplDraft,setTplDraft]=useState(waTemplates);
+  const data=useMemo(()=>computeRetention({patients,agenda,returnRules,procedures:proceduresFull,products}),[patients,agenda,returnRules,proceduresFull,products]);
+  const log=Array.isArray(waLog)?waLog:[];
+  const logKeys=new Set(log.map(l=>l.key));
+  const now=new Date();
+  const recentlySent=pid=>log.some(l=>l.patientId===pid&&l.status==="enviada"&&rdDiff(new Date(l.at),now)<14);
+  const rc=v=>v==null?P.text3:v>=70?P.statusGreen:v>=50?P.statusAmber:P.statusRed;
+  const delta=(a,b)=>`${a-b>=0?"+":""}${a-b} pts`;
+
+  const pending=data.tasks
+    .filter(t=>!logKeys.has(t.key))
+    .filter(t=>!((t.type==="retorno"||t.type==="reativacao")&&recentlySent(t.patient.id)))
+    .map(t=>({...t,msg:fillTemplate(waTemplates[t.type],{primeiro_nome:data.first(t.patient.name),clinica:settings.clinicName||"",...t.vars})}));
+  const shown=filter==="todos"?pending:pending.filter(t=>t.type===filter);
+
+  function record(t,status){
+    setWaLog(prev=>[...(Array.isArray(prev)?prev:[]),{id:Date.now()+Math.random(),key:t.key,patientId:t.patient.id,patientName:t.patient.name,type:t.type,status,at:new Date().toISOString()}].slice(-1000));
+  }
+  function send(t){
+    const link=waLink(t.patient.phone,t.msg);
+    if(!link){alert("Esta paciente está sem telefone cadastrado.");return;}
+    window.open(link,"_blank","noopener");
+    record(t,"enviada");
+  }
+
+  const{rr,rrPrev,ret6,ret6prev}=data;
+  const kpis=[
+    {l:"Taxa de retorno (90d)",v:rr?rr.rate+"%":"—",sub:rr?(rrPrev?`${delta(rr.rate,rrPrev.rate)} vs mês anterior`:`${rr.returned} de ${rr.cohort} em ${rr.label}`):"Sem histórico suficiente",c:rc(rr&&rr.rate)},
+    {l:"Retenção 6 meses",v:ret6?ret6.rate+"%":"—",sub:ret6?(ret6prev?`${delta(ret6.rate,ret6prev.rate)} vs 30 dias atrás`:`${ret6.kept} de ${ret6.base} pacientes`):"Precisa de pacientes com +6 meses",c:rc(ret6&&ret6.rate)},
+    {l:"Inativas +90 dias",v:String(data.inactive.length),sub:`${fmtCurr(data.ltvInactive)} em histórico`,c:data.inactive.length?P.statusAmber:P.statusGreen},
+    {l:"Reativadas no mês",v:String(data.react.length),sub:`${fmtCurr(data.reactValue)} recuperados`,c:P.statusGreen},
+  ];
+  const typeCounts={};pending.forEach(t=>{typeCounts[t.type]=(typeCounts[t.type]||0)+1;});
+
+  return h("div",null,
+    h(SectionHeader,{title:"Retenção",sub:"Quem volta, quem está sumindo e quem você deve chamar hoje",action:h(Btn,{variant:"ghost",onClick:()=>{setTplDraft(waTemplates);setShowTpl(true);}},"Modelos de mensagem")}),
+
+    h("div",{className:"resp-grid-4",style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:18}},
+      kpis.map(k=>h(Card,{key:k.l,style:{...kpiCardStyle(k.c),textAlign:"center"}},
+        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}},k.l),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:k.c,lineHeight:1}},k.v),
+        h("div",{style:{fontSize:11,color:P.text3,marginTop:6}},k.sub)
+      ))
+    ),
+
+    h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,marginBottom:18}},
+      h(Card,null,
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:2}},"Taxa de retorno por mês"),
+        h("div",{style:{fontSize:11.5,color:P.text3,marginBottom:14}},"Voltou em até 90 dias após a última sessão do mês"),
+        h("div",{style:{display:"flex",alignItems:"flex-end",gap:6,height:120}},
+          data.months.map(m=>h("div",{key:m.y+"-"+m.m,title:m.cohort?`${m.label}/${m.y}: ${m.returned} de ${m.cohort}${m.closed?"":" (janela ainda aberta)"}`:`${m.label}/${m.y}: sem sessões`,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}},
+            h("div",{style:{fontSize:10,color:P.text3}},m.rate==null?"—":m.rate+"%"),
+            h("div",{style:{width:"100%",height:80,display:"flex",alignItems:"flex-end"}},
+              h("div",{style:{width:"100%",height:(m.rate==null?0:Math.max(m.rate,4))+"%",background:m.closed?rc(m.rate):"transparent",border:m.closed?"none":`1.5px dashed ${P.text3}`,borderRadius:"3px 3px 0 0"}})
+            ),
+            h("div",{style:{fontSize:10,color:P.text3}},m.label)
+          ))
+        ),
+        h("div",{style:{fontSize:10.5,color:P.text3,marginTop:8}},"Tracejado = janela de 90 dias ainda aberta (resultado parcial).")
+      ),
+      h(Card,null,
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:2}},"Retorno por procedimento"),
+        h("div",{style:{fontSize:11.5,color:P.text3,marginBottom:14}},"Voltou dentro do prazo das regras de retorno · últimos 12 meses"),
+        data.procRates.length===0
+          ?h("div",{style:{fontSize:12.5,color:P.text3,padding:"16px 0",textAlign:"center"}},"Ainda não há sessões suficientes com o prazo de retorno vencido.")
+          :h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+            data.procRates.slice(0,8).map(x=>h("div",{key:x.name,style:{display:"grid",gridTemplateColumns:"minmax(110px,1.2fr) 2fr 70px",gap:10,alignItems:"center",fontSize:12.5}},
+              h("span",{style:{color:P.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},x.name),
+              h("div",{style:{height:8,borderRadius:4,background:P.bg3,overflow:"hidden"}},h("div",{style:{width:x.rate+"%",height:"100%",background:rc(x.rate),borderRadius:4}})),
+              h("span",{style:{color:rc(x.rate),fontWeight:600,textAlign:"right"}},x.rate+"% ",h("span",{style:{fontWeight:400,color:P.text3,fontSize:10.5}},`(${x.ok}/${x.n})`))
+            ))
+          )
+      )
+    ),
+
+    data.insights.length>0&&h(Card,{style:{marginBottom:18}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:12}},"Insights"),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+        data.insights.map((ins,i)=>h("div",{key:i,style:{display:"flex",gap:10,alignItems:"flex-start",padding:"10px 12px",background:P.bg3,borderLeft:`3px solid ${P[ins.tone]}`}},
+          h("i",{className:`ti ${ins.icon}`,style:{fontSize:17,color:P[ins.tone],marginTop:1,flexShrink:0}}),
+          h("div",{style:{fontSize:13,color:P.text2,lineHeight:1.55}},ins.text)
+        ))
+      )
+    ),
+
+    h(Card,null,
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}},
+        h("div",null,
+          h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},"Fila de mensagens de WhatsApp"),
+          h("div",{style:{fontSize:11.5,color:P.text3,marginTop:2}},"Revise e envie com 1 clique. Quem já recebeu mensagem nos últimos 14 dias não volta para a fila.")
+        )
+      ),
+      h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}},
+        [["todos","Todas",pending.length],...Object.entries(WA_TYPES).map(([k,v])=>[k,v.l,typeCounts[k]||0])].map(([k,l,n])=>
+          h("button",{key:k,onClick:()=>setFilter(k),style:{padding:"5px 13px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===k?P.rose:"transparent",border:`1px solid ${filter===k?P.rose:P.border}`,color:filter===k?P.accent3:P.text2}},`${l} (${n})`)
+        )
+      ),
+      shown.length===0
+        ?h("div",{style:{textAlign:"center",padding:"26px 0",color:P.text3,fontSize:13}},"Nada pendente por aqui. Tudo em dia.")
+        :shown.map(t=>{
+          const meta=WA_TYPES[t.type],col=P[meta.c];
+          return h("div",{key:t.key,style:{display:"flex",alignItems:"flex-start",gap:12,padding:"12px 0",borderTop:`1px solid ${P.border}`,flexWrap:"wrap"}},
+            h("i",{className:`ti ${meta.icon}`,style:{fontSize:18,color:col,marginTop:2}}),
+            h("div",{style:{flex:"1 1 240px",minWidth:0}},
+              h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}},
+                h("span",{onClick:()=>{onSelectPatient(t.patient);onNav("prontuario");},style:{fontSize:13.5,color:P.text,fontWeight:500,cursor:"pointer"}},t.patient.name),
+                h("span",{style:{fontSize:10,padding:"2px 8px",borderRadius:10,background:col+"22",color:col,fontWeight:600}},meta.l),
+                !t.patient.phone&&h("span",{style:{fontSize:10,color:P.statusRed}},"sem telefone")
+              ),
+              h("div",{style:{fontSize:11.5,color:P.text3,marginTop:2}},t.sub),
+              h("div",{style:{fontSize:11.5,color:P.text2,marginTop:6,padding:"7px 10px",background:P.bg3,borderRadius:8,lineHeight:1.5}},t.msg)
+            ),
+            h("div",{style:{display:"flex",gap:6,flexShrink:0}},
+              h(Btn,{onClick:()=>send(t),disabled:!t.patient.phone,style:{padding:"6px 12px",fontSize:12}},"Enviar no WhatsApp"),
+              h(Btn,{variant:"ghost",onClick:()=>record(t,"ignorada"),style:{padding:"6px 12px",fontSize:12}},"Ignorar")
+            )
+          );
+        }),
+      log.length>0&&h("div",{style:{marginTop:16,paddingTop:12,borderTop:`1px solid ${P.border}`}},
+        h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"Últimos envios"),
+        [...log].filter(l=>l.status==="enviada").reverse().slice(0,6).map(l=>h("div",{key:l.id,style:{display:"flex",justifyContent:"space-between",fontSize:12,color:P.text3,padding:"3px 0"}},
+          h("span",null,`${l.patientName} · ${(WA_TYPES[l.type]||{}).l||l.type}`),
+          h("span",null,new Date(l.at).toLocaleDateString("pt-BR"))
+        ))
+      )
+    ),
+
+    h(Modal,{open:showTpl,onClose:()=>setShowTpl(false),title:"Modelos de mensagem",width:600},
+      h("div",{style:{fontSize:12,color:P.text3,marginBottom:14}},"Variáveis disponíveis: {primeiro_nome}, {procedimento}, {data}, {hora}, {clinica}."),
+      Object.entries(WA_TYPES).map(([k,meta])=>h("div",{key:k,style:{marginBottom:14}},
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
+          h("span",{style:{fontSize:12.5,color:P.text,fontWeight:500}},meta.l),
+          h("button",{onClick:()=>setTplDraft(d=>({...d,[k]:DEFAULT_WA_TEMPLATES[k]})),style:{fontSize:11,color:P.accent,background:"transparent",border:"none",cursor:"pointer"}},"Restaurar padrão")
+        ),
+        h(TA,{value:tplDraft[k]||"",onChange:v=>setTplDraft(d=>({...d,[k]:v})),rows:3})
+      )),
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}},
+        h(Btn,{variant:"ghost",onClick:()=>setShowTpl(false)},"Cancelar"),
+        h(Btn,{onClick:()=>{setWaTemplates(tplDraft);setShowTpl(false);}},"Salvar modelos")
+      )
+    )
+  );
+}
+
 function AppInner({ session, onLogout }) {
   const[patientsRaw,setPatients,loadingPatients]=useSupaTable("patients",INIT_PATIENTS);
   const[agendaRaw,setAgenda,loadingAgenda]=useSupaTable("agenda",INIT_AGENDA);
@@ -12844,13 +13368,30 @@ function AppInner({ session, onLogout }) {
     frequencias:["Diário","Noturno","2x por semana","Semanal","Mensal","Conforme necessário"]
   });
   const[vouchersRaw,setVouchers,loadingVouchers]=useSupaTable("vouchers",[]);
+  const[waTemplatesRaw,setWaTemplates]=useSupaTable("wa_templates",DEFAULT_WA_TEMPLATES);
+  const[waLogRaw,setWaLog]=useSupaTable("wa_log",[]);
   const[voucherTemplatesRaw,setVoucherTemplates,loadingVTpl]=useSupaTable("voucher_templates",DEFAULT_VOUCHER_TEMPLATES);
 
 
   // ── Blindagem extra: garante que dados que devem ser array nunca virem outra coisa ──
   // (proteção redundante caso algum dado venha corrompido do Supabase)
   // Sobrescreve as variáveis originais — todo código abaixo já fica protegido
-  const patients=Array.isArray(patientsRaw)?patientsRaw:[];
+  const patientsBase=Array.isArray(patientsRaw)?patientsRaw:[];
+  const[photoUrls,setPhotoUrls]=useState({});
+  const photoPaths=useMemo(()=>collectStoredPaths(patientsBase),[patientsBase]);
+  const pathsRef=useRef([]);pathsRef.current=photoPaths;
+  useEffect(()=>{
+    const missing=photoPaths.filter(p=>!photoUrls[p]);
+    if(!missing.length)return;
+    let cancelled=false;
+    signPaths(missing).then(m=>{if(!cancelled&&Object.keys(m).length)setPhotoUrls(prev=>({...prev,...m}));});
+    return()=>{cancelled=true;};
+  },[photoPaths.join("|")]);
+  useEffect(()=>{
+    const id=setInterval(()=>{signPaths(pathsRef.current).then(m=>{if(Object.keys(m).length)setPhotoUrls(m);});},6*3600*1000);
+    return()=>clearInterval(id);
+  },[]);
+  const patients=useMemo(()=>hydrateStored(patientsBase,photoUrls),[patientsBase,photoUrls]);
   const agenda=Array.isArray(agendaRaw)?agendaRaw:[];
   const waitlist=Array.isArray(waitlistRaw)?waitlistRaw:[];
   const agendaLog=Array.isArray(agendaLogRaw)?agendaLogRaw:[];
@@ -12866,6 +13407,8 @@ function AppInner({ session, onLogout }) {
   const vouchers=Array.isArray(vouchersRaw)?vouchersRaw:[];
   const voucherTemplates=(Array.isArray(voucherTemplatesRaw)&&voucherTemplatesRaw.length)?voucherTemplatesRaw:DEFAULT_VOUCHER_TEMPLATES;
   const maquininhas=Array.isArray(maquininhasRaw)?maquininhasRaw:[];
+  const waTemplates={...DEFAULT_WA_TEMPLATES,...((waTemplatesRaw&&!Array.isArray(waTemplatesRaw)&&typeof waTemplatesRaw==="object")?waTemplatesRaw:{})};
+  const waLog=Array.isArray(waLogRaw)?waLogRaw:[];
 
   // Todos os useState ANTES de qualquer return condicional (regra dos hooks)
   const[page,setPage]=useState("dashboard");
@@ -12927,7 +13470,7 @@ function AppInner({ session, onLogout }) {
   },[]);
   const locationNames=Array.isArray(locations)?locations.map(l=>typeof l==="string"?l:(l.name||l)).filter(Boolean):INIT_LOCATIONS;
   const h=createElement;
-  const todayStr=new Date().toISOString().slice(0,10);
+  const todayStr=localISO();
   const todayApptCount=agenda.filter(a=>a.date===todayStr).length;
   const todayAppts=agenda.filter(a=>a.date===todayStr);
   const criticalStock=products.filter(p=>p.status==="critical").length;
@@ -12986,7 +13529,7 @@ function AppInner({ session, onLogout }) {
   handleNav("agenda");
 }
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",sessoes:"Controle de Sessões",precificadora:"Precificadora",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
+  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",retencao:"Retenção",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",sessoes:"Controle de Sessões",precificadora:"Precificadora",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
   const settings = settingsData;
 
   const dark=!!(settingsData&&settingsData.darkMode);
@@ -12997,6 +13540,7 @@ function AppInner({ session, onLogout }) {
       {k:"pacientes",l:"Pacientes",ti:"ti-users"},
       {k:"aniversariantes",l:"Aniversariantes",ti:"ti-cake",badge:(()=>{const t=new Date();return patients.filter(p=>{if(!p.birthDate)return false;const bd=new Date(p.birthDate+"T12:00");return bd.getMonth()===t.getMonth()&&bd.getDate()===t.getDate();}).length||null;})(),badgeColor:P.statusAmber},
       {k:"retornos",l:"Retornos & Risco",ti:"ti-clock-hour-4",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>a.patientName===p.name&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
+      {k:"retencao",l:"Retenção",ti:"ti-repeat"},
     ]},
     {label:"Clínica",items:[
       {k:"estoque",l:"Estoque",ti:"ti-package",badge:criticalStock||null,badgeColor:P.statusRed},
@@ -13171,6 +13715,7 @@ function AppInner({ session, onLogout }) {
             page==="dashboard"&&h(Dashboard,{patients,agenda,onNav:handleNav,onSelectPatient:handleSelectPatient,onScheduleReturn:handleScheduleReturn,procedures:procedureNames,settings,returnRules,isMobile,isTablet,goals:goalsData,setGoals,incomes,expenses,products}),
             page==="aniversariantes"&&h(Aniversariantes,{patients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="retornos"&&h(RetornosPendentes,{patients,returnRules,onSelectPatient:handleSelectPatient,onNav:handleNav,onScheduleReturn:handleScheduleReturn,agenda}),
+            page==="retencao"&&h(Retencao,{patients,agenda,returnRules,proceduresFull:procedures,products,settings,waTemplates,setWaTemplates,waLog,setWaLog,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="agenda"&&h(Agenda,{patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null),dark,waitlist,setWaitlist}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames}),
@@ -13183,7 +13728,7 @@ function AppInner({ session, onLogout }) {
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
             page==="relatorios"&&h(Relatorios,{patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda,products,vouchers,goals:goalsData,setGoals}),
             page==="intercorrencias_global"&&h(IntercorrenciasGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures:procedureNames,products:products.map(p=>typeof p==="string"?p:(p.name||p))}),
-            page==="config"&&h(Configuracoes,{procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas,setMaquininhas,stockCats,setStockCats})
+            page==="config"&&h(Configuracoes,{patients,setPatients,procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas,setMaquininhas,stockCats,setStockCats})
           )
         )
       )
