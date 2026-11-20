@@ -12695,6 +12695,110 @@ function ControleSessoes({patients=[],setPatients,agenda=[],onSelectPatient,onNa
     )
   );
 }
+// ─── PRECIFICADORA ────────────────────────────────────────────────────────────
+function Precificadora({settings,setSettings,proceduresFull=[],setProcedures,products=[],recurringExpenses=[]}){
+  const h=createElement;
+  const cfg=settings.precificacao||{};
+  const[hora,setHora]=useState({fixos:cfg.fixos??"",prolabore:cfg.prolabore??"",diasMes:cfg.diasMes??"20",horasDia:cfg.horasDia??"8",ocupacao:cfg.ocupacao??"70"});
+  const[calc,setCalc]=useState({procName:"",duracaoMin:"60",custoProduto:"",taxaCartao:"3",imposto:"6",comissao:"0",margem:"40"});
+  const[saved,setSaved]=useState(false);
+  const hv=k=>v=>{setSaved(false);setHora(p=>({...p,[k]:v}));};
+  const cv=k=>v=>setCalc(p=>({...p,[k]:v}));
+  const num=v=>Number(String(v).replace(",","."))||0;
+
+  const fixosRecorrentes=recurringExpenses.filter(r=>r.active!==false).reduce((a,r)=>a+num(r.value),0);
+  const horasProd=num(hora.diasMes)*num(hora.horasDia)*num(hora.ocupacao)/100;
+  const custoHora=horasProd>0?(num(hora.fixos)+num(hora.prolabore))/horasProd:0;
+
+  const procs=proceduresFull.filter(p=>typeof p==="object"&&p.name);
+  const proc=procs.find(p=>p.name===calc.procName);
+  const costOf=name=>{const p=products.find(x=>(typeof x==="string"?x:x.name)===name);return p&&typeof p==="object"?num(p.cost):0;};
+  const custoInsumos=proc?(proc.insumos||[]).reduce((a,i)=>a+costOf(i.product)*num(i.qty),0):0;
+
+  const custoTempo=custoHora*num(calc.duracaoMin)/60;
+  const custoMaterial=custoInsumos+num(calc.custoProduto);
+  const custoDireto=custoTempo+custoMaterial;
+  const pctVar=(num(calc.taxaCartao)+num(calc.imposto)+num(calc.comissao)+num(calc.margem))/100;
+  const valido=pctVar<1&&custoDireto>0;
+  const preco=valido?custoDireto/(1-pctVar):0;
+  const lucro=preco*num(calc.margem)/100;
+
+  function selectProc(name){
+    const p=procs.find(x=>x.name===name);
+    setCalc(c=>({...c,procName:name,duracaoMin:p?String(durationToMin(p.duration)):c.duracaoMin}));
+  }
+  function saveHora(){setSettings(s=>({...s,precificacao:hora}));setSaved(true);}
+  function aplicar(){
+    if(!proc||!valido)return;
+    if(!window.confirm(`Definir ${fmtCurr(Math.round(preco))} como valor padrão de "${proc.name}"?`))return;
+    setProcedures(prev=>prev.map(p=>(typeof p==="object"&&p.name===proc.name)?{...p,defaultValue:Math.round(preco)}:p));
+  }
+  const Row=(l,v,opts={})=>h("div",{style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${P.border}`,fontSize:opts.big?15:13}},
+    h("span",{style:{color:opts.bold?P.text:P.text2,fontWeight:opts.bold?600:400}},l),
+    h("span",{style:{color:opts.color||P.text,fontWeight:opts.bold?600:400}},v));
+
+  return h("div",null,
+    h(SectionHeader,{title:"Precificadora",sub:"Descubra o valor da sua hora e o preço ideal de cada procedimento"}),
+    h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,alignItems:"start"}},
+
+      h(Card,null,
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text,marginBottom:14}},"Valor da minha hora"),
+        h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
+          h(Field,{label:"Custos fixos mensais (R$)",half:true},h(Inp,{type:"number",value:String(hora.fixos),onChange:hv("fixos"),placeholder:"Aluguel, contador..."})),
+          h(Field,{label:"Pró-labore desejado (R$)",half:true},h(Inp,{type:"number",value:String(hora.prolabore),onChange:hv("prolabore"),placeholder:"Quanto quer ganhar"})),
+          h(Field,{label:"Dias/mês",third:true},h(Inp,{type:"number",value:String(hora.diasMes),onChange:hv("diasMes")})),
+          h(Field,{label:"Horas/dia",third:true},h(Inp,{type:"number",value:String(hora.horasDia),onChange:hv("horasDia")})),
+          h(Field,{label:"Ocupação %",third:true},h(Inp,{type:"number",value:String(hora.ocupacao),onChange:hv("ocupacao")}))
+        ),
+        fixosRecorrentes>0&&h("button",{onClick:()=>hv("fixos")(String(fixosRecorrentes)),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:8,padding:"4px 10px",cursor:"pointer",marginBottom:12}},`Usar despesas recorrentes ativas (${fmtCurr(fixosRecorrentes)})`),
+        h("div",{style:{padding:"14px 16px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`,marginBottom:12}},
+          Row("Horas produtivas no mês",horasProd.toFixed(1)+"h"),
+          Row("Meta mensal (fixos + pró-labore)",fmtCurr(num(hora.fixos)+num(hora.prolabore))),
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"baseline",paddingTop:10}},
+            h("span",{style:{fontSize:12,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},"Valor da hora"),
+            h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:P.rose}},fmtCurr(Math.round(custoHora)))
+          )
+        ),
+        h("div",{style:{display:"flex",justifyContent:"flex-end",gap:8,alignItems:"center"}},
+          saved&&h("span",{style:{fontSize:11,color:P.green}},"Salvo"),
+          h(Btn,{onClick:saveHora,style:{fontSize:12}},"Salvar configuração")
+        )
+      ),
+
+      h(Card,null,
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text,marginBottom:14}},"Preço do procedimento"),
+        h("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
+          h(Field,{label:"Procedimento"},h("select",{value:calc.procName,onChange:e=>selectProc(e.target.value),style:IS},h("option",{value:""},"Selecionar (ou preencher manualmente)..."),procs.map(p=>h("option",{key:p.name,value:p.name},p.name)))),
+          h(Field,{label:"Duração (min)",half:true},h(Inp,{type:"number",value:calc.duracaoMin,onChange:cv("duracaoMin")})),
+          h(Field,{label:"Custo do produto (R$)",half:true},h(Inp,{type:"number",value:calc.custoProduto,onChange:cv("custoProduto"),placeholder:"Ex: Botox da sessão"})),
+          h(Field,{label:"Taxa cartão %",third:true},h(Inp,{type:"number",value:calc.taxaCartao,onChange:cv("taxaCartao")})),
+          h(Field,{label:"Imposto %",third:true},h(Inp,{type:"number",value:calc.imposto,onChange:cv("imposto")})),
+          h(Field,{label:"Comissão %",third:true},h(Inp,{type:"number",value:calc.comissao,onChange:cv("comissao")})),
+          h(Field,{label:"Margem de lucro desejada %"},h(Inp,{type:"number",value:calc.margem,onChange:cv("margem")}))
+        ),
+        h("div",{style:{padding:"14px 16px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`,marginBottom:12}},
+          Row("Seu tempo ("+calc.duracaoMin+" min)",fmtCurr(custoTempo)),
+          Row("Insumos da ficha técnica",fmtCurr(custoInsumos)),
+          Row("Produto",fmtCurr(num(calc.custoProduto))),
+          Row("Custo direto",fmtCurr(custoDireto),{bold:true}),
+          !valido&&custoDireto>0&&h("div",{style:{fontSize:11.5,color:P.red,padding:"8px 0"}},"Taxas + margem somam 100% ou mais. Reduza algum percentual."),
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"baseline",paddingTop:10}},
+            h("span",{style:{fontSize:12,color:P.text3,textTransform:"uppercase",letterSpacing:".08em"}},"Preço sugerido"),
+            h("span",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:P.green}},valido?fmtCurr(Math.round(preco)):"—")
+          ),
+          valido&&h("div",{style:{fontSize:11.5,color:P.text3,marginTop:6,lineHeight:1.6}},
+            `Lucro líquido: ${fmtCurr(Math.round(lucro))} · taxas e imposto: ${fmtCurr(Math.round(preco*(num(calc.taxaCartao)+num(calc.imposto))/100))}`+(num(calc.comissao)>0?` · comissão: ${fmtCurr(Math.round(preco*num(calc.comissao)/100))}`:"")
+          )
+        ),
+        proc&&proc.defaultValue>0&&valido&&h("div",{style:{fontSize:11.5,marginBottom:10,color:proc.defaultValue>=preco?P.green:P.red}},
+          proc.defaultValue>=preco?`Seu valor atual (${fmtCurr(proc.defaultValue)}) está acima do sugerido.`:`Seu valor atual (${fmtCurr(proc.defaultValue)}) está abaixo do sugerido. Você perde ${fmtCurr(Math.round(preco-proc.defaultValue))} por sessão.`),
+        h("div",{style:{display:"flex",justifyContent:"flex-end"}},
+          h(Btn,{onClick:aplicar,disabled:!proc||!valido,style:{fontSize:12}},"Aplicar como valor padrão")
+        )
+      )
+    )
+  );
+}
 function AppInner({ session, onLogout }) {
   const[patientsRaw,setPatients,loadingPatients]=useSupaTable("patients",INIT_PATIENTS);
   const[agendaRaw,setAgenda,loadingAgenda]=useSupaTable("agenda",INIT_AGENDA);
@@ -12882,7 +12986,7 @@ function AppInner({ session, onLogout }) {
   handleNav("agenda");
 }
   const currentPatient=selectedPatient?patients.find(p=>p.id===selectedPatient.id):null;
-  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",sessoes:"Controle de Sessões",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
+  const pageTitles={dashboard:"Dashboard",aniversariantes:"Aniversariantes",retornos:"Retornos & Risco",agenda:"Agenda",pacientes:"Pacientes",prontuario:currentPatient?currentPatient.name:"Prontuários",estoque:"Estoque",financeiro:"Fluxo de Caixa",pacotes_global:"Pacotes",sessoes:"Controle de Sessões",precificadora:"Precificadora",vouchers:"Vouchers / Gift Cards",relatorios:"Relatórios",intercorrencias_global:"Intercorrências",config:"Configurações"};
   const settings = settingsData;
 
   const dark=!!(settingsData&&settingsData.darkMode);
@@ -12899,6 +13003,7 @@ function AppInner({ session, onLogout }) {
       {k:"financeiro",l:"Financeiro",ti:"ti-coin"},
       {k:"pacotes_global",l:"Pacotes",ti:"ti-box"},
 {k:"sessoes",l:"Controle de Sessões",ti:"ti-list-check"},
+{k:"precificadora",l:"Precificadora",ti:"ti-calculator"},
       {k:"vouchers",l:"Vouchers",ti:"ti-ticket"},
       {k:"relatorios",l:"Relatórios",ti:"ti-chart-bar"},
       {k:"intercorrencias_global",l:"Intercorrências",ti:"ti-alert-triangle",badge:patients.flatMap(p=>p.intercorrencias||[]).filter(ic=>icStatusOf(ic)==="Em Acompanhamento").length||null,badgeColor:P.statusRed},
@@ -13072,6 +13177,7 @@ function AppInner({ session, onLogout }) {
             page==="prontuario"&&currentPatient&&h(PatientDetail,{patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,setAgendaLog,maquininhas,initialTab:patientDetailTab}),
             page==="estoque"&&h(Estoque,{products,setProducts,stockCats,setStockCats}),
             page==="financeiro"&&h(Financeiro,{patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products,maquininhas,setMaquininhas}),
+            page==="precificadora"&&h(Precificadora,{settings,setSettings,proceduresFull:procedures,setProcedures,products,recurringExpenses}),
             page==="sessoes"&&h(ControleSessoes,{patients,setPatients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav,onSchedule:handleSchedulePackage}),
             page==="pacotes_global"&&h(PacotesGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav}),
             page==="vouchers"&&h(Vouchers,{patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
