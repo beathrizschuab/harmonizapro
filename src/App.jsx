@@ -143,8 +143,9 @@ const P_DARK={
 const P={...P_LIGHT};
 function setTheme(dark){const src=dark?P_DARK:P_LIGHT;Object.keys(src).forEach(k=>{P[k]=src[k];});}
 const MONTH_NAMES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-const APPT_STATUS=["Confirmado","Aguardando","Realizado","Cancelado","Faltou","Reagendado"];
+const APPT_STATUS=["Agendado","Confirmado","Aguardando","Realizado","Cancelado","Faltou","Reagendado"];
 const APPT_STATUS_CFG={
+  Agendado:{color:"#8A5A64",colorDark:"#D9B3B3",bg:"rgba(138,90,100,.12)",bgDark:"rgba(217,179,179,.12)"},
   Confirmado:{color:"#3F8F6B",colorDark:"#7CBF9B",bg:"rgba(63,143,107,.12)",bgDark:"rgba(124,191,155,.12)"},
   Aguardando:{color:"#4B6FA8",colorDark:"#8FADD6",bg:"rgba(75,111,168,.12)",bgDark:"rgba(143,173,214,.12)"},
   Realizado:{color:"#3F8F6B",colorDark:"#7CBF9B",bg:"rgba(63,143,107,.12)",bgDark:"rgba(124,191,155,.12)"},
@@ -4337,15 +4338,31 @@ async function renderConquistaArt(c,settings){
 function ConquistaCelebracao({c,settings,onClose}){
   const h=createElement;
   const[src,setSrc]=useState(null);
-  useEffect(()=>{let ok=true;renderConquistaArt(c,settings).then(u=>{if(ok)setSrc(u);}).catch(()=>{});return()=>{ok=false;};},[c.key]);
-  return h("div",{onClick:onClose,style:{position:"fixed",inset:0,zIndex:3000,background:"rgba(26,9,14,.72)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",padding:18,animation:"hpFadeIn .4s ease both"}},
-    h("style",null,"@keyframes hpFadeIn{from{opacity:0}to{opacity:1}}@keyframes hpPop{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}"),
-    h("div",{onClick:e=>e.stopPropagation(),style:{width:"min(380px,100%)",animation:"hpPop .6s cubic-bezier(.22,1,.36,1) both"}},
-      h("div",{style:{borderRadius:16,overflow:"hidden",aspectRatio:"4 / 5",background:"#3A1520",boxShadow:"0 30px 70px -30px rgba(0,0,0,.8)"}},
-        src?h("img",{src,alt:"",style:{width:"100%",height:"100%",display:"block"}}):null),
-      h("div",{style:{display:"flex",gap:10,marginTop:14}},
-        h("button",{onClick:()=>src&&shareImage(src,"conquista-"+c.key+".png","Conquista"),style:{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:"#F4E9DF",color:"#4A1A28",fontFamily:"'Jost',system-ui,sans-serif",fontSize:13,cursor:"pointer"}},"Compartilhar"),
-        h("button",{onClick:onClose,style:{flex:1,padding:"11px 0",borderRadius:10,border:"0.5px solid rgba(244,233,223,.4)",background:"transparent",color:"#F4E9DF",fontFamily:"'Jost',system-ui,sans-serif",fontSize:13,cursor:"pointer"}},"Continuar"))));
+  useEffect(()=>{let ok=true;renderConquistaArt(c,settings).then(u=>{if(ok)setSrc(u);}).catch(()=>{});try{navigator.vibrate&&navigator.vibrate([40,60,40]);}catch(e){}return()=>{ok=false;};},[c.key]);
+  // Chuva de pétalas e brilhos (sem emoji)
+  const parts=useMemo(()=>Array.from({length:46},(_,i)=>{const r=Math.random;return{left:r()*100,delay:r()*1.6,dur:3.2+r()*2.6,size:6+r()*10,rot:r()*360,drift:(r()-.5)*160,tipo:i%3,cor:["#F4E9DF","#E8B4B0","#C98A86","#F7D9D2","#D9A3A3"][i%5]};}),[c.key]);
+  const brilhos=useMemo(()=>Array.from({length:14},()=>({x:Math.random()*100,y:Math.random()*100,d:Math.random()*2,s:.6+Math.random()*.8})),[c.key]);
+  return h("div",{onClick:onClose,style:{position:"fixed",inset:0,zIndex:3000,background:"radial-gradient(120% 90% at 50% 40%,rgba(74,26,40,.86),rgba(20,7,11,.92))",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",padding:18,overflow:"hidden",animation:"hpFadeIn .4s ease both"}},
+    h("style",null,`@keyframes hpFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes hpPop{0%{opacity:0;transform:translateY(30px) scale(.86)}60%{opacity:1;transform:translateY(-6px) scale(1.02)}100%{opacity:1;transform:none}}
+@keyframes hpFall{0%{transform:translate3d(0,-12vh,0) rotate(0deg);opacity:0}10%{opacity:1}100%{transform:translate3d(var(--dx),112vh,0) rotate(720deg);opacity:.9}}
+@keyframes hpTw{0%,100%{opacity:0;transform:scale(.4)}50%{opacity:1;transform:scale(1)}}
+@keyframes hpRingP{0%{transform:scale(.6);opacity:.8}100%{transform:scale(2.4);opacity:0}}
+@keyframes hpTitle{0%{opacity:0;letter-spacing:.6em}100%{opacity:1;letter-spacing:.32em}}
+@keyframes hpShine{0%{transform:translateX(-120%) skewX(-18deg)}100%{transform:translateX(220%) skewX(-18deg)}}`),
+    parts.map((p,i)=>h("div",{key:i,style:{position:"absolute",top:0,left:p.left+"%",width:p.size,height:p.tipo===0?p.size*1.5:p.size,background:p.tipo===2?"transparent":p.cor,border:p.tipo===2?`1.5px solid ${p.cor}`:"none",borderRadius:p.tipo===0?"60% 0 60% 0":p.tipo===1?"2px":"50%",opacity:0,"--dx":p.drift+"px",animation:`hpFall ${p.dur}s cubic-bezier(.3,.6,.4,1) ${p.delay}s infinite`,pointerEvents:"none"}})),
+    brilhos.map((b,i)=>h("div",{key:"b"+i,style:{position:"absolute",left:b.x+"%",top:b.y+"%",width:10,height:10,pointerEvents:"none",animation:`hpTw 2.4s ease-in-out ${b.d}s infinite`,transform:`scale(${b.s})`}},
+      h("svg",{width:10,height:10,viewBox:"0 0 10 10"},h("path",{d:"M5 0 L6 4 L10 5 L6 6 L5 10 L4 6 L0 5 L4 4 Z",fill:"#F7D9D2"})))),
+    h("div",{onClick:e=>e.stopPropagation(),style:{width:"min(380px,100%)",position:"relative",textAlign:"center"}},
+      h("div",{style:{fontFamily:"'Jost',system-ui,sans-serif",fontSize:12,textTransform:"uppercase",color:"#E8C9C2",marginBottom:14,animation:"hpTitle 1s ease .2s both"}},"Parabéns, você conseguiu"),
+      h("div",{style:{position:"relative",animation:"hpPop .9s cubic-bezier(.22,1,.36,1) .15s both"}},
+        h("div",{style:{position:"absolute",left:"50%",top:"46%",width:180,height:180,marginLeft:-90,marginTop:-90,borderRadius:"50%",border:"1.5px solid rgba(247,217,210,.6)",animation:"hpRingP 1.8s ease-out .5s 3",pointerEvents:"none"}}),
+        h("div",{style:{borderRadius:16,overflow:"hidden",aspectRatio:"4 / 5",background:"#3A1520",boxShadow:"0 40px 90px -30px rgba(0,0,0,.85),0 0 0 .5px rgba(247,217,210,.25)",position:"relative"}},
+          src?h("img",{src,alt:"",style:{width:"100%",height:"100%",display:"block"}}):null,
+          h("div",{style:{position:"absolute",top:0,bottom:0,width:"35%",background:"linear-gradient(90deg,transparent,rgba(255,240,235,.22),transparent)",animation:"hpShine 1.6s ease 1s 2",pointerEvents:"none"}}))),
+      h("div",{style:{display:"flex",gap:10,marginTop:16,animation:"hpFadeIn .6s ease 1s both"}},
+        h("button",{onClick:()=>src&&shareImage(src,"conquista-"+c.key+".png","Conquista"),style:{flex:1,padding:"12px 0",borderRadius:10,border:"none",background:"#F4E9DF",color:"#4A1A28",fontFamily:"'Jost',system-ui,sans-serif",fontSize:13,cursor:"pointer"}},"Compartilhar"),
+        h("button",{onClick:onClose,style:{flex:1,padding:"12px 0",borderRadius:10,border:"0.5px solid rgba(244,233,223,.4)",background:"transparent",color:"#F4E9DF",fontFamily:"'Jost',system-ui,sans-serif",fontSize:13,cursor:"pointer"}},"Continuar"))));
 }
 function ConquistasPainel({patients,incomes,settings,setSettings,isMobile}){
   const h=createElement;
@@ -4382,7 +4399,17 @@ function ConquistasPainel({patients,incomes,settings,setSettings,isMobile}){
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,marginTop:4,lineHeight:1.1}},c.grande),
           h("div",{style:{fontSize:11,color:"#D8BFB6",marginTop:2}},c.texto),
           h("div",{style:{fontSize:10.5,color:"rgba(244,233,223,.6)",marginTop:8}},c.d?new Date(c.d).toLocaleDateString("pt-BR"):"")))),
-      C.prox&&h("div",{style:{marginTop:16,fontSize:12.5,color:P.text2}},`Próxima: ${fmtMil(C.prox)} em faturamento. Faltam ${_brl(C.prox-C.total).replace(",00","")}.`))
+      (()=>{const fut=[...CONQ_FAT.filter(v=>v>C.total).slice(0,3).map(v=>({k:"f"+v,t:"Faturamento",g:fmtMil(v),p:C.total/v,f:"faltam "+_brl(v-C.total).replace(",00","")})),
+          ...CONQ_ATD.filter(n=>n>C.nAtend).slice(0,1).map(n=>({k:"a"+n,t:"Atendimentos",g:n.toLocaleString("pt-BR"),p:C.nAtend/n,f:"faltam "+(n-C.nAtend)})),
+          ...CONQ_PAC.filter(n=>n>C.nPac).slice(0,1).map(n=>({k:"p"+n,t:"Pacientes",g:n.toLocaleString("pt-BR"),p:C.nPac/n,f:"faltam "+(n-C.nPac)}))];
+        if(!fut.length)return null;
+        return h("div",{style:{marginTop:20}},
+          h("div",{style:{fontSize:10.5,letterSpacing:".18em",textTransform:"uppercase",color:P.text3,marginBottom:10}},"Próximas"),
+          h("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10}},fut.map(f=>h("div",{key:f.k,style:{padding:14,borderRadius:12,border:`0.5px dashed ${P.border}`,background:P.bg3}},
+            h("div",{style:{fontSize:9.5,letterSpacing:".18em",textTransform:"uppercase",color:P.text3}},f.t),
+            h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,marginTop:4,color:P.text2}},f.g),
+            h("div",{style:{height:3,borderRadius:2,background:P.border,marginTop:8,overflow:"hidden"}},h("div",{style:{height:"100%",width:Math.min(100,f.p*100)+"%",background:P.accent}})),
+            h("div",{style:{fontSize:10.5,color:P.text3,marginTop:6}},f.f)))));})())
   );
 }
 // Números de uma semana (segunda a domingo) para o resumo semanal do Início
@@ -4994,7 +5021,7 @@ function AgendaHourSlotsBase({date,appts,step,dragOver,setDragOver,dragIdRef,onC
 // ─── AGENDA: ENCAIXE, CONFIRMAÇÃO E CALENDÁRIO DO CELULAR ─────────────────────
 // Status ao mudar de horário: mantém o status (a mudança fica no histórico). Antes virava
 // "Reagendado", que conta como cancelado e tirava o horário novo da checagem de conflito.
-function movedStatus(a){return APPT_INACTIVE.includes(a.status)?"Aguardando":a.status;}
+function movedStatus(a){return APPT_INACTIVE.includes(a.status)||a.status==="Confirmado"?"Agendado":a.status;}
 // Janela livre depois que um horário é liberado: do início dele até o próximo compromisso do dia
 function freeWindowFrom(a,agenda){
   const start=_hhmmToMin(a&&a.time);
@@ -5062,7 +5089,7 @@ function Agenda({rooms=[],patients,setPatients,agenda,setAgenda,agendaLog,setAge
   const[dragOver,setDragOver]=useState(null); // {date, hour} ou null
 
   const procDur=name=>procDurationOf(proceduresFull,name);
-  const blank={patientName:"",date:selDate,time:"09:00",procedure:procedures[0]||"",location:locations[0]||"",duration:procDur(procedures[0])||"1 hora",value:"",status:"Confirmado",obs:""};
+  const blank={patientName:"",date:selDate,time:"09:00",procedure:procedures[0]||"",location:locations[0]||"",duration:procDur(procedures[0])||"1 hora",value:"",status:"Agendado",obs:""};
   const[form,setForm]=useState(blank);
   const fv=k=>v=>setForm(p=>({...p,[k]:v}));
   const fvProcedure=v=>{
@@ -5135,6 +5162,9 @@ function Agenda({rooms=[],patients,setPatients,agenda,setAgenda,agendaLog,setAge
     }
     if(editItem){
       const merged={...editItem,...form,patientId:editItem.blocked?undefined:(_pid||""),value:Number(form.value)||0};
+      if(merged.status==="Confirmado"&&editItem.status!=="Confirmado")merged.presenca={status:"confirmada",at:new Date().toISOString()};
+      if(merged.status==="Agendado"&&editItem.status==="Confirmado")merged.presenca=null;
+      if(editItem.date!==merged.date||editItem.time!==merged.time){if(merged.presenca&&merged.presenca.status==="confirmada"){merged.presenca=null;if(merged.status==="Confirmado")merged.status="Agendado";}}
       let reason="";
       const statusChangedToReason=!merged.blocked&&merged.status!==editItem.status&&["Cancelado","Faltou","Reagendado"].includes(merged.status);
       if(statusChangedToReason){
@@ -5147,7 +5177,7 @@ function Agenda({rooms=[],patients,setPatients,agenda,setAgenda,agendaLog,setAge
       if(!merged.blocked&&(virouInativo||mudouHorario))slotFreed(editItem,agenda.map(a=>a.id===editItem.id?logged:a));
     }else{
       const{fromWaitlistId,...formClean}=form;
-      const newItem={...formClean,patientId:_pid||"",id:genId(),value:Number(form.value)||0,rescheduleHistory:[],history:[]};
+      const newItem={...formClean,patientId:_pid||"",id:genId(),value:Number(form.value)||0,rescheduleHistory:[],history:[],...(formClean.status==="Confirmado"?{presenca:{status:"confirmada",at:new Date().toISOString()}}:{})};
       const logged=logApptChange(null,newItem,setAgendaLog);
       setAgenda(prev=>[...prev,logged]);
       if(fromWaitlistId&&setWaitlist)setWaitlist(wl=>(wl||[]).filter(x=>x.id!==fromWaitlistId));
@@ -5336,7 +5366,7 @@ function Agenda({rooms=[],patients,setPatients,agenda,setAgenda,agendaLog,setAge
       const ped=list.filter(a=>a.presenca&&a.presenca.status==="pedida").length;
       const tpl=(waTemplates&&waTemplates.confirmacao)||DEFAULT_WA_TEMPLATES.confirmacao;
       function marcar(a,status){
-        setAgenda(prev=>prev.map(x=>x.id===a.id?{...x,presenca:{status,at:new Date().toISOString()}}:x));
+        setAgenda(prev=>prev.map(x=>x.id===a.id?{...x,presenca:{status,at:new Date().toISOString()},...(status==="confirmada"&&!APPT_INACTIVE.includes(x.status)?{status:"Confirmado"}:{})}:x));
         if(status==="pedida"&&setWaLog){const pt=patientOfAppt(a,patients);setWaLog(prev=>[...(Array.isArray(prev)?prev:[]),{id:genId(),key:`confirmacao_${a.id}`,patientId:pt?pt.id:null,patientName:a.patientName,type:"confirmacao",label:null,status:"enviada",at:new Date().toISOString()}].slice(-1000));}
       }
       function naoVem(a){
@@ -6233,7 +6263,7 @@ function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,pr
 // ─── PATIENT DETAIL ───────────────────────────────────────────────────────────
 
 // ─── SKINCARE TAB COMPONENT ──────────────────────────────────────────────────
-function SkincareTab({patient,upd,skincareConfig}){
+function SkincareTab({patient,upd,skincareConfig,settings}){
   const h=createElement;
   const sk=patient.skincare||{produtos:[],recomendacoes:"",recomendacoesHistorico:[],adesao:"boa"};
   const [showSkForm,setShowSkForm]=useState(false);
@@ -6276,7 +6306,7 @@ function SkincareTab({patient,upd,skincareConfig}){
     setNovaRec("");
   }
   return h("div",null,
-    h(SectionHeader,{title:"🧴 Skincare em Uso",sub:"Produtos domiciliares, adesão e histórico de mudanças na rotina"}),
+    h(SectionHeader,{title:"Skincare em uso",sub:"Produtos domiciliares, adesão e histórico de mudanças na rotina",action:(sk.produtos||[]).some(x=>x&&x.ativo!==false)||sk.recomendacoes?h(Btn,{variant:"ghost",onClick:()=>printPacientePDF(patient,["skincare"],{settings,titulo:"Sua rotina de cuidados",eyebrow:"Skincare"}),style:{fontSize:12.5}},"PDF da rotina"):null}),
     h(Card,{style:{marginBottom:14}},
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}},
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text}},"Produtos em Uso"),
@@ -6357,7 +6387,7 @@ function SkincareTab({patient,upd,skincareConfig}){
 // ─── LINHA DO TEMPO DA PACIENTE ───────────────────────────────────────────────
 // Tudo o que aconteceu com a paciente, em ordem: sessões, agenda (faltas, cancelamentos e próximos),
 // pacotes, orçamentos e intercorrências.
-function PatientTimeline({patient,agenda=[]}){
+function PatientTimeline({patient,agenda=[],semAgenda=false}){
   const h=createElement;
   const[filtro,setFiltro]=useState("todos");
   const toD=v=>{if(!v)return null;const d=parseAnyDate(String(v).slice(0,10));return d||null;};
@@ -6374,6 +6404,7 @@ function PatientTimeline({patient,agenda=[]}){
   (Array.isArray(agenda)?agenda:[]).filter(a=>a&&!a.blocked&&apptIsFor(a,patient)).forEach(a=>{
     const d=toD(a.date);if(!d)return;
     const futuro=a.date>=hojeISO&&!APPT_INACTIVE.includes(a.status);
+    if(semAgenda&&futuro)return; // os próximos já aparecem logo acima, na agenda
     if(!futuro&&!["Faltou","Cancelado","Reagendado"].includes(a.status))return; // atendidos já aparecem como sessão
     ev.push({d,tipo:"agenda",titulo:(futuro?"Agendado: ":"")+(a.procedure||"Atendimento"),sub:[a.time,a.location].filter(Boolean).join(" · "),tag:futuro?"Próximo":a.status,tagCor:futuro?P.statusBlue:a.status==="Faltou"?P.red:P.text3});
   });
@@ -6399,7 +6430,7 @@ function PatientTimeline({patient,agenda=[]}){
   const lista=filtro==="todos"?ev:ev.filter(e=>e.tipo===filtro);
   let mesAtual="";
   return h("div",null,
-    h(SectionHeader,{title:"Linha do tempo",sub:"Tudo o que aconteceu com "+((patient.name||"").split(" ")[0]||"a paciente")+", do mais recente ao mais antigo."}),
+    h(SectionHeader,{title:"Linha do tempo",sub:(semAgenda?"Sessões, faltas e cancelamentos, pacotes, orçamentos e intercorrências de ":"Tudo o que aconteceu com ")+((patient.name||"").split(" ")[0]||"a paciente")+", do mais recente ao mais antigo."}),
     h("div",{className:"resp-tabs",style:{display:"flex",gap:6,marginBottom:18}},
       tipos.map(([k,l])=>{const n=k==="todos"?ev.length:ev.filter(e=>e.tipo===k).length;if(k!=="todos"&&!n)return null;const on=filtro===k;
         return h("button",{key:k,onClick:()=>setFiltro(k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:on?P.accent:"transparent",color:on?"#FFF8F2":P.text2,border:`0.5px solid ${on?P.accent:P.border}`}},l+" · "+n);})),
@@ -6521,7 +6552,7 @@ function getPatientPhotoGallery(patient){
   });
   return list;
 }
-function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings,agenda,setAgenda,setAgendaLog,maquininhas=[],initialTab=null}){
+function PatientDetail({onAgendar,setClinicSettings,rooms=[],patient,patients,setPatients,onBack,procedures,proceduresFull,locations,products,setProducts,allProducts,returnRules,setIncomes,onSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers,voucherTemplates,clinicSettings,agenda,setAgenda,setAgendaLog,maquininhas=[],initialTab=null}){
   const dark=!!(clinicSettings&&clinicSettings.darkMode);
   const _vTemplates=Array.isArray(voucherTemplates)&&voucherTemplates.length?voucherTemplates:DEFAULT_VOUCHER_TEMPLATES;
   const[tab,setTab]=useState(initialTab||"prontuario");
@@ -6599,9 +6630,12 @@ function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,
   const blankOrc={title:"",items:[],value:"",status:"espera",obs:"",created:"",expiry:"",expiryISO:"",desc:"0",pixDesc:"0",parcelas:"",valorManual:false,tituloManual:false};
   const[orcForm,setOrcForm]=useState(blankOrc);
   const[orcItemInput,setOrcItemInput]=useState("");
+  const[showPdfPac,setShowPdfPac]=useState(false);
   const orcCtx={settings:clinicSettings,rooms,products:allProducts||[],patients,proceduresFull};
   const orcPrecoPadrao=name=>{const pf=(proceduresFull||[]).find(x=>x&&typeof x==="object"&&x.name===name);return pf?Number(pf.defaultValue)||0:0;};
   const orcTabela=items=>(items||[]).reduce((a,it)=>a+orcPrecoPadrao(it),0);
+  // Pacote = o mesmo procedimento em várias sessões (ex.: microagulhamento 3×). Harmonização com vários procedimentos diferentes não é pacote.
+  const orcEhPacote=orc=>orcGroupItems(orc&&orc.items).some(g=>g.n>1||(()=>{const pf=(proceduresFull||[]).find(x=>x&&typeof x==="object"&&x.name===g.name);return pf&&Number(pf.sessoesPadrao)>1;})());
   // Recalcula o valor (soma da tabela − desconto do combo) e o título, a não ser que você tenha digitado
   const orcRecalc=f=>{const tab=orcTabela(f.items);const out={...f};
     if(!f.valorManual)out.value=tab>0?String(Math.round(tab*(1-(Number(f.desc)||0)/100))):(f.value||"");
@@ -6717,7 +6751,7 @@ function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,
   const icfv=k=>v=>setIcForm(p=>({...p,[k]:v}));
   const[planForm,setPlanForm]=useState({title:"",steps:"",notes:""});
   const totalSpent=(patient.sessions||[]).reduce((a,s)=>a+s.value,0);
-  const tabs=[{k:"prontuario",l:"Prontuário",icon:"prontuario"},{k:"fichaRapida",l:"Ficha Rápida",icon:"fichaRapida"},{k:"anamnese",l:"Anamnese",icon:"anamnese"},{k:"mapa",l:"Mapa",icon:"mapa"},{k:"planejamento",l:"Planejamento",icon:"planejamento"},{k:"agendaPaciente",l:"Agenda",icon:"agendaPaciente"},{k:"orcamentos",l:"Orçamentos",icon:"orcamentos"},{k:"pacotes",l:"Pacotes",icon:"pacotes"},{k:"intercorrencias",l:"Intercorr.",icon:"intercorrencias"},{k:"galeria",l:"Fotos",icon:"galeria"},{k:"skincare",l:"Skincare",icon:"skincare"},{k:"linhaTempo",l:"Linha do tempo",icon:"linhaTempo"},{k:"financeiro",l:"Financeiro",icon:"financeiro"},{k:"docs",l:"Docs",icon:"docs"},{k:"indicacoes",l:"Indicações",icon:"indicacoes"}];
+  const tabs=[{k:"prontuario",l:"Prontuário",icon:"prontuario"},{k:"fichaRapida",l:"Ficha Rápida",icon:"fichaRapida"},{k:"anamnese",l:"Anamnese",icon:"anamnese"},{k:"mapa",l:"Mapa",icon:"mapa"},{k:"planejamento",l:"Planejamento",icon:"planejamento"},{k:"agendaPaciente",l:"Agenda e histórico",icon:"agendaPaciente"},{k:"orcamentos",l:"Orçamentos",icon:"orcamentos"},{k:"pacotes",l:"Pacotes",icon:"pacotes"},{k:"intercorrencias",l:"Intercorr.",icon:"intercorrencias"},{k:"galeria",l:"Fotos",icon:"galeria"},{k:"skincare",l:"Skincare",icon:"skincare"},{k:"financeiro",l:"Financeiro",icon:"financeiro"},{k:"docs",l:"Docs",icon:"docs"},{k:"indicacoes",l:"Indicações",icon:"indicacoes"}];
   function upd(fn){setPatients(prev=>prev.map(p=>p.id===patient.id?fn(p):p));}
   // Sincroniza sessão → incomes (fonte única de verdade)
   function syncIncome(sess,patName){
@@ -7068,8 +7102,10 @@ function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,
   }
   // Abre o formulário de pacote já preenchido com os dados do orçamento
   function orcToPackage(orc){
-    const nItens=(orc.items||[]).length;
-    setPkgForm({name:orc.title||"Pacote",procedure:(orc.items||[])[0]||procedures[0]||"",total:nItens>1?nItens:4,price:orc.value?String(orc.value):"",notes:"Gerado do orçamento: "+(orc.title||""),fromOrcId:orc.id});
+    const g=orcGroupItems(orc.items).sort((a,b)=>b.n-a.n)[0];
+    const pf=g&&(proceduresFull||[]).find(x=>x&&typeof x==="object"&&x.name===g.name);
+    const tot=g?(g.n>1?g.n:(pf&&Number(pf.sessoesPadrao)>1?Number(pf.sessoesPadrao):4)):4;
+    setPkgForm({name:orc.title||"Pacote",procedure:(g&&g.name)||procedures[0]||"",total:tot,price:orc.value?String(orc.value):"",notes:"Gerado do orçamento: "+(orc.title||""),fromOrcId:orc.id});
     setShowNewPkg(true);setTab("pacotes");
   }
   function converterEmTratamento(orc){
@@ -7108,7 +7144,7 @@ function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,
       h("button",{onClick:onBack,style:{background:`rgba(92,31,50,.12)`,border:`1px solid ${P.rose}`,borderRadius:8,padding:"7px 14px",color:P.accent,cursor:"pointer",fontSize:13}},"← Voltar"),
       h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:P.text}},"Ficha da Paciente"),
       h("div",{style:{marginLeft:"auto",display:"flex",gap:8}},
-        h(Btn,{variant:"ghost",onClick:handleGenerateDossie,disabled:generatingDossie,style:{fontSize:12,padding:"6px 14px"}},generatingDossie?"Gerando...":"📋 Gerar Dossiê"),
+        h(Btn,{variant:"ghost",onClick:()=>setShowPdfPac(true),style:{fontSize:12,padding:"6px 14px"}},"Gerar PDF"),
         h(Btn,{variant:"ghost",onClick:()=>setEditPat(true),style:{fontSize:12,padding:"6px 14px"}},"✎ Editar"),
         h(Btn,{variant:"danger",onClick:()=>{if(window.confirm("Excluir paciente?"))setPatients(prev=>prev.filter(p=>p.id!==patient.id));onBack();},style:{fontSize:12,padding:"6px 14px"}},"🗑 Excluir")
       )
@@ -7332,8 +7368,8 @@ function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,
                 waLink(patient.phone,"")&&h("a",{href:waLink(patient.phone,orcMensagem(orc,patient)),target:"_blank",rel:"noreferrer",onClick:()=>markOrcContact(orc.id),style:{display:"inline-flex",alignItems:"center",fontSize:11,padding:"5px 10px",borderRadius:8,background:P.accent,color:"#FFF8F2",textDecoration:"none",fontFamily:"'Jost',system-ui,sans-serif"}},(orc.contacts||[]).length?"Reenviar no WhatsApp":"Enviar no WhatsApp"),
                 orc.status==="espera"&&(orc.contacts||[]).length>0&&orcWaLink(orc)&&h("a",{href:orcWaLink(orc),target:"_blank",rel:"noreferrer",onClick:()=>markOrcContact(orc.id),style:{display:"inline-flex",alignItems:"center",fontSize:11,padding:"5px 10px",borderRadius:8,background:"rgba(106,196,130,.13)",border:"1px solid rgba(106,196,130,.3)",color:"#7aad8a",fontWeight:600,textDecoration:"none"}},"💬 Cobrar resposta"),
                 orc.status==="espera"&&!orcWaLink(orc)&&h(Btn,{variant:"ghost",onClick:()=>markOrcContact(orc.id),style:{fontSize:11,padding:"5px 10px"}},"✓ Contatei hoje"),
-                orc.status!=="aprovado"&&orc.status!=="recusado"&&h(Btn,{variant:"ghost",onClick:()=>{updateOrcStatus(orc.id,"aprovado");if(!orc.pkgId&&(orc.items||[]).length)notify("Orçamento aprovado.","ok",{label:"Criar pacote",fn:()=>orcToPackage(orc)});},style:{fontSize:11,padding:"5px 10px",color:P.green,border:`1px solid ${P.green}44`}},"🟢 Aprovar"),
-                orc.status!=="recusado"&&!orc.pkgId&&(orc.items||[]).length>0&&h(Btn,{variant:"ghost",onClick:()=>orcToPackage(orc),style:{fontSize:11,padding:"5px 10px"}},"📦 Virar pacote"),
+                orc.status!=="aprovado"&&orc.status!=="recusado"&&h(Btn,{variant:"ghost",onClick:()=>{updateOrcStatus(orc.id,"aprovado");if(!(orc.items||[]).length)return;if(orcEhPacote(orc)&&!orc.pkgId)notify("Orçamento aprovado. É um tratamento em sessões?","ok",{label:"Criar pacote",fn:()=>orcToPackage(orc)});else notify("Orçamento aprovado.","ok",{label:"Agendar",fn:()=>onAgendar&&onAgendar({patientName:patient.name,patientId:patient.id,procedure:(orc.items||[])[0]||"",value:String(orc.value||""),obs:"Orçamento: "+(orc.title||"")+((orc.items||[]).length>1?" ("+orcGroupItems(orc.items).map(g=>g.name).join(", ")+")":"")})});},style:{fontSize:11,padding:"5px 10px",color:P.green,border:`1px solid ${P.green}44`}},"🟢 Aprovar"),
+                orc.status!=="recusado"&&!orc.pkgId&&(orc.items||[]).length>0&&orcEhPacote(orc)&&h(Btn,{variant:"ghost",onClick:()=>orcToPackage(orc),style:{fontSize:11,padding:"5px 10px"}},"📦 Virar pacote"),
                 orc.status!=="recusado"&&h(Btn,{variant:"ghost",onClick:()=>updateOrcStatus(orc.id,"recusado"),style:{fontSize:11,padding:"5px 10px",color:P.red,border:`1px solid ${P.red}44`}},"🔴 Recusar"),
                 orc.status==="aprovado"&&!orc.fullyConvertedAt&&(orc.items||[]).length>(orc.linkedProcs||[]).length&&h(Btn,{onClick:()=>converterEmTratamento(orc),style:{fontSize:11,padding:"5px 12px",background:`linear-gradient(135deg,${P.green},${P.statusGreen})`}},(orc.linkedProcs||[]).length>0?"⚡ Lançar Procedimentos Restantes":"⚡ Converter em Tratamento"),
                 h(Btn,{variant:"ghost",onClick:()=>{setEditOrc(orc);setOrcForm({...blankOrc,...orc,value:String(orc.value),items:[...(orc.items||[])],expiryISO:orc.expiryISO||(()=>{const d=parseAnyDate(String(orc.expiry||""));return d?localISO(d):"";})(),desc:String(orc.desc||0),pixDesc:String(orc.pixDesc||0),parcelas:orc.parcelas?String(orc.parcelas):"",valorManual:orc.valorManual!=null?orc.valorManual:true,tituloManual:orc.tituloManual!=null?orc.tituloManual:true});setShowOrc(true);},style:{fontSize:11,padding:"5px 10px"}},"✎"),
@@ -7668,7 +7704,9 @@ function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,
     tab==="intercorrencias"&&h("div",null,
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}},
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Intercorrências Registradas"),
-        h(Btn,{onClick:()=>{setIcForm(blankIc);setShowIntercorr("global");}},"＋ Registrar")
+        h("div",{style:{display:"flex",gap:8}},
+          (patient.intercorrencias||[]).length>0&&h(Btn,{variant:"ghost",onClick:()=>printPacientePDF(patient,["intercorrencias"],{settings:clinicSettings,proceduresFull,titulo:"Intercorrências",eyebrow:"Registro clínico"}),style:{fontSize:12.5}},"PDF"),
+          h(Btn,{onClick:()=>{setIcForm(blankIc);setShowIntercorr("global");}},"＋ Registrar"))
       ),
       (()=>{
         const all=patient.intercorrencias||[];
@@ -7860,7 +7898,6 @@ function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,
       )
     ),
     // ─── GALERIA TAB
-    tab==="linhaTempo"&&h(PatientTimeline,{patient,agenda}),
     tab==="galeria"&&h(EvolucaoFotos,{patient,upd,addMedia,removeMedia,clinicName:clinicSettings?.clinicName,settings:clinicSettings}),
     // ─── DOCS TAB
     tab==="docs"&&h("div",null,(patient.sessions||[]).map(s=>h(Card,{key:s.id,style:{marginBottom:14}},
@@ -8003,7 +8040,7 @@ function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,
       );
     })(),
     // ─── SKINCARE TAB
-    tab==="skincare"&&h(SkincareTab,{patient,upd,skincareConfig}),
+    tab==="skincare"&&h(SkincareTab,{patient,upd,skincareConfig,settings:clinicSettings}),
         // ─── INDICAÇÕES TAB
     tab==="indicacoes"&&h(IndicacoesTab,{patient,patients,onSelectPatient,fmtCurr}),
     // ─── ABA AGENDA DA PACIENTE ───────────────────────────────────────────────
@@ -8029,6 +8066,7 @@ function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,
 
       const statsStyle={background:P.bg3,borderRadius:10,padding:"10px 14px",border:`1px solid ${P.border}`,textAlign:"center",flex:"1 1 80px"};
       return h("div",null,
+        onAgendar&&h("div",{style:{display:"flex",justifyContent:"flex-end",marginBottom:12}},h(Btn,{onClick:()=>onAgendar({patientName:patient.name,patientId:patient.id,procedure:((patient.sessions||[])[0]||{}).procedure||""}),style:{fontSize:12.5}},"＋ Agendar")),
         // ── Sumário numérico ──
         h("div",{style:{display:"flex",gap:10,flexWrap:"wrap",marginBottom:18}},
           h("div",{style:{...statsStyle,borderColor:"rgba(143,173,214,.3)"}},
@@ -8060,20 +8098,18 @@ function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,
           ),
           upcoming.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations,dark}))
         ),
-        // ── Histórico ──
-        h("div",null,
-          h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:10,display:"flex",alignItems:"center",gap:8}},
-            h("div",{style:{width:3,height:14,background:P.border,borderRadius:2}}),
-            "Histórico"
-          ),
-          past.length===0
-            ?h("div",{style:{color:P.text3,fontSize:13,padding:"20px 0"}})
-            :past.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations,dark}))
-        ),
+        // ── Já passaram e ainda não foram marcados (o resto do histórico está na linha do tempo) ──
+        (()=>{const pend=past.filter(a=>a.status!=="Realizado"&&!APPT_INACTIVE.includes(a.status));if(!pend.length)return null;
+          return h("div",{style:{marginBottom:20}},
+            h("div",{style:{fontSize:10,color:P.statusAmber,textTransform:"uppercase",letterSpacing:".12em",fontWeight:600,marginBottom:10,display:"flex",alignItems:"center",gap:8}},
+              h("div",{style:{width:3,height:14,background:P.statusAmber,borderRadius:2}}),
+              "Já passaram: marque se foi realizado ou se faltou"),
+            pend.map(a=>h(AgendaApptRow,{key:a.id,a,setAgenda,setAgendaLog,patient,patients,setPatients,procedures,locations,dark})));})(),
         patAppts.length===0&&h(Card,{style:{textAlign:"center",padding:40}},
           h("div",{style:{fontSize:32,marginBottom:12}},"📅"),
           h("div",{style:{color:P.text3,fontSize:14}},"Nenhuma consulta registrada na agenda para esta paciente.")
-        )
+        ),
+        h("div",{style:{marginTop:28}},h(PatientTimeline,{patient,agenda,semAgenda:true}))
       );
     })(),
         // ─── MODALS
@@ -8418,6 +8454,7 @@ function PatientDetail({setClinicSettings,rooms=[],patient,patients,setPatients,
       ),
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:12}},h(Btn,{variant:"ghost",onClick:()=>setEditPat(false)},"Cancelar"),h(Btn,{onClick:savePat},"Salvar Alterações"))
     ),
+    showPdfPac&&h(PdfPacienteModal,{patient,settings:clinicSettings,proceduresFull,onClose:()=>setShowPdfPac(false)}),
     // ─── MODAL: PRESENTEAR COM VOUCHER (criação rápida a partir da ficha) ─────
     setVouchers&&h(Modal,{open:showQuickVoucher,onClose:()=>{setShowQuickVoucher(false);setQvForm(blankQV);},title:"🎁 Presentear "+patient.name,width:560},
       h("div",{style:{marginBottom:16}},
@@ -15544,6 +15581,15 @@ td.s{color:#9C8681;font-size:9pt}
 .sig .ln{border-top:.5pt solid #B89C93;margin-bottom:2.5mm}
 .sig .nm{font-family:'Cormorant Garamond',serif;font-size:14pt;color:#3B1A22}
 .sig .tt{font-size:8pt;letter-spacing:.2em;text-transform:uppercase;color:#9C8681;margin-top:1mm}
+.kv{display:flex;gap:6mm;padding:2.2mm 0;border-bottom:.5pt solid #EFE5DF;font-size:10pt;line-height:1.45}
+.kv b{min-width:46mm;max-width:46mm;font-weight:400;color:#8C6B66}
+.card{padding:3.2mm 0;border-bottom:.5pt solid #E6D8D1;break-inside:avoid}
+.ct{display:flex;justify-content:space-between;gap:4mm;font-size:11pt;color:#3B1A22}
+.dt{font-size:9pt;color:#9C8681;white-space:nowrap}
+.s{font-size:9.5pt;color:#8C6B66;margin-top:1mm;line-height:1.5}
+.tx{font-size:10pt;color:#4A2C31;margin-top:1.5mm;line-height:1.55;white-space:pre-line}
+.sub{font-size:7.5pt;letter-spacing:.24em;text-transform:uppercase;color:#A85C66;margin-top:3mm}
+.ph{display:flex;gap:2.5mm;flex-wrap:wrap;margin-top:2.5mm}.ph img{width:36mm;height:36mm;object-fit:cover;border-radius:2mm}
 tr,h2{break-inside:avoid}
 @media screen{body{padding:24px 0}.pg{box-shadow:0 20px 50px -30px rgba(58,21,32,.5)}}</style></head><body><div class="pg">
 <div class="head"><img src="${LOGO_MONO_WINE}" alt="">${clinica?`<div class="clin">${_escH(clinica)}</div>`:""}<div class="orn"><i></i><b></b><i></i></div></div>
@@ -15559,6 +15605,104 @@ ${nota?`<div class="nota">${_escH(nota)}</div>`:""}
   setTimeout(()=>{try{w.focus();w.print();}catch(e){}},1000);
 }
 const _brl=v=>(Number(v)||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+// ─── PDF DA PACIENTE (você escolhe as partes e sai tudo num PDF só) ───────────
+const PDF_SECOES=[
+  {k:"dados",l:"Dados pessoais"},
+  {k:"anamnese",l:"Anamnese"},
+  {k:"sessoes",l:"Sessões realizadas"},
+  {k:"planejamento",l:"Planejamento"},
+  {k:"pacotes",l:"Pacotes"},
+  {k:"orcamentos",l:"Orçamentos"},
+  {k:"intercorrencias",l:"Intercorrências"},
+  {k:"skincare",l:"Skincare (rotina em casa)"},
+  {k:"cuidados",l:"Cuidados pós do último atendimento"},
+  {k:"financeiro",l:"Extrato financeiro"},
+];
+function _kvH(l,v){const t=v==null?"":String(v).trim();if(!t||t==="—")return "";return `<div class="kv"><b>${_escH(l)}</b><span>${_escH(t).replace(/\n/g,"<br>")}</span></div>`;}
+function _fotosH(list){const L=(list||[]).filter(f=>f&&f.url&&String(f.type||"image").startsWith("image")).slice(0,6);return L.length?`<div class="ph">${L.map(f=>`<img src="${_escH(f.url)}" alt="">`).join("")}</div>`:"";}
+function secoesPacienteHtml(patient,secoes,ctx={}){
+  const S=new Set(secoes);const out=[];
+  const fmtD=d=>{const x=parseAnyDate(String(d||""));return x?x.toLocaleDateString("pt-BR"):String(d||"");};
+  const sess=(patient.sessions||[]).filter(s=>s&&s.finStatus!=="Cancelado").slice().sort((a,b)=>(parseAnyDate(String(b.date||""))||0)-(parseAnyDate(String(a.date||""))||0));
+  if(S.has("dados")){
+    const bd=patient.birthDate?new Date(patient.birthDate+"T12:00"):null;
+    out.push(`<h2>Dados pessoais</h2>`+_kvH("Nome",patient.name)+_kvH("Nascimento",bd&&!isNaN(bd)?bd.toLocaleDateString("pt-BR"):"")+_kvH("Idade",patient.age?patient.age+" anos":"")+_kvH("Telefone",patient.phone)+_kvH("E-mail",patient.email)+_kvH("CPF",patient.cpf)+_kvH("Paciente desde",patient.since));
+  }
+  if(S.has("anamnese")){
+    const an=patient.anamnese||{};
+    out.push(`<h2>Anamnese</h2>`+_kvH("Histórico de saúde",an.healthHistory)+_kvH("Medicações em uso",an.medications)+_kvH("Alergias",an.allergiesDetail||patient.allergies)+_kvH("Contraindicações",an.contraindications)+_kvH("Fumante",an.smoking)+_kvH("Gestante ou amamentando",an.pregnancy)+_kvH("Procedimentos anteriores",an.previousProcedures)+_kvH("Tipo de pele",an.skinType)+_kvH("Fototipo",an.fitzpatrick)+_kvH("Alertas",(an.importantAlerts||[]).join(", ")));
+  }
+  if(S.has("sessoes")){
+    out.push(`<h2>Sessões realizadas</h2>`+(sess.length?sess.map(s=>{const its=(s.items&&s.items.length)?s.items:[{procedure:s.procedure,product:s.product,dose:s.dose,region:s.region}];
+      return `<div class="card"><div class="ct"><span>${_escH(its.map(i=>i&&i.procedure).filter(Boolean).join(" + ")||"Sessão")}</span><span class="dt">${_escH(fmtD(s.date))}</span></div>`+
+        its.map(i=>[i&&i.product,i&&i.dose,i&&i.region].filter(Boolean).join(" · ")).filter(Boolean).map(t=>`<div class="s">${_escH(t)}</div>`).join("")+(s.evolution||s.notes?`<div class="tx">${_escH(s.evolution||s.notes)}</div>`:"")+`</div>`;}).join(""):"§VAZIO§"));
+  }
+  if(S.has("planejamento")){
+    const pl=(patient.planejamento||[]).filter(Boolean);
+    out.push(`<h2>Planejamento</h2>`+(pl.length?pl.map(p=>{const mk=((p.markerPlan&&p.markerPlan.markers)||[]).map(m=>[m.procedure,m.region||m.label,m.dose].filter(Boolean).join(" · ")).filter(Boolean);
+      return `<div class="card"><div class="ct"><span>${_escH(p.title||"Plano")}</span><span class="dt">${_escH(p.created||"")}</span></div>${(p.steps||[]).map(st=>`<div class="s">• ${_escH(st)}</div>`).join("")}${mk.map(t=>`<div class="s">• ${_escH(t)}</div>`).join("")}${p.notes?`<div class="tx">${_escH(p.notes)}</div>`:""}</div>`;}).join(""):"§VAZIO§"));
+  }
+  if(S.has("pacotes")){
+    const pk=(patient.sessions_packages||[]).filter(Boolean);
+    out.push(`<h2>Pacotes</h2>`+(pk.length?pk.map(x=>{const st=pkgState(x);return `<div class="card"><div class="ct"><span>${_escH(x.name||x.procedure)}</span><span class="dt">${x.done||0} de ${x.total||0} sessões</span></div><div class="s">${_escH([x.procedure,Number(x.price)>0?_brl(x.price):"",st.exp?"válido até "+st.exp.toLocaleDateString("pt-BR"):""].filter(Boolean).join(" · "))}</div></div>`;}).join(""):"§VAZIO§"));
+  }
+  if(S.has("orcamentos")){
+    const oc=(patient.orcamentos||[]).filter(Boolean);
+    const stL={aprovado:"Aprovado",recusado:"Recusado",expirado:"Expirado",espera:"Em espera"};
+    out.push(`<h2>Orçamentos</h2>`+(oc.length?oc.map(o=>`<div class="card"><div class="ct"><span>${_escH(o.title||"Orçamento")}</span><span class="dt">${_brl(o.value)}</span></div><div class="s">${_escH(orcGroupItems(o.items).map(g=>g.name+(g.n>1?" ("+g.n+"×)":"")).join(", "))}</div><div class="s">${_escH([o.created,stL[o.status]||"",o.expiry?"válido até "+o.expiry:""].filter(Boolean).join(" · "))}</div></div>`).join(""):"§VAZIO§"));
+  }
+  if(S.has("intercorrencias")){
+    const ics=(patient.intercorrencias||[]).filter(Boolean).slice().sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+    out.push(`<h2>Intercorrências</h2>`+(ics.length?ics.map(ic=>`<div class="card"><div class="ct"><span>${_escH(ic.type||"Intercorrência")}</span><span class="dt">${_escH(fmtD(ic.date))}</span></div>`+
+      `<div class="s">${_escH([icSeverityOf(ic),icStatusOf(ic),ic.procedure,ic.product,ic.region].filter(Boolean).join(" · "))}</div>`+(ic.procedureDate?`<div class="s">Procedimento em ${_escH(fmtD(ic.procedureDate))}</div>`:"")+
+      (ic.notes?`<div class="tx">${_escH(ic.notes)}</div>`:"")+_fotosH(ic.photos)+
+      ((ic.conducts||[]).length?`<div class="sub">Condutas</div>`+ic.conducts.map(c=>`<div class="s">${_escH(c.date||"")} — ${_escH(c.text||"")}</div>`).join(""):"")+
+      ((ic.evolutions||[]).length?`<div class="sub">Evolução</div>`+ic.evolutions.map(e=>`<div class="s">${_escH(e.date||"")} — ${_escH(e.text||"")}</div>`+_fotosH(e.photos)).join(""):"")+
+      (ic.nextReavaliacao?`<div class="s">Próxima reavaliação: ${_escH(fmtD(ic.nextReavaliacao))}</div>`:"")+`</div>`).join(""):"§VAZIO§"));
+  }
+  if(S.has("skincare")){
+    const sk=patient.skincare||{};const ativos=(sk.produtos||[]).filter(x=>x&&x.ativo!==false);
+    const ordem=["Manhã","Manhã e Noite","Noite"];
+    out.push(`<h2>Skincare · rotina em casa</h2>`+(ativos.length?`<table>${ativos.slice().sort((a,b)=>ordem.indexOf(a.periodo)-ordem.indexOf(b.periodo)).map(x=>`<tr><td>${_escH(x.nome)}${x.obs?`<div class="s">${_escH(x.obs)}</div>`:""}</td><td class="v">${_escH([x.periodo,x.frequencia].filter(Boolean).join(" · "))}</td></tr>`).join("")}</table>`:"§VAZIO§")+(sk.recomendacoes?`<div class="sub">Recomendações</div><div class="tx">${_escH(sk.recomendacoes)}</div>`:""));
+  }
+  if(S.has("cuidados")){
+    const ult=sess[0];
+    if(ult){const procs=((ult.items&&ult.items.length)?ult.items.map(i=>i&&i.procedure):[ult.procedure]).filter(Boolean);
+      out.push(`<h2>Cuidados depois do seu ${_escH(procs.join(" e "))}</h2><div class="s">Atendimento em ${_escH(fmtD(ult.date))}</div><div class="tx">${_escH(cuidadosTexto(procs,ctx.proceduresFull||[]).replace(/\*/g,""))}</div>`);}
+  }
+  if(S.has("financeiro")){
+    const pagas=sess.filter(x=>x.paid),abertas=sess.filter(x=>!x.paid);
+    const row=x=>`<tr><td class="d">${_escH(fmtD(x.date))}</td><td>${_escH(x.procLabel||x.procedure||"Atendimento")}</td><td class="v">${_brl(x.value)}</td></tr>`;
+    out.push(`<h2>Extrato financeiro</h2>`+(abertas.length?`<div class="sub">Em aberto</div><table>${abertas.map(row).join("")}</table><div class="mini"><span>Total em aberto</span><b>${_brl(abertas.reduce((a,x)=>a+(Number(x.value)||0),0))}</b></div>`:"")+(pagas.length?`<div class="sub">Pagamentos</div><table>${pagas.map(row).join("")}</table><div class="mini"><span>Total pago</span><b>${_brl(pagas.reduce((a,x)=>a+(Number(x.value)||0),0))}</b></div>`:"")+(!pagas.length&&!abertas.length?"§VAZIO§":""));
+  }
+  return out.map(x=>x.includes("§VAZIO§")?(S.size>1?"":x.replace("§VAZIO§",`<div class="s">Nada registrado.</div>`)):x).join("");
+}
+function printPacientePDF(patient,secoes,{settings,proceduresFull,titulo,eyebrow}={}){
+  if(!secoes||!secoes.length){notify("Escolha pelo menos uma parte.","warn");return;}
+  const so=secoes.length===1?PDF_SECOES.find(x=>x.k===secoes[0]):null;
+  openPatientDoc({settings,winTitle:(titulo||"Paciente")+" · "+patient.name,eyebrow:eyebrow||(so?so.l:"Prontuário"),title:titulo||patient.name,para:titulo?patient.name:"",bodyHtml:secoesPacienteHtml(patient,secoes,{proceduresFull})});
+}
+function PdfPacienteModal({patient,settings,proceduresFull,onClose}){
+  const h=createElement;
+  const presets={paciente:["skincare","cuidados","pacotes","financeiro"],completo:PDF_SECOES.map(x=>x.k)};
+  const[sel,setSel]=useState(()=>{try{const v=JSON.parse(localStorage.getItem("hp_pdf_secoes")||"null");return Array.isArray(v)&&v.length?v:presets.completo;}catch(e){return presets.completo;}});
+  const toggle=k=>setSel(s=>s.includes(k)?s.filter(x=>x!==k):[...s,k]);
+  const gerar=()=>{try{localStorage.setItem("hp_pdf_secoes",JSON.stringify(sel));}catch(e){}printPacientePDF(patient,PDF_SECOES.map(x=>x.k).filter(k=>sel.includes(k)),{settings,proceduresFull});onClose();};
+  const chip=(l,on,fn)=>h("button",{onClick:fn,style:{padding:"6px 13px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:on?P.accent:"transparent",color:on?"#FFF8F2":P.text2,border:`0.5px solid ${on?P.accent:P.border}`}},l);
+  const igual=(a,b)=>a.length===b.length&&a.every(x=>b.includes(x));
+  return h(Modal,{open:true,onClose,title:"Gerar PDF",width:460},
+    h("div",{style:{fontSize:12.5,color:P.text3,marginBottom:12}},"Escolha o que entra. Sai tudo num PDF só, com a sua identidade visual."),
+    h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}},
+      chip("Completo",igual(sel,presets.completo),()=>setSel(presets.completo)),
+      chip("Para a paciente",igual(sel,presets.paciente),()=>setSel(presets.paciente)),
+      chip("Limpar",sel.length===0,()=>setSel([]))),
+    h("div",{style:{display:"flex",flexDirection:"column",gap:2,marginBottom:16}},
+      PDF_SECOES.map(x=>h("label",{key:x.k,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,cursor:"pointer",background:sel.includes(x.k)?P.bg3:"transparent",fontSize:13,color:P.text}},
+        h("input",{type:"checkbox",checked:sel.includes(x.k),onChange:()=>toggle(x.k),style:{accentColor:P.accent,width:16,height:16}}),x.l))),
+    h("div",{style:{display:"flex",justifyContent:"flex-end",gap:10}},
+      h(Btn,{variant:"ghost",onClick:onClose},"Cancelar"),
+      h(Btn,{onClick:gerar,disabled:!sel.length},"Gerar PDF")));
+}
 // Agrupa procedimentos repetidos: ["Bio","Bio","Toxina"] → Bio (2×), Toxina
 function orcGroupItems(items){const m=new Map();(items||[]).filter(Boolean).forEach(it=>m.set(it,(m.get(it)||0)+1));return [...m.entries()].map(([name,n])=>({name,n}));}
 function orcCondicoes(orc){
@@ -16068,7 +16212,7 @@ function computeRetention({patients,agenda,returnRules,procedures,products}){
   const tasks=[];
   const tomorrow=new Date(T);tomorrow.setDate(tomorrow.getDate()+1);
   const tomStr=localISO(tomorrow);
-  (agenda||[]).filter(a=>!a.blocked&&a.date===tomStr&&(a.status==="Confirmado"||a.status==="Aguardando")).forEach(a=>{
+  (agenda||[]).filter(a=>!a.blocked&&a.date===tomStr&&!APPT_INACTIVE.includes(a.status)&&a.status!=="Realizado"&&!(a.presenca&&a.presenca.status==="confirmada")).forEach(a=>{
     const p=patientOfAppt(a,patients);
     if(!p)return;
     tasks.push({key:`confirmacao_${a.id}`,type:"confirmacao",patient:p,sub:`${a.procedure} · amanhã às ${a.time}`,urg:0,vars:{procedimento:a.procedure,data:isoToBR(a.date),hora:a.time}});
@@ -16625,7 +16769,7 @@ function AppInner({ session, onLogout }) {
       if(!a||a.blocked)return a;
       let out=a;
       // agendamento movido para uma data futura voltava como "Reagendado" (= inativo): volta a contar
-      if(movida(out))out={...out,status:"Aguardando"};
+      if(movida(out))out={...out,status:"Agendado"};
       if(out.patientId==null||out.patientId===""){const id=byName[_normName(out.patientName)];if(id&&id!=="dup")out={...out,patientId:id};}
       return out;
     }));
@@ -16751,7 +16895,7 @@ function AppInner({ session, onLogout }) {
       date:dateISO,
       location:r.last.location||locationNames[0]||"",
       value:String(r.last.value||""),
-      status:"Confirmado",
+      status:"Agendado",
       obs:`Retorno de manutenção · Sessão anterior: ${r.last.procedure} em ${r.last.date}`
     });
     handleNav("agenda");
@@ -16764,7 +16908,7 @@ function AppInner({ session, onLogout }) {
     date:e.nextISO<hoje?hoje:e.nextISO,
     location:locationNames[0]||"",
     value:String(e.valorSessao?Math.round(e.valorSessao):""),
-    status:"Confirmado",
+    status:"Agendado",
     obs:`Sessão ${e.done+1}/${e.total} · ${e.name}`
   });
   handleNav("agenda");
@@ -17011,7 +17155,7 @@ function AppInner({ session, onLogout }) {
             page==="agenda"&&h(Agenda,{rooms:roomsRaw,patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,procedures:procedureNames,proceduresFull:procedures,locations:locationNames,prefill:apptPrefill,onConsumePrefill:()=>setApptPrefill(null),dark,waitlist,setWaitlist,waTemplates,settings:settingsData,setWaLog}),
             page==="pacientes"&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames,agenda}),
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames,agenda}),
-            page==="prontuario"&&currentPatient&&h(PatientDetail,{setClinicSettings:setSettings,rooms:roomsRaw,patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,setAgendaLog,maquininhas,initialTab:patientDetailTab}),
+            page==="prontuario"&&currentPatient&&h(PatientDetail,{onAgendar:pf=>{setApptPrefill({date:localISO(),location:locationNames[0]||"",status:"Agendado",...pf});handleNav("agenda");},setClinicSettings:setSettings,rooms:roomsRaw,patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,setAgendaLog,maquininhas,initialTab:patientDetailTab}),
             page==="estoque"&&h(Estoque,{products,setProducts,stockCats,setStockCats,patients,onSelectPatient:handleSelectPatient,agenda,proceduresFull:procedures}),
             page==="financeiro"&&h(Financeiro,{agenda,bookings:bookingsRaw,patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,setSettings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products,maquininhas,setMaquininhas}),
             page==="salas"&&h(Salas,{rooms:roomsRaw,setRooms,bookings:bookingsRaw,setBookings,setExpenses,locations:locationNames,setRecurringExpenses}),
