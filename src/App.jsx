@@ -1705,6 +1705,24 @@ function stripPhotos(data){
 let _supaOk = null;
 const _supaListeners = new Set();
 function _setSupaOk(v) { if(_supaOk===v)return; _supaOk=v; _supaListeners.forEach(fn=>fn(v)); }
+// Gravações que falharam (internet caiu, sessão expirou…) ficam na fila e são reenviadas sozinhas
+let _syncErro = "";
+const _retryQueue = new Map(); // key → flush
+function _queueRetry(key, fn) { _retryQueue.set(key, fn); }
+async function _runRetries() {
+  if (!_retryQueue.size) {
+    // nada pendente: se o aviso ficou ligado por uma falha de leitura, confere se a conexão voltou
+    if (_supaOk === false) { const t = await supaReadTs("settings"); if (t !== null) { _syncErro = ""; _setSupaOk(true); } }
+    return;
+  }
+  const items = [..._retryQueue.entries()]; _retryQueue.clear();
+  for (const [, fn] of items) { try { await fn(); } catch (e) {} }
+}
+if (typeof window !== "undefined") {
+  setInterval(_runRetries, 20000);
+  window.addEventListener("online", () => setTimeout(_runRetries, 800));
+  window.addEventListener("focus", () => setTimeout(_runRetries, 400));
+}
 function useSupaStatus() {
   const [s, set] = useState(_supaOk);
   useEffect(() => { set(_supaOk); _supaListeners.add(set); return () => _supaListeners.delete(set); }, []);
@@ -1798,7 +1816,7 @@ async function supaRead(key) {
   try {
     const { data, error } = await supabase
       .from("app_data").select("value").eq("key", key).eq("user_id", uid).maybeSingle();
-    if (error) { _setSupaOk(false); console.warn("[sync] read error", key, error.message); return null; }
+    if (error) { _syncErro = error.message || "Erro ao ler"; _setSupaOk(false); console.warn("[sync] read error", key, error.message); return null; }
     _setSupaOk(true);
     let val = data?.value ?? null;
     // Supabase pode devolver o JSONB já como string (double-encoded) em vez de objeto/array
@@ -1823,16 +1841,16 @@ async function supaReadMeta(key){
 
 async function supaWrite(key, value) {
   const uid = await getUserId();
-  if (!uid) { _setSupaOk(false); return false; }
+  if (!uid) { _syncErro = "Sessão expirada. Saia e entre de novo no sistema."; _setSupaOk(false); return false; }
   try {
     const clean = stripPhotos(value);
     const { data, error } = await supabase.from("app_data")
       .upsert({ key, user_id: uid, value: clean, updated_at: new Date().toISOString() }, { onConflict: "key,user_id" })
       .select("updated_at").maybeSingle();
-    if (error) { _setSupaOk(false); console.warn("[sync] write error", key, error.message); return false; }
-    _setSupaOk(true);
+    if (error) { _syncErro = error.message || "Erro ao gravar"; _setSupaOk(false); console.warn("[sync] write error", key, error.message); return false; }
+    _syncErro = ""; _setSupaOk(true);
     return (data && data.updated_at) || true;
-  } catch(e) { _setSupaOk(false); console.warn("[sync] write exception", key, e); return false; }
+  } catch(e) { _syncErro = (typeof navigator !== "undefined" && navigator.onLine === false) ? "Sem internet no momento." : String((e && e.message) || e); _setSupaOk(false); console.warn("[sync] write exception", key, e); return false; }
 }
 
 // ─── PROTEÇÃO ENTRE DISPOSITIVOS ──────────────────────────────────────────────
@@ -1942,7 +1960,8 @@ function useSupaTable(key, initFallback = []) {
           }
         }
         const wts = await supaWrite(key, toWrite);
-        if (wts) { if (typeof wts === "string") knownTsRef.current = wts; baseRef.current = toWrite; }
+        if (wts) { if (typeof wts === "string") knownTsRef.current = wts; baseRef.current = toWrite; _retryQueue.delete(key); }
+        else _queueRetry(key, () => flushRef.current && flushRef.current());
         try { localStorage.setItem(lsKey, JSON.stringify(toWrite)); } catch {}
         if (merged) {
           // aplica a junção na tela, preservando o que você mexeu enquanto gravava
@@ -1958,6 +1977,7 @@ function useSupaTable(key, initFallback = []) {
       } while (dirtyRef.current);
     } finally { inFlightRef.current = false; pendingRef.current--; }
   }, [key, lsKey]);
+  const flushRef = useRef(null); flushRef.current = flush;
 
   // Ao voltar para a aba/janela, relê o servidor se outro dispositivo salvou algo
   useEffect(() => {
@@ -3333,12 +3353,18 @@ function SyncIndicator(){
   const status=useSupaStatus();
   if(status===null)return null;
   const ok=status===true;
-  return h("div",{
-    style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:ok?"rgba(122,173,138,.10)":"rgba(192,112,112,.12)",border:`1px solid ${ok?"rgba(122,173,138,.25)":"rgba(192,112,112,.3)"}`,cursor:"default",flexShrink:0},
-    title:ok?"Dados sincronizados — aparecem em todos os dispositivos":"Sem sincronizacao com servidor. Verifique a tabela app_data no Supabase."
+  const tentar=async()=>{
+    if(ok){notify("Tudo salvo na nuvem. O que você vê aqui aparece nos outros aparelhos.","ok");return;}
+    notify("Tentando salvar de novo…","info");
+    await _runRetries();
+    setTimeout(()=>{if(_supaOk!==true)notify("Ainda sem conexão com a nuvem: "+(_syncErro||"verifique a internet")+" Fica tudo salvo neste aparelho e vai sozinho quando voltar.","warn");},1500);
+  };
+  return h("button",{onClick:tentar,
+    style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:ok?"rgba(122,173,138,.10)":"rgba(181,112,79,.12)",border:`1px solid ${ok?"rgba(122,173,138,.25)":"rgba(181,112,79,.3)"}`},
+    title:ok?"Dados sincronizados: aparecem em todos os aparelhos":"Sem conexão com a nuvem agora. O que você fizer fica salvo neste aparelho e é enviado sozinho quando a conexão voltar. Toque para tentar de novo."
   },
-    h("div",{style:{width:7,height:7,borderRadius:"50%",background:ok?"#7aad8a":"#c07070"}}),
-    h("span",{style:{fontSize:11,color:ok?"#7aad8a":"#c07070",fontWeight:500,whiteSpace:"nowrap"}},ok?"Nuvem \u2713":"Sem sync")
+    h("div",{style:{width:7,height:7,borderRadius:"50%",background:ok?"#7aad8a":"#B5704F"}}),
+    h("span",{style:{fontSize:11,color:ok?"#7aad8a":"#B5704F",fontWeight:500,whiteSpace:"nowrap"}},ok?"Nuvem \u2713":"Offline · salvo aqui")
   );
 }
 
