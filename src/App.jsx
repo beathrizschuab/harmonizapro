@@ -122,9 +122,9 @@ const PAT_STATUS_CFG={
   inactive:{label:"Inativa",color:"#B64A48",colorDark:"#E08A85",bg:"rgba(182,74,72,.12)",bgDark:"rgba(224,138,133,.12)"},
   new:{label:"Nova",color:"#7C5A92",colorDark:"#B79AD0",bg:"rgba(124,90,146,.12)",bgDark:"rgba(183,154,208,.12)"},
 };
-const BLOOD_TYPES=["A+","A-","B+","B-","AB+","AB-","O+","O-"];
+const BLOOD_TYPES=["Não informado","A+","A-","B+","B-","AB+","AB-","O+","O-"];
 const SKIN_TYPES=["Normal","Seca","Oleosa","Mista","Sensível"];
-const FITZPATRICK=["I","II","III","IV","V","VI"];
+const FITZPATRICK=["Não avaliado","I","II","III","IV","V","VI"];
 const MUSIC_STYLES=["Pop","Rock","Sertanejo","MPB","Eletrônico","Clássica","Jazz","Funk","Gospel","Outro"];
 const PREF_HORARIO=["Manhã (8h–12h)","Tarde (12h–17h)","Noite (17h–20h)","Sem preferência"];
 const PREF_CONTATO=["WhatsApp","Ligação","E-mail","WhatsApp e Ligação","Sem preferência"];
@@ -445,11 +445,51 @@ const addMinToTime=(time,mins)=>{
 };
 // Retorna a hora final de um agendamento dado time + duration
 const apptEndTime=a=>a&&a.time?addMinToTime(a.time,durationToMin(a.duration)):"";
+
+// ─── CONFLITOS DE HORÁRIO NA AGENDA ──────────────────────────────────────────
+// Detecta sobreposição no mesmo dia. Tipos: "bloqueio" (horário bloqueado), "paciente" (mesma pessoa em dois
+// horários que se cruzam) e "unidade" (outro atendimento no mesmo local). Cancelado/Faltou/Reagendado não contam.
+// Obs.: a agenda ainda não tem campo "profissional/sala"; por isso a checagem de unidade é um AVISO (pode confirmar).
+const APPT_INACTIVE=["Cancelado","Faltou","Reagendado"];
+const _normName=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim();
+const _hhmmToMin=t=>{if(!t||!String(t).includes(":"))return null;const[h,m]=String(t).split(":").map(Number);return(Number.isFinite(h)&&Number.isFinite(m))?h*60+m:null;};
+function findApptConflicts(cand,agenda,ignoreId){
+  const s1=_hhmmToMin(cand&&cand.time);
+  if(s1==null||!cand.date)return[];
+  const e1=s1+durationToMin(cand.duration);
+  const out=[];
+  (agenda||[]).forEach(a=>{
+    if(!a||a.id===ignoreId||a.date!==cand.date)return;
+    const isBlock=!!a.blocked;
+    if(!isBlock&&APPT_INACTIVE.includes(a.status))return;
+    const s2=_hhmmToMin(a.time);
+    if(s2==null)return;
+    const eb=isBlock?_hhmmToMin(a.endTime):null;
+    const e2=isBlock?(eb!=null?eb:s2+60):s2+durationToMin(a.duration);
+    if(!(s1<e2&&s2<e1))return;
+    if(isBlock){out.push({tipo:"bloqueio",appt:a});return;}
+    if(cand.patientName&&_normName(a.patientName)===_normName(cand.patientName))out.push({tipo:"paciente",appt:a});
+    else if(!cand.location||!a.location||a.location===cand.location)out.push({tipo:"unidade",appt:a});
+  });
+  return out;
+}
+// Monta o texto do aviso e pergunta se deseja agendar mesmo assim (true = pode seguir)
+function confirmApptConflicts(conflicts){
+  if(!conflicts||!conflicts.length)return true;
+  const linhas=conflicts.slice(0,4).map(c=>{
+    const a=c.appt,fim=a.endTime||apptEndTime(a);
+    const quem=c.tipo==="bloqueio"?"Horário bloqueado"+(a.blockReason?" ("+a.blockReason+")":""):a.patientName;
+    const nota=c.tipo==="paciente"?" — mesmo paciente":(c.tipo==="unidade"&&a.location?" — "+a.location:"");
+    return "• "+quem+" · "+a.time+(fim?"–"+fim:"")+nota;
+  }).join("\n");
+  const mais=conflicts.length>4?"\n… e mais "+(conflicts.length-4):"";
+  return window.confirm("Atenção: conflito de horário.\n\n"+linhas+mais+"\n\nAgendar mesmo assim?");
+}
 const parseDMY=s=>parseAnyDate(s); // unificado: usa a mesma lógica de parseAnyDate (ver definição mais abaixo, função hoisted)
 const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
 function localISO(d){d=d||new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
 const todayISO=()=>localISO();
-const dmyToISO=s=>{const d=parseDMY(s);return d?d.toISOString().slice(0,10):"";};
+const dmyToISO=s=>{const d=parseDMY(s);return d?localISO(d):"";};
 const isoToBR=s=>{if(!s)return"";const[y,m,d]=s.split("-");return d&&m&&y?`${d}/${m}/${y}`:s;};
 // Atualiza uma intercorrência (por id) tanto na lista global do paciente quanto na sessão de origem,
 // mantendo as duas cópias sempre sincronizadas. Usado por PatientDetail e pelo painel global.
@@ -826,7 +866,7 @@ async function generatePatientDossier(patient,{products,settings}={}){
     doc.text(`Página ${p-1} de ${pageCount-1}`,PG_W-MARGIN,820,{align:"right"});
   }
 
-  const fileName=`Dossie_${patient.name.replace(/[^a-zA-Z0-9]+/g,"_")}_${new Date().toISOString().slice(0,10)}.pdf`;
+  const fileName=`Dossie_${patient.name.replace(/[^a-zA-Z0-9]+/g,"_")}_${localISO()}.pdf`;
   doc.save(fileName);
 }
 
@@ -1629,6 +1669,18 @@ function useLocalStorage(key, init) {
   const [val, setVal] = useState(() => { try { const s=localStorage.getItem(key); return s?JSON.parse(s):init; } catch { return init; } });
   const set = useCallback(v => { const nv=typeof v==="function"?v(val):v; setVal(nv); try{localStorage.setItem(key,JSON.stringify(nv));}catch{}; }, [key]);
   return [val, set];
+}
+
+// Remove do navegador as cópias locais dos dados (pacientes, CPF, anamnese…) ao sair — evita vazamento em
+// computador compartilhado. Só limpa depois que a migração inicial para a nuvem foi concluída (flag), para
+// nunca apagar dados que ainda não subiram. Mantém as flags "hapro2_migrated_*".
+function clearLocalPatientData(uid){
+  try{
+    if(!uid||!localStorage.getItem("hapro2_migrated_v1_"+uid))return;
+    const rm=[];
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith("hapro2_")&&!k.startsWith("hapro2_migrated_"))rm.push(k);}
+    rm.forEach(k=>localStorage.removeItem(k));
+  }catch{}
 }
 
 // ─── ERROR BOUNDARY (mostra o erro real em vez de tela branca) ────────────────
@@ -3822,7 +3874,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
   const alertas=[];
   const critStock=products.filter(p=>p.status==="critical"||(Array.isArray(p.lotes)&&p.lotes.some(l=>{if(!l.validade)return false;let d=null;try{const[m,y]=String(l.validade).split("/");d=new Date(Number(y),Number(m)-1,1);}catch{d=null;}return d&&d<=new Date(Date.now()+30*864e5);})));
   if(critStock.length)alertas.push({icon:"ti-alert-triangle",color:P.statusAmber,bg:dark?"rgba(185,130,43,.12)":"rgba(185,130,43,.08)",title:"Estoque crítico",sub:`${critStock.length} item${critStock.length>1?"s":""} requer${critStock.length>1?"em":""} atenção`,action:()=>onNav("estoque")});
-  const despVencer=(Array.isArray(expenses)?expenses:[]).filter(e=>e.status==="Pendente"&&e.date&&e.date<=new Date(Date.now()+3*864e5).toISOString().slice(0,10));
+  const despVencer=(Array.isArray(expenses)?expenses:[]).filter(e=>e.status==="Pendente"&&e.date&&e.date<=localISO(new Date(Date.now()+3*864e5)));
   if(despVencer.length)alertas.push({icon:"ti-coin",color:P.statusRed,bg:dark?"rgba(182,74,72,.12)":"rgba(182,74,72,.08)",title:`Conta${despVencer.length>1?"s":""} a vencer`,sub:`${despVencer.length} despesa${despVencer.length>1?"s":""} vencem em 3 dias`,action:()=>onNav("financeiro")});
   // Retorno atrasado por protocolo específico (returnReminderDays) — usado agora dentro de "Pacientes — Atenção"
   const isProtocolOverdue=p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);};
@@ -3996,7 +4048,7 @@ function Dashboard({patients,agenda,onNav,onSelectPatient,onScheduleReturn,proce
           const todayISO2=localISO(today);
           const cg=patients.map(p=>{
             const d=parseDMY(p.lastVisit);const days=d?daysBetween(d,today):null;
-            const hasUp=agenda.some(a=>a.patientName===p.name&&a.date>=todayISO2&&a.date<=new Date(today.getTime()+30*864e5).toISOString().slice(0,10));
+            const hasUp=agenda.some(a=>a.patientName===p.name&&a.date>=todayISO2&&a.date<=localISO(new Date(today.getTime()+30*864e5)));
             return{...p,_days:days,_inTreatment:hasUp||(days!==null&&days<=60),_protocolOverdue:isProtocolOverdue(p)};
           });
           const groups=[
@@ -4374,6 +4426,14 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
   const agendaDates=new Set(agenda.map(a=>a.date));
 
   function saveAppt(){
+    // ── Conflito de horário (só ao criar ou ao mudar o encaixe — editar observação não reabre o aviso) ──
+    {
+      const cand=editItem?{...editItem,...form}:form;
+      const slotChanged=!editItem||["date","time","duration","location","patientName"].some(k=>String(editItem[k]||"")!==String(cand[k]||""));
+      if(slotChanged&&!cand.blocked&&!APPT_INACTIVE.includes(cand.status)){
+        if(!confirmApptConflicts(findApptConflicts(cand,agenda,editItem?editItem.id:null)))return;
+      }
+    }
     // ── Auto-cadastro: cria paciente se o nome não existir no cadastro ──
     const nameTyped=(form.patientName||"").trim();
     if(nameTyped&&setPatients){
@@ -4386,15 +4446,15 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
           id:Date.now(),
           name:nameTyped,
           age:"",birthDate:"",phone:"",email:"",cpf:"",
-          bloodType:"A+",allergies:"Nenhuma",
+          bloodType:"Não informado",allergies:"",
           since:todayStr,status:"new",
-          tags:["Nova"],
+          tags:["Nova","Cadastro incompleto"],
           profilePhoto:null,
           lastVisit:"",nextReturn:"",
           complaints:[],
           sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
           origem:"nova",canalAquisicao:"",indicadoPor:"",canalCampanha:"",
-          anamnese:{healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",skinType:"Normal",fitzpatrick:"II",allergiesDetail:"",contraindications:"",musicStyle:"Pop",importantAlerts:[]},
+          anamnese:{healthHistory:"",medications:"",smoking:"Não informado",pregnancy:"Não informado",previousProcedures:"",skinType:"Normal",fitzpatrick:"Não avaliado",allergiesDetail:"",contraindications:"",musicStyle:"Pop",importantAlerts:[]},
           preferencias:{horario:"Sem preferência",contato:"Sem preferência",fotos:"Autoriza somente para prontuário",obs:""},
         };
         setPatients(prev=>[...prev,newPatient]);
@@ -4509,6 +4569,7 @@ function Agenda({patients,setPatients,agenda,setAgenda,agendaLog,setAgendaLog,pr
       return;
     }
     if(a.date===date&&a.time===newTime)return;
+    if(!APPT_INACTIVE.includes(a.status)&&!confirmApptConflicts(findApptConflicts({...a,date,time:newTime},agenda,a.id)))return;
     const reason=window.prompt("Motivo do reagendamento (opcional):","")||"";
     const after={...a,date,time:newTime,status:"Reagendado"};
     const logged=logApptChange(a,after,setAgendaLog,reason);
@@ -5022,7 +5083,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
   const[filter,setFilter]=useState("all");
   const[showNew,setShowNew]=useState(false);
   const[exportingExcel,setExportingExcel]=useState(false);
-  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"A+",allergies:"Nenhuma",complaints:"",skinType:"Normal",fitzpatrick:"II",healthHistory:"",medications:"",smoking:"Não",pregnancy:"Não",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active",origem:"nova",canalAquisicao:"",indicadoPor:"",canalCampanha:"",prefHorario:"Sem preferência",prefContato:"Sem preferência",prefFotos:"Autoriza somente para prontuário",prefObs:""};
+  const blank={name:"",age:"",birthDate:"",phone:"",email:"",cpf:"",bloodType:"Não informado",allergies:"",complaints:"",skinType:"Normal",fitzpatrick:"Não avaliado",healthHistory:"",medications:"",smoking:"Não informado",pregnancy:"Não informado",previousProcedures:"",allergiesDetail:"",contraindications:"",musicStyle:"Pop",status:"active",origem:"nova",canalAquisicao:"",indicadoPor:"",canalCampanha:"",prefHorario:"Sem preferência",prefContato:"Sem preferência",prefFotos:"Autoriza somente para prontuário",prefObs:""};
   const[form,setForm]=useState(blank);
   async function handleExportExcel(){
     setExportingExcel(true);
@@ -5130,8 +5191,8 @@ function Patients({patients,setPatients,onSelect,procedures,locations}){
         h(Field,{label:"Fitzpatrick",half:true},h(Sel,{value:form.fitzpatrick,onChange:fv("fitzpatrick"),options:FITZPATRICK})),
         h(Field,{label:"Histórico de Saúde"},h(TA,{value:form.healthHistory,onChange:fv("healthHistory"),placeholder:"Doenças, cirurgias...",rows:2})),
         h(Field,{label:"Medicamentos"},h(Inp,{value:form.medications,onChange:fv("medications"),placeholder:"Medicamentos em uso"})),
-        h(Field,{label:"Fumante",third:true},h(Sel,{value:form.smoking,onChange:fv("smoking"),options:["Não","Sim","Ex-fumante"]})),
-        h(Field,{label:"Gestante",third:true},h(Sel,{value:form.pregnancy,onChange:fv("pregnancy"),options:["Não","Gestante","Lactante"]})),
+        h(Field,{label:"Fumante",third:true},h(Sel,{value:form.smoking,onChange:fv("smoking"),options:["Não informado","Não","Sim","Ex-fumante"]})),
+        h(Field,{label:"Gestante",third:true},h(Sel,{value:form.pregnancy,onChange:fv("pregnancy"),options:["Não informado","Não","Gestante","Lactante"]})),
         h(Field,{label:"🎵 Estilo Musical",third:true},h(Sel,{value:form.musicStyle,onChange:fv("musicStyle"),options:MUSIC_STYLES})),
         h(Field,{label:"Principais Queixas"},h(TA,{value:form.complaints,onChange:fv("complaints"),placeholder:"Separadas por vírgula",rows:2})),
         h(Field,{label:"Procedimentos Anteriores"},h(TA,{value:form.previousProcedures,onChange:fv("previousProcedures"),placeholder:"Histórico...",rows:2})),
@@ -5943,7 +6004,7 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:P.text,marginBottom:14}},"⚡ Ficha Rápida"),
           h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}},
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:"1px solid rgba(192,112,112,.3)"}},h("div",{style:{fontSize:10,color:P.red,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"❤️ Alergias"),h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},patient.allergies||"Nenhuma"),patient.anamnese?.allergiesDetail&&h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},patient.anamnese.allergiesDetail)),
-            h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"🚭 Tabagismo"),h("div",{style:{fontSize:14,color:patient.anamnese?.smoking==="Sim"?P.red:P.text}},patient.anamnese?.smoking||"Não informado"),patient.anamnese?.pregnancy&&patient.anamnese.pregnancy!=="Não"&&h("div",{style:{fontSize:12,color:P.yellow,marginTop:4}},"⚠️ "+patient.anamnese.pregnancy)),
+            h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"🚭 Tabagismo"),h("div",{style:{fontSize:14,color:patient.anamnese?.smoking==="Sim"?P.red:P.text}},patient.anamnese?.smoking||"Não informado"),patient.anamnese?.pregnancy&&patient.anamnese.pregnancy!=="Não"&&patient.anamnese.pregnancy!=="Não informado"&&h("div",{style:{fontSize:12,color:P.yellow,marginTop:4}},"⚠️ "+patient.anamnese.pregnancy)),
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"💊 Medicações"),h("div",{style:{fontSize:13,color:P.text}},patient.anamnese?.medications||"Nenhuma")),
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${patient.anamnese?.contraindications&&patient.anamnese.contraindications!=="Nenhuma"?"rgba(192,112,112,.4)":P.border}`}},h("div",{style:{fontSize:10,color:patient.anamnese?.contraindications&&patient.anamnese.contraindications!=="Nenhuma"?P.red:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"⚠️ Contraindicações"),h("div",{style:{fontSize:13,color:P.text}},patient.anamnese?.contraindications||"Nenhuma")),
             h("div",{style:{padding:"14px",background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6,fontWeight:600}},"📅 Último Procedimento"),_last?h("div",null,h("div",{style:{fontSize:14,color:P.text,fontWeight:500}},_last.procedure),h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},_last.date+" · "+fmtCurr(_last.value||0))):h("div",{style:{fontSize:13,color:P.text3}},"Sem sessões")),
@@ -6996,11 +7057,11 @@ function PatientDetail({patient,patients,setPatients,onBack,procedures,procedure
         h(Field,{label:"Contraindicações"},h(Inp,{value:patForm.contraindications||"",onChange:pfv("contraindications")})),
         h(Field,{label:"Alertas Importantes (separados por vírgula)"},h(Inp,{value:(patForm.importantAlerts||[]).join(", "),onChange:v=>pfv("importantAlerts")(v.split(",").map(s=>s.trim()).filter(Boolean))})),
         h(Field,{label:"Tipo de Pele",half:true},h(Sel,{value:patForm.skinType||"Normal",onChange:pfv("skinType"),options:SKIN_TYPES})),
-        h(Field,{label:"Fitzpatrick",half:true},h(Sel,{value:patForm.fitzpatrick||"II",onChange:pfv("fitzpatrick"),options:FITZPATRICK})),
+        h(Field,{label:"Fitzpatrick",half:true},h(Sel,{value:patForm.fitzpatrick||"Não avaliado",onChange:pfv("fitzpatrick"),options:FITZPATRICK})),
         h(Field,{label:"Histórico de Saúde"},h(TA,{value:patForm.healthHistory||"",onChange:pfv("healthHistory"),rows:2})),
         h(Field,{label:"Medicamentos"},h(Inp,{value:patForm.medications||"",onChange:pfv("medications")})),
-        h(Field,{label:"Fumante",third:true},h(Sel,{value:patForm.smoking||"Não",onChange:pfv("smoking"),options:["Não","Sim","Ex-fumante"]})),
-        h(Field,{label:"Gestante",third:true},h(Sel,{value:patForm.pregnancy||"Não",onChange:pfv("pregnancy"),options:["Não","Gestante","Lactante"]})),
+        h(Field,{label:"Fumante",third:true},h(Sel,{value:patForm.smoking||"Não informado",onChange:pfv("smoking"),options:["Não informado","Não","Sim","Ex-fumante"]})),
+        h(Field,{label:"Gestante",third:true},h(Sel,{value:patForm.pregnancy||"Não informado",onChange:pfv("pregnancy"),options:["Não informado","Não","Gestante","Lactante"]})),
         h(Field,{label:"🎵 Estilo Musical",third:true},h(Sel,{value:patForm.musicStyle||"Pop",onChange:pfv("musicStyle"),options:MUSIC_STYLES})),
         h(Field,{label:"Próx. Retorno"},h(Inp,{value:patForm.nextReturn||"",onChange:pfv("nextReturn"),placeholder:"DD/MM/AAAA"})),
         h("div",{style:{width:"100%",borderTop:`1px solid ${P.border}`,margin:"8px 0",paddingTop:8}},
@@ -9324,7 +9385,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
       // Depósitos pendentes (data de depósito no futuro ou este mês, ainda não caiu)
       const today=new Date();
       const todayISO2=localISO(today);
-      const depositsFuturos=mesesList.filter(m=>m.mes>=new Date().toISOString().slice(0,7));
+      const depositsFuturos=mesesList.filter(m=>m.mes>=localISO().slice(0,7));
       const totalFuturo=depositsFuturos.reduce((a,m)=>a+m.liquido,0);
 
       return h("div",{style:{display:"flex",flexDirection:"column",gap:18}},
@@ -9350,7 +9411,7 @@ function Financeiro({patients,setPatients,expenses,setExpenses,recurringExpenses
             ?h("div",{style:{textAlign:"center",color:P.text3,fontSize:13,padding:24}},"Nenhuma transação com cartão registrada ainda.")
             :h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
               mesesList.map(mes=>{
-                const isFuture=mes.mes>=new Date().toISOString().slice(0,7);
+                const isFuture=mes.mes>=localISO().slice(0,7);
                 const [y,m]=mes.mes.split("-");
                 const mesLabel=mes.mes==="sem-data"?"Sem data de depósito":(MONTH_NAMES[parseInt(m,10)-1]+" / "+y);
                 return h("div",{key:mes.mes,style:{border:`1px solid ${isFuture?P.green+"44":P.border}`,borderRadius:10,overflow:"hidden"}},
@@ -12251,7 +12312,7 @@ function AvatarBtn({settings,setSettings,size=32}){
 // ─── SALAS (ALUGUEL POR HORA / COWORKING) ───────────────────
 function Salas({rooms,setRooms,bookings,setBookings,setExpenses}){
   const h=createElement;
-  const today=new Date().toISOString().slice(0,10);
+  const today=localISO();
   const R=Array.isArray(rooms)?rooms.filter(Boolean):[];
   const B=Array.isArray(bookings)?bookings.filter(Boolean):[];
   const[rf,setRf]=useState({name:"",price:""});
@@ -12477,6 +12538,8 @@ function App(){
   const [authLoading, setAuthLoading] = useState(true);
   const [showEnter, setShowEnter] = useState(false);
   const hadSessionRef = useRef(false);
+  const sessionRef = useRef(null); // guarda a sessão atual para saber de quem limpar o cache ao sair
+  useEffect(() => { sessionRef.current = session; }, [session]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s }, error }) => {
@@ -12502,6 +12565,7 @@ function App(){
         }
         setSession(s);
       } else if (event === "SIGNED_OUT" || !s) {
+        try { const uidOut = sessionRef.current?.user?.id; clearLocalPatientData(uidOut); } catch {}
         setSession(null);
         hadSessionRef.current = false;
       }
@@ -12516,7 +12580,7 @@ function App(){
   if (!session) return createElement(LoginScreen, { onLogin: () => supabase.auth.getSession().then(({data:{session:s}})=>setSession(s)) });
 
   return createElement(Fragment, null,
-    createElement(AppInner, { session, onLogout: () => supabase.auth.signOut() }),
+    createElement(AppInner, { session, onLogout: () => { clearLocalPatientData(session?.user?.id); return supabase.auth.signOut(); } }),
     showEnter && createElement(EnterTransition, {})
   );
 }
