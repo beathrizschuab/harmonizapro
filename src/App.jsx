@@ -428,40 +428,9 @@ const INIT_RETURN_RULES=[
   {id:16,procedure:"Peeling Químico",revisionDays:21,maintenanceDays:90,label:""},
   {id:17,procedure:"Revisão / Retoque",revisionDays:0,maintenanceDays:90,label:""},
 ];
-const INIT_PATIENTS=[
-  {id:1,name:"Ana Beatriz Martins",age:32,birthDate:"1993-05-28",phone:"(11) 99234-5678",email:"ana@email.com",cpf:"123.456.789-00",bloodType:"O+",allergies:"Nenhuma",since:"03/11/2025",status:"vip",tags:["VIP","Alta frequência"],profilePhoto:null,lastVisit:"28/05/2026",nextReturn:"28/08/2026",complaints:["Linhas de expressão","Volume labial"],
-   sessions:[{id:1,date:"28/05/2026",procedure:"Toxina Botulínica",doctor:"Dra. Sofia",product:"Botox Allergan 100U",dose:"40U",region:"Glabela + Testa",location:"Barra Olímpica",value:850,paid:true,finStatus:"Pago",payMethod:"Pix",notes:"40U total. Glabela (20U), frontal (12U), pé de galinha D/E.",evolution:"Retorno em 14 dias.",faceMap:{type:"botox",points:{glabela_c:20,frontal_c:12,peGalinha_d:8,peGalinha_e:6}},photos:[],docs:[],intercorrencias:[],returnReminderDays:90}],
-   sessions_packages:[],intercorrencias:[],planejamento:[],
-   anamnese:{healthHistory:"Sem doenças crônicas",medications:"Anticoncepcional",smoking:"Não",pregnancy:"Não",previousProcedures:"Nenhum",skinType:"Mista",fitzpatrick:"III",allergiesDetail:"Sem alergias conhecidas.",contraindications:"Nenhuma",musicStyle:"Pop",importantAlerts:[]},preferencias:{horario:"Manhã (8h–12h)",contato:"WhatsApp",fotos:"Autoriza somente para prontuário",obs:"Gosta de música ambiente suave durante o procedimento."}},
-  {id:2,name:"Camila R. Souza",age:28,birthDate:"1997-06-15",phone:"(11) 98876-1234",email:"camila@email.com",cpf:"987.654.321-00",bloodType:"A+",allergies:"Dipirona",since:"10/01/2026",status:"active",tags:["Recorrente"],profilePhoto:null,lastVisit:"28/05/2026",nextReturn:"28/08/2026",complaints:["Volume labial"],
-   sessions:[{id:1,date:"28/05/2026",procedure:"Preenchimento Labial",doctor:"Dra. Sofia",product:"Juvederm Volbella 1ml",dose:"1ml",region:"Lábio superior",location:"Barra Olímpica",value:1200,paid:true,finStatus:"Pago",payMethod:"Cartão",notes:"Técnica linear. Resultado harmonioso.",evolution:"",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:180}],
-   sessions_packages:[],intercorrencias:[],planejamento:[],
-   anamnese:{healthHistory:"Rinite alérgica",medications:"Loratadina ocasional",smoking:"Não",pregnancy:"Não",previousProcedures:"Preenchimento (2024)",skinType:"Seca",fitzpatrick:"II",allergiesDetail:"Alergia à dipirona — reação cutânea. Usar paracetamol.",contraindications:"Dipirona contraindicada",musicStyle:"Sertanejo",importantAlerts:["Alergia à Dipirona"]},preferencias:{horario:"Tarde (12h–17h)",contato:"WhatsApp",fotos:"Não autoriza fotos",obs:""}},
-  {id:3,name:"Fernanda Lopes",age:35,birthDate:"1990-09-03",phone:"(11) 97654-3210",email:"fernanda@email.com",cpf:"111.222.333-44",bloodType:"B+",allergies:"Nenhuma",since:"12/03/2026",status:"treatment",tags:["Em Tratamento"],profilePhoto:null,lastVisit:"12/05/2026",nextReturn:"28/05/2026",complaints:["Flacidez","Sulcos"],
-   sessions:[{id:1,date:"12/05/2026",procedure:"Bioestimulador de Colágeno",doctor:"Dra. Sofia",product:"Sculptra 367mg",dose:"2 frascos",region:"Região malar",location:"Nova América",value:2400,paid:false,finStatus:"Pendente",payMethod:"Pendente",notes:"Primeira sessão de Sculptra.",evolution:"Aguardar 4-6 semanas.",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:60}],
-   sessions_packages:[{id:1,name:"Sculptra 3 sessões",total:3,done:1,value:7200,active:true,expiry:"12/2026"}],intercorrencias:[],planejamento:[{id:1,title:"Protocolo Bioestimulação",steps:["Sculptra sessão 1 ✓","Sculptra sessão 2","Sculptra sessão 3","Manutenção 6 meses"],notes:"Plano aprovado em 12/03/2026",done:false}],
-   anamnese:{healthHistory:"Hipotireoidismo controlado",medications:"Levotiroxina 50mcg",smoking:"Ex-fumante",pregnancy:"Não",previousProcedures:"Botox (2023)",skinType:"Normal",fitzpatrick:"III",allergiesDetail:"Sem alergias.",contraindications:"Nenhuma",musicStyle:"MPB",importantAlerts:["Hipotireoidismo"]},preferencias:{horario:"Sem preferência",contato:"Ligação",fotos:"Autoriza fotos para redes sociais",obs:""}},
-  {id:4,name:"Juliana Pereira",age:41,birthDate:"1985-05-28",phone:"(11) 96543-2109",email:"juliana@email.com",cpf:"555.666.777-88",bloodType:"AB+",allergies:"Penicilina",since:"03/05/2026",status:"return",tags:["Retorno Pendente"],profilePhoto:null,lastVisit:"03/05/2026",nextReturn:"28/05/2026",complaints:["Linhas severas","Papada"],
-   sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
-   anamnese:{healthHistory:"Diabetes tipo 2 controlada",medications:"Metformina 850mg",smoking:"Não",pregnancy:"Não",previousProcedures:"Nenhum",skinType:"Oleosa",fitzpatrick:"IV",allergiesDetail:"Alergia à penicilina — confirmada por teste.",contraindications:"Penicilínicos contraindicados",musicStyle:"Eletrônico",importantAlerts:["Penicilina","Diabetes"]},preferencias:{horario:"Manhã (8h–12h)",contato:"WhatsApp e Ligação",fotos:"Autoriza somente para prontuário",obs:"Prefere ser atendida por último, sem pressa."}},
-];
-const INIT_AGENDA=[
-  {id:1,patientName:"Ana Beatriz Martins",date:"2026-05-28",time:"09:00",procedure:"Toxina Botulínica",location:"Barra Olímpica",duration:"1 hora",value:850,status:"Realizado",obs:""},
-  {id:2,patientName:"Camila R. Souza",date:"2026-05-28",time:"10:30",procedure:"Preenchimento Labial",location:"Barra Olímpica",duration:"1 hora",value:1200,status:"Realizado",obs:""},
-  {id:3,patientName:"Fernanda Lopes",date:"2026-05-28",time:"14:00",procedure:"Bioestimulador de Colágeno",location:"Nova América",duration:"1h30",value:2400,status:"Confirmado",obs:""},
-  {id:4,patientName:"Juliana Pereira",date:"2026-05-28",time:"15:30",procedure:"Avaliação Inicial",location:"Barra Olímpica",duration:"45 min",value:0,status:"Aguardando",obs:""},
-  {id:5,patientName:"Renata Ferreira",date:"2026-05-29",time:"09:00",procedure:"Microagulhamento",location:"Barra Olímpica",duration:"1 hora",value:600,status:"Confirmado",obs:""},
-  {id:6,patientName:"Larissa Mendes",date:"2026-05-30",time:"11:00",procedure:"Profhilo",location:"Nova América",duration:"45 min",value:1500,status:"Aguardando",obs:""},
-  {id:7,patientName:"Ana Beatriz Martins",date:"2026-06-05",time:"10:00",procedure:"Revisão / Retoque",location:"Barra Olímpica",duration:"30 min",value:0,status:"Confirmado",obs:"Retorno pós botox"},
-];
-const INIT_EXPENSES=[
-  {id:1,desc:"Aluguel Barra Olímpica",date:"2026-05-05",cat:"Aluguel",value:4800,status:"Pago",notes:""},
-  {id:2,desc:"Reposição Botox Allergan",date:"2026-05-20",cat:"Produtos",value:4200,status:"Pago",notes:""},
-  {id:3,desc:"Marketing Digital",date:"2026-05-10",cat:"Marketing",value:1500,status:"Pago",notes:""},
-  {id:4,desc:"Contador Mensal",date:"2026-05-01",cat:"Outros",value:620,status:"Pago",notes:""},
-  {id:5,desc:"Materiais Descartáveis",date:"2026-05-15",cat:"Produtos",value:890,status:"Pago",notes:""},
-];
-// Regras de despesas recorrentes (ex: aluguel, contador) — geram lançamentos automáticos todo mês
+const INIT_PATIENTS=[];
+const INIT_AGENDA=[];
+const INIT_EXPENSES=[];
 const INIT_RECURRING_EXPENSES=[];
 // ─── HELPERS & BASE UI ────────────────────────────────────────────────────────
 const initials=n=>n.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
@@ -4580,7 +4549,7 @@ function Dashboard({pendRegistro=[],onAbrirRegistro,setSettings,bookings=[],pati
   ];
   const horaAgora=today.getHours();
   const saudacao=horaAgora<12?"Bom dia":horaAgora<18?"Boa tarde":"Boa noite";
-  const _pn=String(settings.doctorName||"Dra. Sofia").trim().split(/\s+/);
+  const _pn=String(settings.doctorName||"").trim().split(/\s+/);
   const primeiroNome=/^dra?\.?$/i.test(_pn[0])&&_pn[1]?_pn[0]+" "+_pn[1]:_pn[0];
   const nAtend=todayAppts.filter(a=>a.status!=="Cancelado").length;
   const proxTxt=proxAppt?` Próximo às ${proxAppt.time}, ${proxMin<60?`em ${proxMin} min`:`em ${Math.floor(proxMin/60)}h${String(proxMin%60).padStart(2,"0")}`}.`:"";
@@ -4603,7 +4572,7 @@ function Dashboard({pendRegistro=[],onAbrirRegistro,setSettings,bookings=[],pati
       h("div",{style:{position:"absolute",right:-70,top:-70,width:260,height:260,borderRadius:"50%",background:"radial-gradient(circle,rgba(192,120,139,.38),transparent 70%)",pointerEvents:"none"}}),
       h("div",{style:{position:"relative",flex:"1 1 260px",minWidth:0}},
         h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:11,letterSpacing:".14em",textTransform:"uppercase",color:"rgba(246,237,228,.7)"}},today.toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"})),
-        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:300,fontSize:isMobile?30:38,lineHeight:1.1,margin:"6px 0 10px",letterSpacing:".01em"}},`${saudacao}, ${primeiroNome}`),
+        h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontWeight:300,fontSize:isMobile?30:38,lineHeight:1.1,margin:"6px 0 10px",letterSpacing:".01em"}},(primeiroNome?`${saudacao}, ${primeiroNome}`:saudacao)),
         h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:13.5,color:"rgba(246,237,228,.85)",lineHeight:1.5}},resumoHoje),
         h("button",{onClick:()=>onNav("agenda"),style:{marginTop:16,fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12.5,letterSpacing:".04em",background:"rgba(246,237,228,.95)",color:"#5A1F31",border:"none",borderRadius:10,padding:"9px 20px",cursor:"pointer"}},"Abrir agenda")
       ),
@@ -7050,7 +7019,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
       items:items.map(it=>({...it,value:Number(it.value)||0})),
       procLabel,
       duracaoReal:Number(sForm.duracaoReal)||0,
-      doctor:"Dra. Sofia",
+      doctor:(clinicSettings&&clinicSettings.doctorName)||"",
       // legado: produto/lote/dose/região do item principal
       product:mainItem.product||sForm.product||"",
       loteId:mainItem.loteId||sForm.loteId||"",
@@ -7339,7 +7308,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
   function converterEmTratamento(orc){
     const linkedProcs=orc.linkedProcs||[];
     const pendingItems=(orc.items||[]).filter(item=>!linkedProcs.includes(item));
-    const novasSessoes=pendingItems.map((item,i)=>({id:genId(),date:new Date().toLocaleDateString("pt-BR"),procedure:item,doctor:"Dra. Sofia",product:"",dose:"",region:"",location:locations[0]||"",value:orc.items.length>0?Math.round(orc.value/orc.items.length):0,paid:false,finStatus:"Pendente",payMethod:"Pendente",parcelas:1,notes:"Gerado do orçamento: "+orc.title,evolution:"",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:90,lote:"",qtdUsada:"",fromOrcId:orc.id}));
+    const novasSessoes=pendingItems.map((item,i)=>({id:genId(),date:new Date().toLocaleDateString("pt-BR"),procedure:item,doctor:(clinicSettings&&clinicSettings.doctorName)||"",product:"",dose:"",region:"",location:locations[0]||"",value:orc.items.length>0?Math.round(orc.value/orc.items.length):0,paid:false,finStatus:"Pendente",payMethod:"Pendente",parcelas:1,notes:"Gerado do orçamento: "+orc.title,evolution:"",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:90,lote:"",qtdUsada:"",fromOrcId:orc.id}));
     upd(p=>({...p,sessions:[...novasSessoes,...(p.sessions||[])],lastVisit:novasSessoes.length?new Date().toLocaleDateString("pt-BR"):p.lastVisit,orcamentos:(p.orcamentos||[]).map(o=>o.id===orc.id?{...o,status:"aprovado",convertedAt:o.convertedAt||new Date().toLocaleDateString("pt-BR"),fullyConvertedAt:o.fullyConvertedAt||new Date().toLocaleDateString("pt-BR"),linkedProcs:[...new Set([...linkedProcs,...pendingItems])]}:o)}));
     // Criar lançamentos pendentes no Financeiro para cada sessão gerada
     setTimeout(()=>novasSessoes.forEach(s=>syncIncome(s,patient.name)),0);
@@ -13592,7 +13561,7 @@ function ProcForm({initial,onSave,onCancel,cats,products=[],patients=[]}){
 }
 
 
-function Configuracoes({patients=[],setPatients=()=>{},procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas=[],setMaquininhas,stockCats,setStockCats}){
+function Configuracoes({onZerar,patients=[],setPatients=()=>{},procedures,setProcedures,locations,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas=[],setMaquininhas,stockCats,setStockCats}){
   const h=createElement;
   const[tab,setTab]=useState("clinica");
   const[newLoc,setNewLoc]=useState("");
@@ -13716,6 +13685,7 @@ function Configuracoes({patients=[],setPatients=()=>{},procedures,setProcedures,
     h("div",{style:{fontSize:12.5,color:P.text3,margin:"12px 0 20px",display:"flex",alignItems:"center",gap:7}},h("i",{className:"ti ti-info-circle",style:{fontSize:15}}),curTab.d),
 
     tab==="backup"&&h(BackupPanel,null),
+    tab==="backup"&&onZerar&&h(Card,{style:{marginTop:16,padding:18,border:`0.5px solid ${P.red}33`}},h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:19,color:P.text}},"Começar do zero"),h("div",{style:{fontSize:12.5,color:P.text3,margin:"4px 0 12px",lineHeight:1.55}},"Apaga os dados de teste (pacientes, agenda, financeiro, estoque) para você começar com os dados de verdade. Antes, baixa um backup completo."),h(Btn,{variant:"danger",onClick:onZerar,style:{fontSize:12.5}},"Começar do zero")),
     // ── ABA PROCEDIMENTOS ────────────────────────────────────────────────────
     tab==="procedimentos"&&h("div",null,
       !showNewProc&&!editingProc&&h("div",{style:{display:"flex",justifyContent:"flex-end",marginBottom:14}},
@@ -14815,6 +14785,34 @@ function IntercorrenciasGlobal({patients,setPatients,onSelectPatient,onNav,proce
 }
 
 // ─── ROOT APP (com autenticação) ─────────────────────────────────────────────
+// ─── COMEÇAR DO ZERO ──────────────────────────────────────────────────────────
+// Apaga os dados de teste para começar com as pacientes de verdade. Antes, baixa um backup completo.
+const ZERAR_GRUPOS=[
+  {k:"pacientes",l:"Pacientes",d:"Fichas, sessões, fotos, orçamentos, pacotes e planejamentos",on:true},
+  {k:"agenda",l:"Agenda",d:"Agendamentos, histórico, lista de espera e mensagens enviadas",on:true},
+  {k:"financeiro",l:"Financeiro",d:"Entradas, despesas, despesas fixas, metas, horários de sala e fechamentos de mês",on:true},
+  {k:"estoque",l:"Estoque",d:"Produtos, lotes e movimentações",on:true},
+  {k:"vouchers",l:"Vouchers",d:"Vale-presentes emitidos",on:true},
+  {k:"cadastros",l:"Procedimentos, locais e salas",d:"Só marque se quiser cadastrar tudo de novo",on:false},
+];
+function ZerarModal({onClose,onZerar}){
+  const h=createElement;
+  const[sel,setSel]=useState(()=>ZERAR_GRUPOS.filter(g=>g.on).map(g=>g.k));
+  const[txt,setTxt]=useState("");
+  const[busy,setBusy]=useState(false);
+  const ok=txt.trim().toUpperCase()==="ZERAR"&&sel.length>0;
+  return h(Modal,{open:true,onClose,title:"Começar do zero",width:520},
+    h("div",{style:{fontSize:13,color:P.text2,lineHeight:1.6,marginBottom:14}},"Apaga os dados de teste para você cadastrar as pacientes de verdade. ",h("b",{style:{color:P.text,fontWeight:500}},"Antes de apagar, o sistema baixa um backup completo"),", então dá para recuperar se precisar."),
+    h("div",{style:{display:"flex",flexDirection:"column",gap:4,marginBottom:14}},ZERAR_GRUPOS.map(g=>h("label",{key:g.k,style:{display:"flex",gap:10,alignItems:"flex-start",padding:"9px 10px",borderRadius:9,cursor:"pointer",background:sel.includes(g.k)?P.bg3:"transparent"}},
+      h("input",{type:"checkbox",checked:sel.includes(g.k),onChange:()=>setSel(s=>s.includes(g.k)?s.filter(x=>x!==g.k):[...s,g.k]),style:{accentColor:P.accent,marginTop:3}}),
+      h("div",null,h("div",{style:{fontSize:13.5,color:P.text}},g.l),h("div",{style:{fontSize:11.5,color:P.text3}},g.d))))),
+    h("div",{style:{fontSize:12,color:P.text3,marginBottom:6}},"Ficam guardados: seu nome, nome da clínica, logo, modelos de mensagem, maquininhas, Precificadora e categorias."),
+    h(Field,{label:"Para confirmar, digite ZERAR"},h(Inp,{value:txt,onChange:setTxt,placeholder:"ZERAR"})),
+    h("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:6}},
+      h(Btn,{variant:"ghost",onClick:onClose},"Cancelar"),
+      h(Btn,{variant:"danger",disabled:!ok||busy,onClick:async()=>{setBusy(true);try{await onZerar(sel);onClose();}finally{setBusy(false);}}},busy?"Apagando…":"Baixar backup e apagar")));
+}
+
 // Atendimentos que já passaram e ainda não estão no prontuário
 function RegistrarAtendimentosModal({itens,onRegistrar,onStatus,onClose,onSelectPatient,patients}){
   const h=createElement;
@@ -17139,21 +17137,8 @@ function AppInner({ session, onLogout }) {
   const[recurringExpensesRaw,setRecurringExpenses,loadingRecurringExpenses]=useSupaTable("recurring_expenses",INIT_RECURRING_EXPENSES);
   const[incomesRaw,setIncomesBase,loadingIncomes]=useSupaTable("incomes",[]);
   const setIncomes=useCallback(fn=>setIncomesBase(prev=>{const next=typeof fn==="function"?fn(prev):fn;const r=enforceLockList(prev,next,lockRef.current);if(r.blocked)notify(LOCK_MSG,"warn");return r.value;}),[setIncomesBase]);
-  const[productsRaw,setProducts,loadingProducts]=useSupaTable("products",[
-    {id:"p1",name:"Botox Allergan 100U",cat:"Toxina Botulínica",qty:2,min:5,unit:"un",expiry:"12/2026",cost:800,emoji:"💉",status:"critical"},
-    {id:"p2",name:"Juvederm Ultra 1ml",cat:"Ácido Hialurônico",qty:5,min:8,unit:"sir",expiry:"08/2026",cost:450,emoji:"✨",status:"low"},
-    {id:"p3",name:"Sculptra 367mg",cat:"Bioestimulador",qty:7,min:4,unit:"fr",expiry:"09/2026",cost:950,emoji:"🧪",status:"ok"},
-    {id:"p4",name:"Fio PDO 29G Mono",cat:"Fios de PDO",qty:48,min:20,unit:"un",expiry:"01/2028",cost:35,emoji:"🧵",status:"ok"},
-    {id:"p5",name:"Profhilo 2ml",cat:"Skinbooster",qty:4,min:3,unit:"sir",expiry:"11/2026",cost:520,emoji:"💧",status:"ok"},
-    {id:"p6",name:"Agulha 30G",cat:"Insumos/Descartáveis",qty:200,min:50,unit:"un",expiry:"06/2028",cost:1.2,emoji:"📍",status:"ok"},
-    {id:"p7",name:"Seringa 1ml",cat:"Insumos/Descartáveis",qty:150,min:40,unit:"un",expiry:"06/2028",cost:1.8,emoji:"💉",status:"ok"},
-    {id:"p8",name:"Luva de Procedimento (par)",cat:"Insumos/Descartáveis",qty:300,min:60,unit:"par",expiry:"",cost:0.9,emoji:"🧤",status:"ok"},
-    {id:"p9",name:"Gaze Estéril",cat:"Insumos/Descartáveis",qty:100,min:30,unit:"un",expiry:"",cost:0.5,emoji:"🩹",status:"ok"},
-    {id:"p10",name:"Anestésico Tópico (pomada)",cat:"Insumos/Descartáveis",qty:8,min:3,unit:"un",expiry:"03/2027",cost:65,emoji:"🧴",status:"ok"},
-    {id:"p11",name:"Álcool 70% (frasco)",cat:"Insumos/Descartáveis",qty:12,min:4,unit:"un",expiry:"",cost:12,emoji:"🧪",status:"ok"},
-    {id:"p12",name:"Micropore",cat:"Insumos/Descartáveis",qty:20,min:8,unit:"rolo",expiry:"",cost:4.5,emoji:"🩹",status:"ok"},
-  ]);
-  const[settingsData,setSettings,loadingSettings]=useSettings({doctorName:"Dra. Sofia",doctorTitle:"Médica Responsável",clinicName:"HarmonizaPro",darkMode:false});
+  const[productsRaw,setProducts,loadingProducts]=useSupaTable("products",[]);
+  const[settingsData,setSettings,loadingSettings]=useSettings({doctorName:"",doctorTitle:"",clinicName:"",darkMode:false});
   lockRef.current=lockedMonthsOf(settingsData);
   const[,forceRender]=useState(0);
   useEffect(()=>{
@@ -17331,6 +17316,23 @@ function AppInner({ session, onLogout }) {
     if(isMobile)setSidebarOpen(false);
   }
   function handleSelectPatient(p,openTab){setSelectedPatient(p);setPatientDetailTab(openTab||null);setPage("prontuario");if(isMobile)setSidebarOpen(false);}
+  const[showZerar,setShowZerar]=useState(false);
+  async function zerarDados(grupos){
+    const G=new Set(grupos);
+    try{const data=await readAllAppData();downloadJSON({app:"HarmonizaPro",version:1,exportedAt:new Date().toISOString(),motivo:"antes de começar do zero",data},`harmonizapro-backup-antes-de-zerar-${localISO()}.json`);}
+    catch(e){if(!window.confirm("Não consegui baixar o backup automático. Apagar mesmo assim?"))return;}
+    if(G.has("pacientes"))setPatientsBase([]);
+    if(G.has("agenda")){setAgenda([]);setAgendaLog([]);setWaitlist([]);setWaLog([]);}
+    if(G.has("financeiro")){setExpensesBase([]);setIncomesBase([]);setRecurringExpenses([]);setGoals({});setBookings([]);}
+    if(G.has("estoque"))setProducts([]);
+    if(G.has("vouchers"))setVouchers([]);
+    if(G.has("cadastros")){setProcedures([]);setLocations([]);setRooms([]);setReturnRules([]);}
+    const hoje=localISO();
+    setSettings(st=>({...st,registroDesde:hoje,salaAutoDesde:hoje,conquistasVistas:undefined,resumoSemanaVisto:undefined,relatorioVisto:undefined,filaDia:undefined,...(G.has("financeiro")?{financeLocks:[],financeLockLog:[]}:{}),...(G.has("cadastros")?{localInfo:{}}:{})}));
+    try{Object.keys(localStorage).filter(k=>k.startsWith("hp_fila_")).forEach(k=>localStorage.removeItem(k));}catch(e){}
+    notify("Pronto. O sistema está limpo para os seus dados de verdade. O backup foi baixado no seu computador.","ok");
+    handleNav("dashboard");
+  }
   // ── Prontuário integrado à agenda: atendimento realizado vira sessão preenchida ──
   const[sessPrefill,setSessPrefill]=useState(null);
   const[showRegistrar,setShowRegistrar]=useState(false);
@@ -17549,6 +17551,7 @@ function AppInner({ session, onLogout }) {
   );
 
   return h(Fragment,null,
+    showZerar&&h(ZerarModal,{onClose:()=>setShowZerar(false),onZerar:zerarDados}),
     showRegistrar&&h(RegistrarAtendimentosModal,{itens:pendRegistro,patients,onRegistrar:registrarSessao,onStatus:mudarStatusAppt,onClose:()=>setShowRegistrar(false),onSelectPatient:p=>handleSelectPatient(p)}),
     splashFase!=="fim"&&h(SplashScreen,{nome:splashNome,linha:splashLinha,leaving:splashFase==="saindo"}),
     h("style",null,`
@@ -17649,7 +17652,7 @@ function AppInner({ session, onLogout }) {
             page==="vouchers"&&h(Vouchers,{settings,patients,vouchers,setVouchers,onSelectPatient:handleSelectPatient,onNav:handleNav,voucherTemplates,setVoucherTemplates}),
             page==="relatorios"&&h(Relatorios,{returnRules,waTemplates,waLog,patients,incomes,expenses,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures,settings,agenda,products,vouchers,goals:goalsData,setGoals}),
             page==="intercorrencias_global"&&h(IntercorrenciasGlobal,{patients,setPatients,onSelectPatient:handleSelectPatient,onNav:handleNav,procedures:procedureNames,products:products.map(p=>typeof p==="string"?p:(p.name||p))}),
-            page==="config"&&h(Configuracoes,{patients,setPatients,procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas,setMaquininhas,stockCats,setStockCats})
+            page==="config"&&h(Configuracoes,{onZerar:()=>setShowZerar(true),patients,setPatients,procedures,setProcedures,locations:locationNames,setLocations,products,setProducts,settings,setSettings,returnRules,setReturnRules,skincareConfig,setSkincareConfig,procCats,setProcCats,maquininhas,setMaquininhas,stockCats,setStockCats})
           )
         )
       )
