@@ -99,6 +99,77 @@ function ToastHost(){
   );
 }
 
+// ─── CAIXAS DE CONFIRMAÇÃO DO PRÓPRIO SISTEMA ─────────────────────────────────
+// Substituem window.confirm/prompt: alguns navegadores e o app instalado bloqueiam essas janelas
+// (e aí "Excluir" não fazia nada). Sempre devolvem uma Promise.
+let _dialogHostOn=false;
+function dialogo(opts){
+  return new Promise(res=>{
+    if(!_dialogHostOn){
+      try{
+        if(opts.input!==undefined){const v=window.prompt(opts.msg,opts.input||"");res(v==null?null:v);return;}
+        if(opts.buttons&&opts.buttons.length>2){res(window.confirm(opts.msg)?opts.buttons[opts.buttons.length-1].value:null);return;}
+        res(!!window.confirm(opts.msg));
+      }catch(e){res(opts.input!==undefined?null:false);}
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("hapro-dialog",{detail:{...opts,id:genId(),res}}));
+  });
+}
+function _okLabel(msg){
+  const t=String(msg||"").trim();
+  if(/^(Excluir|Apagar|Remover)/i.test(t))return{label:"Excluir",danger:true};
+  if(/^Cancelar este/i.test(t))return{label:"Cancelar voucher",danger:true};
+  if(/^Descartar/i.test(t))return{label:"Descartar",danger:true};
+  if(/^Marcar .* como cancelado/i.test(t))return{label:"Marcar cancelado",danger:true};
+  return{label:"Confirmar",danger:false};
+}
+function confirmar(msg,opts={}){
+  const d=_okLabel(msg);
+  return dialogo({msg,buttons:[{label:opts.cancel||"Cancelar",value:false},{label:opts.ok||d.label,value:true,primary:true,danger:opts.danger!==undefined?opts.danger:d.danger}]});
+}
+// Várias opções: devolve o value do botão escolhido, ou null se fechar
+function escolher(msg,botoes){return dialogo({msg,buttons:[{label:"Cancelar",value:null},...botoes]});}
+function pedirTexto(msg,valor="",opts={}){return dialogo({msg,input:valor==null?"":String(valor),type:opts.type||"text",ok:opts.ok||"OK"});}
+function DialogHost(){
+  const h=createElement;
+  const[q,setQ]=useState([]);
+  const[val,setVal]=useState("");
+  useEffect(()=>{
+    _dialogHostOn=true;
+    const on=e=>{const d=e.detail;setQ(l=>{if(!l.length)setVal(d.input!==undefined?d.input:"");return[...l,d];});};
+    window.addEventListener("hapro-dialog",on);
+    return()=>{_dialogHostOn=false;window.removeEventListener("hapro-dialog",on);};
+  },[]);
+  const d=q[0];
+  function fechar(v){
+    if(!d)return;
+    d.res(v);
+    setQ(l=>{const r=l.slice(1);if(r[0])setVal(r[0].input!==undefined?r[0].input:"");return r;});
+  }
+  useEffect(()=>{
+    if(!d)return;
+    const k=e=>{
+      if(e.key==="Escape"){e.preventDefault();fechar(d.input!==undefined?null:(d.buttons?d.buttons[0].value:false));}
+      else if(e.key==="Enter"&&d.input!==undefined){e.preventDefault();fechar(val);}
+    };
+    window.addEventListener("keydown",k);
+    return()=>window.removeEventListener("keydown",k);
+  },[d,val]);
+  if(!d)return null;
+  const isInput=d.input!==undefined;
+  const btns=isInput?[{label:"Cancelar",value:null},{label:d.ok||"OK",value:"__VAL__",primary:true}]:(d.buttons||[]);
+  const linhas=String(d.msg||"").split("\n");
+  const titulo=linhas[0];const resto=linhas.slice(1).join("\n").replace(/^\n+/,"");
+  return h("div",{onClick:e=>{if(e.target===e.currentTarget)fechar(isInput?null:btns[0].value);},style:{position:"fixed",inset:0,background:"rgba(20,8,10,.55)",zIndex:6000,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)",padding:16}},
+    h("div",{role:"dialog","aria-modal":"true",style:{background:P.bg2,border:`0.5px solid ${P.border}`,borderRadius:18,boxShadow:"0 40px 90px -30px rgba(0,0,0,.5)",padding:"26px 26px 22px",width:480,maxWidth:"100%",fontFamily:"'Jost',system-ui,sans-serif"}},
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:500,color:P.text,lineHeight:1.3,marginBottom:resto?10:18}},titulo),
+      resto&&h("div",{style:{fontSize:13,color:P.text2,lineHeight:1.6,whiteSpace:"pre-line",marginBottom:18}},resto),
+      isInput&&h("input",{autoFocus:true,type:d.type||"text",value:val,onChange:e=>setVal(e.target.value),style:{...IS,marginBottom:18}}),
+      h("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,flexWrap:"wrap"}},
+        btns.map((b,i)=>h(Btn,{key:i,variant:b.primary?(b.danger?"danger":"primary"):"ghost",onClick:()=>fechar(b.value==="__VAL__"?val:b.value)},b.label)))));
+}
+
 // ─── CONSTANTS & PALETTE ─────────────────────────────────────────────────────
 // ─── PALETA OFICIAL ───────────────────────────────────────────────────────────
 // Noite #221112 · Vinho #7A2942 · Escuro #472325 · Rosa Sec #A0566E
@@ -527,7 +598,7 @@ function findApptConflicts(cand,agenda,ignoreId){
   return out;
 }
 // Monta o texto do aviso e pergunta se deseja agendar mesmo assim (true = pode seguir)
-function confirmApptConflicts(conflicts){
+async function confirmApptConflicts(conflicts){
   if(!conflicts||!conflicts.length)return true;
   const linhas=conflicts.slice(0,4).map(c=>{
     const a=c.appt,fim=a.endTime||apptEndTime(a);
@@ -536,7 +607,7 @@ function confirmApptConflicts(conflicts){
     return "• "+quem+" · "+a.time+(fim?"–"+fim:"")+nota;
   }).join("\n");
   const mais=conflicts.length>4?"\n… e mais "+(conflicts.length-4):"";
-  return window.confirm("Atenção: conflito de horário.\n\n"+linhas+mais+"\n\nAgendar mesmo assim?");
+  return await confirmar("Atenção: conflito de horário.\n\n"+linhas+mais+"\n\nAgendar mesmo assim?");
 }
 const parseDMY=s=>parseAnyDate(s); // unificado: usa a mesma lógica de parseAnyDate (ver definição mais abaixo, função hoisted)
 const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
@@ -4060,8 +4131,8 @@ function MetaPorProcedimento({procedures=[],patients=[],selMonth,selYear,goals,s
     });
     setEditingProc(null);setInputVal("");
   }
-  function removeMeta(proc){
-    if(!window.confirm(`Remover a meta de "${proc}"?`))return;
+  async function removeMeta(proc){
+    if(!await confirmar(`Remover a meta de "${proc}"?`))return;
     setGoals(prev=>{const next={...(prev||{})};delete next[prefix+proc];return next;});
   }
   function addMeta(){
@@ -5219,13 +5290,13 @@ function Agenda({onSelectPatient,onRegistrarSessao,rooms=[],patients,setPatients
     const w=freeWindowFrom(a,agendaAfter||agenda);
     if(w)setFreedSlot(w);
   }
-  function saveAppt(){
+  async function saveAppt(){
     // ── Conflito de horário (só ao criar ou ao mudar o encaixe — editar observação não reabre o aviso) ──
     {
       const cand=editItem?{...editItem,...form}:form;
       const slotChanged=!editItem||["date","time","duration","location","patientName"].some(k=>String(editItem[k]||"")!==String(cand[k]||""));
       if(slotChanged&&!cand.blocked&&!APPT_INACTIVE.includes(cand.status)){
-        if(!confirmApptConflicts(findApptConflicts(cand,agenda,editItem?editItem.id:null)))return;
+        if(!await confirmApptConflicts(findApptConflicts(cand,agenda,editItem?editItem.id:null)))return;
       }
     }
     // ── Auto-cadastro: cria paciente se o nome não existir no cadastro ──
@@ -5265,7 +5336,7 @@ function Agenda({onSelectPatient,onRegistrarSessao,rooms=[],patients,setPatients
       let reason="";
       const statusChangedToReason=!merged.blocked&&merged.status!==editItem.status&&["Cancelado","Faltou","Reagendado"].includes(merged.status);
       if(statusChangedToReason){
-        reason=window.prompt(`Motivo (${merged.status}) — opcional:`,"")||"";
+        reason=await pedirTexto(`Motivo (${merged.status}) — opcional:`,"")||"";
       }
       const logged=merged.blocked?merged:logApptChange(editItem,merged,setAgendaLog,reason);
       setAgenda(prev=>prev.map(a=>a.id===editItem.id?logged:a));
@@ -5281,22 +5352,22 @@ function Agenda({onSelectPatient,onRegistrarSessao,rooms=[],patients,setPatients
     }
     setShowNew(false);setEditItem(null);
   }
-  function delAppt(id){
-    if(!window.confirm("Excluir este agendamento?"))return;
+  async function delAppt(id){
+    if(!await confirmar("Excluir este agendamento?"))return;
     const item=agenda.find(a=>a.id===id);
     if(item&&!item.blocked)logApptDelete(item,setAgendaLog);
     setAgenda(prev=>prev.filter(a=>a.id!==id));
     if(item&&!APPT_INACTIVE.includes(item.status))slotFreed(item,agenda.filter(a=>a.id!==id));
     if(item)notify("Agendamento excluído.","ok",{label:"Desfazer",fn:()=>setAgenda(prev=>prev.some(a=>a.id===item.id)?prev:[...prev,item])});
   }
-  function cycleStatus(id){
+  async function cycleStatus(id){
     const a=agenda.find(x=>x.id===id);
     if(!a||a.blocked)return;
     const i=APPT_STATUS.indexOf(a.status);
     const newStatus=APPT_STATUS[(i+1)%APPT_STATUS.length];
     let reason="";
     if(["Cancelado","Faltou","Reagendado"].includes(newStatus)){
-      reason=window.prompt(`Motivo (${newStatus}) — opcional:`,"")||"";
+      reason=await pedirTexto(`Motivo (${newStatus}) — opcional:`,"")||"";
     }
     const after={...a,status:newStatus};
     const logged=logApptChange(a,after,setAgendaLog,reason);
@@ -5308,11 +5379,11 @@ function Agenda({onSelectPatient,onRegistrarSessao,rooms=[],patients,setPatients
   function nextMonth(){setViewMonth(v=>{const m=v.m+1>11?0:v.m+1,y=v.m+1>11?v.y+1:v.y;return{y,m};});}
 
   // ── Reagendamento manual (pelo botão 📅) ──
-  function rescheduleAppt(a){
-    const novaData=window.prompt("Reagendar para qual data? (AAAA-MM-DD)",a.date);
+  async function rescheduleAppt(a){
+    const novaData=await pedirTexto("Reagendar para qual data? (AAAA-MM-DD)",a.date);
     if(!novaData||!novaData.match(/^\d{4}-\d{2}-\d{2}$/))return;
-    const novaHora=window.prompt("Qual horário? (HH:MM)",a.time)||a.time;
-    const reason=window.prompt("Motivo do reagendamento (opcional):","")||"";
+    const novaHora=await pedirTexto("Qual horário? (HH:MM)",a.time)||a.time;
+    const reason=await pedirTexto("Motivo do reagendamento (opcional):","")||"";
     const after={...a,date:novaData,time:novaHora,status:movedStatus(a)};
     const logged=logApptChange(a,after,setAgendaLog,reason);
     setAgenda(prev=>prev.map(ap=>ap.id===a.id?logged:ap));
@@ -5361,7 +5432,7 @@ function Agenda({onSelectPatient,onRegistrarSessao,rooms=[],patients,setPatients
     e.dataTransfer.dropEffect="move";
     setDragOver({date,minute:totalMin});
   }
-  function onDropSlotMin(e,date,totalMin){
+  async function onDropSlotMin(e,date,totalMin){
     e.preventDefault();
     e.stopPropagation();
     const rawId=e.dataTransfer.getData("text/plain")||String(dragIdRef.current||"");
@@ -5378,8 +5449,8 @@ function Agenda({onSelectPatient,onRegistrarSessao,rooms=[],patients,setPatients
       return;
     }
     if(a.date===date&&a.time===newTime)return;
-    if(!APPT_INACTIVE.includes(a.status)&&!confirmApptConflicts(findApptConflicts({...a,date,time:newTime},agenda,a.id)))return;
-    const reason=window.prompt("Motivo do reagendamento (opcional):","")||"";
+    if(!APPT_INACTIVE.includes(a.status)&&!await confirmApptConflicts(findApptConflicts({...a,date,time:newTime},agenda,a.id)))return;
+    const reason=await pedirTexto("Motivo do reagendamento (opcional):","")||"";
     const after={...a,date,time:newTime,status:movedStatus(a)};
     const logged=logApptChange(a,after,setAgendaLog,reason);
     setAgenda(prev=>prev.map(ap=>ap.id===id?logged:ap));
@@ -5393,7 +5464,7 @@ function Agenda({onSelectPatient,onRegistrarSessao,rooms=[],patients,setPatients
     e.dataTransfer.dropEffect="move";
     setDragOver({date:dateStr,minute:null});
   }
-  function onDropMonthDay(e,dateStr){
+  async function onDropMonthDay(e,dateStr){
     e.preventDefault();
     const rawId=e.dataTransfer.getData("text/plain")||String(dragIdRef.current||"");
     const id=Number(rawId);
@@ -5402,7 +5473,7 @@ function Agenda({onSelectPatient,onRegistrarSessao,rooms=[],patients,setPatients
     if(!id)return;
     const a=agenda.find(x=>x.id===id);
     if(!a||a.blocked||a.date===dateStr)return;
-    const reason=window.prompt("Motivo do reagendamento (opcional):","")||"";
+    const reason=await pedirTexto("Motivo do reagendamento (opcional):","")||"";
     const after={...a,date:dateStr,status:movedStatus(a)};
     const logged=logApptChange(a,after,setAgendaLog,reason);
     setAgenda(prev=>prev.map(ap=>ap.id===id?logged:ap));
@@ -5467,8 +5538,8 @@ function Agenda({onSelectPatient,onRegistrarSessao,rooms=[],patients,setPatients
         setAgenda(prev=>prev.map(x=>x.id===a.id?{...x,presenca:{status,at:new Date().toISOString()},...(status==="confirmada"&&!APPT_INACTIVE.includes(x.status)?{status:"Confirmado"}:{})}:x));
         if(status==="pedida"&&setWaLog){const pt=patientOfAppt(a,patients);setWaLog(prev=>[...(Array.isArray(prev)?prev:[]),{id:genId(),key:`confirmacao_${a.id}`,patientId:pt?pt.id:null,patientName:a.patientName,type:"confirmacao",label:null,status:"enviada",at:new Date().toISOString()}].slice(-1000));}
       }
-      function naoVem(a){
-        if(!window.confirm(`Marcar ${a.patientName} como cancelado amanhã às ${a.time}?`))return;
+      async function naoVem(a){
+        if(!await confirmar(`Marcar ${a.patientName} como cancelado amanhã às ${a.time}?`))return;
         const after={...a,status:"Cancelado"};
         const logged=logApptChange(a,after,setAgendaLog,"Avisou na confirmação");
         setAgenda(prev=>prev.map(x=>x.id===a.id?logged:x));
@@ -6182,7 +6253,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations,agenda=[]}
   async function addPatient(){
     if(!String(form.name||"").trim()){showAlert("Preencha o nome da paciente.");return;}
     const forte=dupMatches.find(m=>m.motivo==="mesmo CPF"||m.motivo==="mesmo telefone"||m.motivo==="mesmo nome");
-    if(forte&&!window.confirm(`Já existe "${forte.p.name}" com ${forte.motivo}.\n\nCadastrar mesmo assim como outra paciente?`))return;
+    if(forte&&!await confirmar(`Já existe "${forte.p.name}" com ${forte.motivo}.\n\nCadastrar mesmo assim como outra paciente?`))return;
     const newId=genId();
     let photoPatch={profilePhoto:null};
     if(profPhotoFile){
@@ -6324,25 +6395,25 @@ function AgendaApptRow({a,setAgenda,setAgendaLog,patient,patients,setPatients,pr
   const apptDate=new Date((a.date||"")+"T"+(a.time||"00:00"));
   const isUpcoming=apptDate>=new Date();
 
-  function cycleStatus(){
+  async function cycleStatus(){
     if(!setAgenda)return;
     const i=APPT_STATUS.indexOf(a.status);
     const newStatus=APPT_STATUS[(i+1)%APPT_STATUS.length];
     let reason="";
     if(["Cancelado","Faltou","Reagendado"].includes(newStatus)){
-      reason=window.prompt(`Motivo (${newStatus}) — opcional:`,"")||"";
+      reason=await pedirTexto(`Motivo (${newStatus}) — opcional:`,"")||"";
     }
     const after={...a,status:newStatus};
     const logged=logApptChange(a,after,setAgendaLog,reason);
     setAgenda(prev=>prev.map(ap=>ap.id===a.id?logged:ap));
   }
 
-  function reschedule(){
-    const novaData=window.prompt("Reagendar para qual data? (AAAA-MM-DD)",a.date);
+  async function reschedule(){
+    const novaData=await pedirTexto("Reagendar para qual data? (AAAA-MM-DD)",a.date);
     if(!novaData||!novaData.match(/^\d{4}-\d{2}-\d{2}$/))return;
-    const novaHora=window.prompt("Qual horário? (HH:MM)",a.time)||a.time;
+    const novaHora=await pedirTexto("Qual horário? (HH:MM)",a.time)||a.time;
     if(!setAgenda)return;
-    const reason=window.prompt("Motivo do reagendamento (opcional):","")||"";
+    const reason=await pedirTexto("Motivo do reagendamento (opcional):","")||"";
     const after={...a,date:novaData,time:novaHora,status:"Reagendado"};
     const logged=logApptChange(a,after,setAgendaLog,reason);
     setAgenda(prev=>prev.map(ap=>ap.id===a.id?logged:ap));
@@ -7153,9 +7224,9 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
     const sess=(patient.sessions||[]).find(s=>s.id===sessId);
     if(sess)setTimeout(()=>syncIncome({...sess,finStatus:newSt,paid:newSt==="Pago"},patient.name),0);
   }
-  function delSession(id){
+  async function delSession(id){
     const sess=(patient.sessions||[]).find(s=>s.id===id);
-    if(!window.confirm(isSessLocked(sess)?"Este registro tem mais de 24h e faz parte do prontuário.\n\nExcluir mesmo assim? Esta ação não pode ser desfeita.":"Excluir sessão?"))return;
+    if(!await confirmar(isSessLocked(sess)?"Este registro tem mais de 24h e faz parte do prontuário.\n\nExcluir mesmo assim? Esta ação não pode ser desfeita.":"Excluir sessão?"))return;
     if(sess?.stockDebit&&Number(sess.stockDebit.qty)>0){
       estornarLote(setProducts,sess.stockDebit.product,sess.stockDebit.loteId,sess.stockDebit.qty,`Estorno · sessão excluída (${patient.name})`);
     }
@@ -7251,8 +7322,8 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
     if(!items.length){showAlert("Este planejamento não tem procedimentos marcados.");return;}
     setEditOrc(null);setOrcForm(orcRecalc({...blankOrc,items,obs:"Gerado do planejamento: "+(pl.title||"")}));setTab("orcamentos");setShowOrc(true);
   }
-  function deletePlan(id){
-    if(!window.confirm("Excluir planejamento?"))return;
+  async function deletePlan(id){
+    if(!await confirmar("Excluir planejamento?"))return;
     const pl=(patient.planejamento||[]).find(p=>p.id===id);
     const markers=pl?.markerPlan?.markers||[];
     markers.forEach(m=>{
@@ -7287,7 +7358,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
     upd(p=>({...p,orcamentos:editOrc?(p.orcamentos||[]).map(o=>o.id===orc.id?orc:o):[orc,...(p.orcamentos||[])]}));
     setShowOrc(false);setEditOrc(null);setOrcForm(blankOrc);setOrcItemInput("");
   }
-  function deleteOrcamento(id){const o=(patient.orcamentos||[]).find(x=>x.id===id);if(!window.confirm("Excluir orçamento?"))return;upd(p=>({...p,orcamentos:(p.orcamentos||[]).filter(o=>o.id!==id)}));if(o)notify("Orçamento excluído.","ok",{label:"Desfazer",fn:()=>upd(p=>({...p,orcamentos:(p.orcamentos||[]).some(x=>x.id===o.id)?p.orcamentos:[...(p.orcamentos||[]),o]}))});}
+  async function deleteOrcamento(id){const o=(patient.orcamentos||[]).find(x=>x.id===id);if(!await confirmar("Excluir orçamento?"))return;upd(p=>({...p,orcamentos:(p.orcamentos||[]).filter(o=>o.id!==id)}));if(o)notify("Orçamento excluído.","ok",{label:"Desfazer",fn:()=>upd(p=>({...p,orcamentos:(p.orcamentos||[]).some(x=>x.id===o.id)?p.orcamentos:[...(p.orcamentos||[]),o]}))});}
   function updateOrcStatus(id,status){upd(p=>({...p,orcamentos:(p.orcamentos||[]).map(o=>o.id===id?{...o,status}:o)}));}
   // Registra que você cobrou uma resposta (zera a contagem de dias)
   function markOrcContact(id){upd(p=>({...p,orcamentos:(p.orcamentos||[]).map(o=>o.id===id?{...o,lastContactAt:todayISO(),contacts:[...(o.contacts||[]),todayISO()]}:o)}));}
@@ -7324,7 +7395,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
     setShowNewPkg(false);setPkgForm({name:"",procedure:"",total:4,price:"",notes:""});
   }
   function updPkg(pkgId,fn){upd(p=>({...p,sessions_packages:(p.sessions_packages||[]).map(pkg=>pkg.id===pkgId?fn(pkg):pkg)}));}
-  function deletePackage(pkgId){const k=(patient.sessions_packages||[]).find(x=>x.id===pkgId);if(!window.confirm("Excluir pacote?"))return;upd(p=>({...p,sessions_packages:(p.sessions_packages||[]).filter(pkg=>pkg.id!==pkgId)}));if(k)notify("Pacote excluído.","ok",{label:"Desfazer",fn:()=>upd(p=>({...p,sessions_packages:(p.sessions_packages||[]).some(x=>x.id===k.id)?p.sessions_packages:[...(p.sessions_packages||[]),k]}))});}
+  async function deletePackage(pkgId){const k=(patient.sessions_packages||[]).find(x=>x.id===pkgId);if(!await confirmar("Excluir pacote?"))return;upd(p=>({...p,sessions_packages:(p.sessions_packages||[]).filter(pkg=>pkg.id!==pkgId)}));if(k)notify("Pacote excluído.","ok",{label:"Desfazer",fn:()=>upd(p=>({...p,sessions_packages:(p.sessions_packages||[]).some(x=>x.id===k.id)?p.sessions_packages:[...(p.sessions_packages||[]),k]}))});}
   // Saldo de pacotes ativos (sessões e valor proporcional ainda não usado)
   const pkgSaldo=(()=>{
     const act=(patient.sessions_packages||[]).filter(pkg=>pkgState(pkg).aberto);
@@ -7343,7 +7414,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
       h("div",{style:{marginLeft:"auto",display:"flex",gap:8}},
         h(Btn,{variant:"ghost",onClick:()=>setShowPdfPac(true),style:{fontSize:12,padding:"6px 14px"}},"Gerar PDF"),
         h(Btn,{variant:"ghost",onClick:()=>setEditPat(true),style:{fontSize:12,padding:"6px 14px"}},"✎ Editar"),
-        h(Btn,{variant:"danger",onClick:()=>{if(!window.confirm("Excluir paciente?"))return;const pac=patient;setPatients(prev=>prev.filter(p=>p.id!==pac.id));onBack();notify(pac.name+" foi excluída.","ok",{label:"Desfazer",fn:()=>setPatients(prev=>prev.some(p=>p.id===pac.id)?prev:[...prev,pac])});},style:{fontSize:12,padding:"6px 14px"}},"🗑 Excluir")
+        h(Btn,{variant:"danger",onClick:async()=>{if(!await confirmar("Excluir paciente?"))return;const pac=patient;setPatients(prev=>prev.filter(p=>p.id!==pac.id));onBack();notify(pac.name+" foi excluída.","ok",{label:"Desfazer",fn:()=>setPatients(prev=>prev.some(p=>p.id===pac.id)?prev:[...prev,pac])});},style:{fontSize:12,padding:"6px 14px"}},"🗑 Excluir")
       )
     ),
     // Header card
@@ -7592,7 +7663,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
               h("div",{style:{fontSize:10,textTransform:"uppercase",letterSpacing:".12em",color:P.text3,marginBottom:6}},"Começar de um modelo"),
               h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},modelos.map(m=>h("span",{key:m.id,style:{display:"inline-flex",alignItems:"center",gap:4}},
                 chip(false,m.nome,()=>setOrcForm(p=>orcRecalc({...p,items:[...m.items],desc:String(m.desc||""),valorManual:false,tituloManual:true,title:m.nome}))),
-                setClinicSettings&&h("button",{onClick:()=>{if(window.confirm("Apagar o modelo \""+m.nome+"\"?"))setClinicSettings(s=>({...s,orcModelos:(s.orcModelos||[]).filter(x=>x.id!==m.id)}));},title:"Apagar modelo",style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:12}},"×"))))),
+                setClinicSettings&&h("button",{onClick:async()=>{if(await confirmar("Apagar o modelo \""+m.nome+"\"?"))setClinicSettings(s=>({...s,orcModelos:(s.orcModelos||[]).filter(x=>x.id!==m.id)}));},title:"Apagar modelo",style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:12}},"×"))))),
             h(Field,{label:"Procedimentos"},h("div",null,
               h("div",{style:{display:"flex",gap:8,marginBottom:8}},
                 h("select",{value:orcItemInput,onChange:e=>setOrcItemInput(e.target.value),style:{...IS,flex:1}},h("option",{value:""},"Selecionar procedimento…"),procedures.map(p=>h("option",{key:p,value:p},p+(orcPrecoPadrao(p)>0?" · "+fmtCurr(orcPrecoPadrao(p)):"")))),
@@ -7631,7 +7702,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
           );
         })(),
         h("div",{style:{display:"flex",gap:10,justifyContent:"space-between",alignItems:"center",marginTop:12,flexWrap:"wrap"}},
-          setClinicSettings&&(orcForm.items||[]).length>1?h("button",{onClick:()=>{const nome=window.prompt("Nome do modelo (ex.: Harmonização completa):",orcForm.title||"");if(!nome||!nome.trim())return;setClinicSettings(s=>({...s,orcModelos:[...((s&&s.orcModelos)||[]),{id:genId(),nome:nome.trim(),items:[...orcForm.items],desc:orcForm.desc||"0"}]}));notify("Modelo salvo. Ele aparece no topo do próximo orçamento.","ok");},style:{background:"none",border:"none",color:P.accent,cursor:"pointer",fontSize:12.5,fontFamily:"'Jost',system-ui,sans-serif",padding:0}},"Salvar como modelo"):h("span",null),
+          setClinicSettings&&(orcForm.items||[]).length>1?h("button",{onClick:async()=>{const nome=await pedirTexto("Nome do modelo (ex.: Harmonização completa):",orcForm.title||"");if(!nome||!nome.trim())return;setClinicSettings(s=>({...s,orcModelos:[...((s&&s.orcModelos)||[]),{id:genId(),nome:nome.trim(),items:[...orcForm.items],desc:orcForm.desc||"0"}]}));notify("Modelo salvo. Ele aparece no topo do próximo orçamento.","ok");},style:{background:"none",border:"none",color:P.accent,cursor:"pointer",fontSize:12.5,fontFamily:"'Jost',system-ui,sans-serif",padding:0}},"Salvar como modelo"):h("span",null),
           h("div",{style:{display:"flex",gap:10}},h(Btn,{variant:"ghost",onClick:()=>{setShowOrc(false);setEditOrc(null);}},"Cancelar"),h(Btn,{onClick:saveOrcamento,disabled:!(orcForm.items||[]).length},editOrc?"Salvar":"Criar orçamento")))
       )
     ),
@@ -8891,11 +8962,11 @@ function Estoque({products,setProducts,stockCats,setStockCats,patients=[],onSele
     setLoteForm(blankLote);
   }
 
-  function del(id){const it=products.find(i=>i.id===id);if(!window.confirm("Excluir produto?"))return;setProducts(prev=>prev.filter(i=>i.id!==id));if(it)notify("Produto excluído.","ok",{label:"Desfazer",fn:()=>setProducts(prev=>prev.some(i=>i.id===it.id)?prev:[...prev,it])});}
+  async function del(id){const it=products.find(i=>i.id===id);if(!await confirmar("Excluir produto?"))return;setProducts(prev=>prev.filter(i=>i.id!==id));if(it)notify("Produto excluído.","ok",{label:"Desfazer",fn:()=>setProducts(prev=>prev.some(i=>i.id===it.id)?prev:[...prev,it])});}
   function openEdit(item){const tam=Number(item.tamFrasco)||0;setEditItem(item);setForm({...blank,...item,qty:String(getTotalQty(item)),cost:String(item.cost||""),tamFrasco:tam?String(tam):"",diasAposAberto:item.diasAposAberto?String(item.diasAposAberto):"",modoUso:item.modoUso||"fracionado",embalagem:item.embalagem||"frasco",preco:Number(item.cost)>0?String(Math.round(Number(item.cost)*(tam||1)*100)/100):"",minEmb:Number(item.min)>0?String(tam?Math.round(Number(item.min)/tam*100)/100:item.min):""});setShowNew(true);}
   // Descarta a sobra de um frasco aberto (vencido ou não aproveitável)
-  function descartarSobra(item,lote,info){
-    if(!window.confirm(`Descartar a sobra de ${info.sobra} ${item.unit||""} do lote ${lote.codigo}?\n\nIsso registra uma saída "Descarte de sobra" no estoque.`))return;
+  async function descartarSobra(item,lote,info){
+    if(!await confirmar(`Descartar a sobra de ${info.sobra} ${item.unit||""} do lote ${lote.codigo}?\n\nIsso registra uma saída "Descarte de sobra" no estoque.`))return;
     debitarLote(setProducts,item.name,lote.id,info.sobra,`Descarte de sobra · frasco aberto${info.dias!=null?" há "+info.dias+" dias":""}`);
   }
 
@@ -8950,10 +9021,10 @@ function Estoque({products,setProducts,stockCats,setStockCats,patients=[],onSele
   });
   const invDiffs=invRows.filter(r=>invCounts[r.key]!==undefined&&invCounts[r.key]!==""&&Number(invCounts[r.key])!==r.sistema);
   const invContados=invRows.filter(r=>invCounts[r.key]!==undefined&&invCounts[r.key]!=="").length;
-  function aplicarInventario(){
+  async function aplicarInventario(){
     if(!invContados)return;
     const valorDif=invDiffs.reduce((a,r)=>a+(Number(invCounts[r.key])-r.sistema)*(Number(r.p.cost)||0),0);
-    if(!window.confirm(`Aplicar inventário?\n\n${invContados} item(ns) contado(s), ${invDiffs.length} com diferença.\nImpacto no valor do estoque: ${valorDif>=0?"+":""}${fmtCurr(Math.round(valorDif))}`))return;
+    if(!await confirmar(`Aplicar inventário?\n\n${invContados} item(ns) contado(s), ${invDiffs.length} com diferença.\nImpacto no valor do estoque: ${valorDif>=0?"+":""}${fmtCurr(Math.round(valorDif))}`))return;
     const hoje=todayISO(),dataBR=new Date().toLocaleDateString("pt-BR");
     setProducts(prev=>prev.map(p=>{
       if(!p||typeof p!=="object")return p;
@@ -9481,6 +9552,7 @@ function recurringDateFor(rule,year,month){
   return `${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
 }
 // Verifica se uma regra recorrente já deveria ter começado a gerar lançamentos no mês/ano informado
+const recurringKey=(year,month)=>`${year}-${String(Number(month)+1).padStart(2,"0")}`;
 function recurringHasStartedBy(rule,year,month){
   if(!rule.startDate)return true;
   const start=parseAnyDate(rule.startDate);
@@ -9495,6 +9567,7 @@ function generateRecurringExpenses(rules=[],existingExpenses=[],refDate=new Date
   const novas=[];
   (rules||[]).filter(r=>r.active!==false).forEach(rule=>{
     if(!recurringHasStartedBy(rule,year,month))return;
+    if((rule.skips||[]).includes(recurringKey(year,month)))return;
     const jaExiste=existingExpenses.some(e=>e.recurringId===rule.id&&e.recurringMonth===month&&e.recurringYear===year);
     if(jaExiste)return;
     novas.push({
@@ -9572,7 +9645,7 @@ function FluxoCaixaProjetado({patients=[],incomes=[],expenses=[],recurringExpens
         if(iso<=todayISO)continue;
         if(iso>addDays(todayISO,hz))continue;
         const jaExiste=expenses.some(e=>e.recurringId===rule.id&&e.recurringMonth===mo&&e.recurringYear===yr);
-        if(jaExiste)continue;
+        if(jaExiste||(rule.skips||[]).includes(recurringKey(yr,mo)))continue;
         result.push({iso,value:-Number(rule.value||0),label:rule.desc||"Despesa recorrente",cat:rule.cat||"Outros",source:"recorrente"});
       }
     });
@@ -9818,7 +9891,7 @@ function FluxoCaixaProjetado({patients=[],incomes=[],expenses=[],recurringExpens
   );
 }
 
-function Financeiro({agenda=[],bookings=[],patients,setPatients,expenses,setExpenses,recurringExpenses=[],setRecurringExpenses,incomes,setIncomes,settings,setSettings,goals={},setGoals,procedures=[],proceduresFull=[],products=[],maquininhas=[],setMaquininhas}){
+function Financeiro({agenda=[],bookings=[],setBookings,patients,setPatients,expenses,setExpenses,recurringExpenses=[],setRecurringExpenses,incomes,setIncomes,settings,setSettings,goals={},setGoals,procedures=[],proceduresFull=[],products=[],maquininhas=[],setMaquininhas}){
   const[showNewExp,setShowNewExp]=useState(false);
   const[editExp,setEditExp]=useState(null);
   const[showNewInc,setShowNewInc]=useState(false);
@@ -9982,19 +10055,19 @@ function Financeiro({agenda=[],bookings=[],patients,setPatients,expenses,setExpe
   const prevRef=new Date(now.getFullYear(),now.getMonth()-1,1);
   const prevKey=`${prevRef.getFullYear()}-${String(prevRef.getMonth()+1).padStart(2,"0")}`;
   const prevOpen=!locks.some(l=>l.month===prevKey)&&(allS.some(s=>monthKeyOf(s.date)===prevKey)||expenses.some(e=>monthKeyOf(e.date)===prevKey));
-  function fecharMes(){
+  async function fecharMes(){
     if(!setSettings)return;
     const pendS=monthSessions.filter(s=>!s.paid&&s.finStatus!=="Cancelado").length;
     const pendE=monthExpenses.filter(e=>e.status==="Pendente").length;
     const aviso=(pendS||pendE)?`\n\nAtenção: ainda há ${pendS} sessão(ões) a receber e ${pendE} despesa(s) pendente(s) neste mês. Depois de fechado, o status delas não muda mais.`:"";
-    if(!window.confirm(`Fechar ${MONTH_NAMES[selMonth]} de ${selYear}?\n\nReceita: ${fmtCurr(Math.round(received))}\nDespesas da clínica: ${fmtCurr(Math.round(totalExpClinica))}\nSua retirada: ${fmtCurr(Math.round(totalRetirada))}\nResultado: ${fmtCurr(Math.round(received-totalExpClinica))}${aviso}\n\nDepois de fechado, ninguém altera valores, pagamentos ou lançamentos deste mês sem reabrir.`))return;
+    if(!await confirmar(`Fechar ${MONTH_NAMES[selMonth]} de ${selYear}?\n\nReceita: ${fmtCurr(Math.round(received))}\nDespesas da clínica: ${fmtCurr(Math.round(totalExpClinica))}\nSua retirada: ${fmtCurr(Math.round(totalRetirada))}\nResultado: ${fmtCurr(Math.round(received-totalExpClinica))}${aviso}\n\nDepois de fechado, ninguém altera valores, pagamentos ou lançamentos deste mês sem reabrir.`))return;
     const resumo={receita:Math.round(received),despesas:Math.round(totalExpClinica),retirada:Math.round(totalRetirada),resultado:Math.round(received-totalExpClinica)};
     setSettings(st=>({...st,financeLocks:[...((st&&st.financeLocks)||[]).filter(l=>l.month!==selKey),{month:selKey,at:new Date().toISOString(),resumo}]}));
     notify(`${MONTH_NAMES[selMonth]} fechado.`,"ok");
   }
-  function reabrirMes(){
+  async function reabrirMes(){
     if(!setSettings||!selLock)return;
-    if(!window.confirm(`Reabrir ${MONTH_NAMES[selMonth]} de ${selYear}? Os lançamentos voltam a poder ser alterados.`))return;
+    if(!await confirmar(`Reabrir ${MONTH_NAMES[selMonth]} de ${selYear}? Os lançamentos voltam a poder ser alterados.`))return;
     setSettings(st=>({...st,financeLocks:((st&&st.financeLocks)||[]).filter(l=>l.month!==selKey),financeLockLog:[...((st&&st.financeLockLog)||[]),{month:selKey,reabertoEm:new Date().toISOString(),fechadoEm:selLock.at}].slice(-50)}));
     notify(`${MONTH_NAMES[selMonth]} reaberto.`,"info");
   }
@@ -10210,7 +10283,7 @@ function Financeiro({agenda=[],bookings=[],patients,setPatients,expenses,setExpe
     setShowNewExp(false);setEditExp(null);setForm(blankExp);
   }
   function toggleRecurringActive(id){setRecurringExpenses(prev=>prev.map(r=>r.id===id?{...r,active:r.active===false?true:false}:r));}
-  function delRecurring(id){const it=(recurringExpenses||[]).find(r=>r.id===id);if(!window.confirm("Excluir esta despesa recorrente? Lançamentos já gerados não serão apagados."))return;setRecurringExpenses(prev=>prev.filter(r=>r.id!==id));if(it)notify("Despesa fixa excluída.","ok",{label:"Desfazer",fn:()=>setRecurringExpenses(prev=>prev.some(r=>r.id===it.id)?prev:[...prev,it])});}
+  async function delRecurring(id){const it=(recurringExpenses||[]).find(r=>r.id===id);if(!await confirmar("Excluir esta despesa recorrente? Lançamentos já gerados não serão apagados."))return;setRecurringExpenses(prev=>prev.filter(r=>r.id!==id));if(it)notify("Despesa fixa excluída.","ok",{label:"Desfazer",fn:()=>setRecurringExpenses(prev=>prev.some(r=>r.id===it.id)?prev:[...prev,it])});}
   function openEditRecurring(r){setEditRecurring(r);}
   function saveRecurringEdit(){
     setRecurringExpenses(prev=>prev.map(r=>r.id===editRecurring.id?{...editRecurring,value:Number(editRecurring.value)||0,dayOfMonth:Number(editRecurring.dayOfMonth)||1}:r));
@@ -10241,19 +10314,45 @@ function Financeiro({agenda=[],bookings=[],patients,setPatients,expenses,setExpe
     else setIncomes(prev=>[...prev,entry]);
     setShowNewInc(false);setEditInc(null);setIncForm(blankInc);
   }
-  function delExp(e){
+  async function delExp(e){
     const exp=typeof e==="object"?e:expenses.find(x=>x.id===e);
     if(!exp)return;
-    if(exp.groupId){
-      const totalParc=(exp.parcelaTotal)||expenses.filter(x=>x.groupId===exp.groupId).length;
-      const excluirTodas=window.confirm(`Esta despesa faz parte de uma compra parcelada (parcela ${exp.parcelaNum}/${totalParc}).\n\nOK = excluir TODAS as ${totalParc} parcelas dessa compra.\nCancelar = excluir apenas esta parcela.`);
-      if(excluirTodas){ setExpenses(prev=>prev.filter(x=>x.groupId!==exp.groupId)); return; }
-      if(window.confirm("Excluir apenas esta parcela?")){setExpenses(prev=>prev.filter(x=>x.id!==exp.id));notify("Parcela excluída.","ok",{label:"Desfazer",fn:()=>setExpenses(prev=>prev.some(x=>x.id===exp.id)?prev:[...prev,exp])});}
+    const desfazerExp=lista=>()=>setExpenses(prev=>[...prev,...lista.filter(x=>!prev.some(y=>y.id===x.id))]);
+    if(lockedMonthsOf(settings).has(monthKeyOf(exp.date))){showAlert(LOCK_MSG);return;}
+    // Pagamento de horário de sala: excluir aqui faz o horário voltar a "a pagar" em Salas
+    if(exp.bookingId!=null&&setBookings){
+      if(!await confirmar(`Excluir "${exp.desc}"?\nO horário da sala volta a ficar como "a pagar" em Salas.`))return;
+      setExpenses(prev=>prev.filter(x=>x.id!==exp.id));
+      setBookings(prev=>(Array.isArray(prev)?prev:[]).map(b=>b&&b.id===exp.bookingId?{...b,paid:false}:b));
+      notify("Pagamento da sala excluído.","ok",{label:"Desfazer",fn:()=>{desfazerExp([exp])();setBookings(prev=>(Array.isArray(prev)?prev:[]).map(b=>b&&b.id===exp.bookingId?{...b,paid:true}:b));}});
       return;
     }
-    if(window.confirm("Excluir despesa?")){setExpenses(prev=>prev.filter(x=>x.id!==exp.id));notify("Despesa excluída.","ok",{label:"Desfazer",fn:()=>setExpenses(prev=>prev.some(x=>x.id===exp.id)?prev:[...prev,exp])});}
+    if(exp.groupId){
+      const grupo=expenses.filter(x=>x.groupId===exp.groupId);
+      const totalParc=(exp.parcelaTotal)||grupo.length;
+      const r=await escolher(`Excluir parcela ${exp.parcelaNum}/${totalParc}?\nEsta despesa faz parte de uma compra parcelada.`,[{label:"Só esta parcela",value:"uma"},{label:`Todas as ${totalParc}`,value:"todas",primary:true,danger:true}]);
+      if(!r)return;
+      if(r==="todas"){setExpenses(prev=>prev.filter(x=>x.groupId!==exp.groupId));notify("Compra parcelada excluída.","ok",{label:"Desfazer",fn:desfazerExp(grupo)});return;}
+      setExpenses(prev=>prev.filter(x=>x.id!==exp.id));notify("Parcela excluída.","ok",{label:"Desfazer",fn:desfazerExp([exp])});
+      return;
+    }
+    // Despesa fixa (gerada todo mês): sem marcar o mês como pulado, ela voltava sozinha na hora
+    const regra=exp.recurringId!=null?(recurringExpenses||[]).find(r=>r.id===exp.recurringId):null;
+    if(regra){
+      const mk=recurringKey(exp.recurringYear,exp.recurringMonth);
+      const r=await escolher(`Excluir "${exp.desc}"?\nÉ uma despesa fixa, lançada todo mês.`,[{label:"Parar todo mês",value:"parar"},{label:"Só deste mês",value:"mes",primary:true,danger:true}]);
+      if(!r)return;
+      const regraAntes=regra;
+      setRecurringExpenses(prev=>(prev||[]).map(x=>x.id!==regra.id?x:(r==="parar"?{...x,active:false,skips:[...new Set([...(x.skips||[]),mk])]}:{...x,skips:[...new Set([...(x.skips||[]),mk])]})));
+      setExpenses(prev=>prev.filter(x=>x.id!==exp.id));
+      notify(r==="parar"?`"${exp.desc}" excluída e não será mais lançada.`:"Despesa excluída deste mês.","ok",{label:"Desfazer",fn:()=>{setRecurringExpenses(prev=>(prev||[]).map(x=>x.id===regraAntes.id?regraAntes:x));desfazerExp([exp])();}});
+      return;
+    }
+    if(!await confirmar(`Excluir "${exp.desc||"despesa"}"?`))return;
+    setExpenses(prev=>prev.filter(x=>x.id!==exp.id));
+    notify("Despesa excluída.","ok",{label:"Desfazer",fn:desfazerExp([exp])});
   }
-  function delInc(id){const it=(incomes||[]).find(i=>i.id===id);if(!window.confirm("Excluir entrada?"))return;setIncomes(prev=>prev.filter(i=>i.id!==id));if(it)notify("Entrada excluída.","ok",{label:"Desfazer",fn:()=>setIncomes(prev=>prev.some(i=>i.id===it.id)?prev:[...prev,it])});}
+  async function delInc(id){const it=(incomes||[]).find(i=>i.id===id);if(!await confirmar("Excluir entrada?"))return;setIncomes(prev=>prev.filter(i=>i.id!==id));if(it)notify("Entrada excluída.","ok",{label:"Desfazer",fn:()=>setIncomes(prev=>prev.some(i=>i.id===it.id)?prev:[...prev,it])});}
   function openEditExp(e){setEditExp(e);setForm({...e,value:String(e.value),isRecurring:false,isInstallment:false,dayOfMonth:String(now.getDate())});setShowNewExp(true);}
   function openEditInc(i){setEditInc(i);setIncForm({...i,value:String(i.value)});setShowNewInc(true);}
   async function handleExportPDF(){
@@ -13573,9 +13672,9 @@ function Configuracoes({onZerar,patients=[],setPatients=()=>{},procedures,setPro
   const[newStockCat,setNewStockCat]=useState("");
   const efectiveStockCats=Array.isArray(stockCats)&&stockCats.length>0?stockCats:DEFAULT_INJET_CATS;
   function addStockCat(){const t=newStockCat.trim();if(t&&!efectiveStockCats.includes(t)){setStockCats([...efectiveStockCats,t]);setNewStockCat("");}}
-  function delStockCat(cat){
+  async function delStockCat(cat){
     if(products.some(p=>p.cat===cat)){showAlert("Categoria em uso por produto(s). Remova-os primeiro.");return;}
-    if(window.confirm("Excluir categoria: "+cat+"?"))setStockCats(efectiveStockCats.filter(c=>c!==cat));
+    if(await confirmar("Excluir categoria: "+cat+"?"))setStockCats(efectiveStockCats.filter(c=>c!==cat));
   }
   const cats=Array.isArray(procCats)&&procCats.length>0?procCats:["Toxina Botulínica","Preenchimento","Bioestimuladores","Fios / Lifting","Skincare Clínico","Avaliação / Consultoria","Outros"];
   // ── Maquininha state ──────────────────────────────────────────────────────
@@ -13601,16 +13700,16 @@ function Configuracoes({onZerar,patients=[],setPatients=()=>{},procedures,setPro
     else{setMaquininhas(prev=>[...prev,obj]);}
     setShowMaqForm(false);setEditMaq(null);
   }
-  function delMaq(id){if(window.confirm("Excluir esta operadora?"))setMaquininhas(prev=>prev.filter(m=>m.id!==id));}
+  async function delMaq(id){if(await confirmar("Excluir esta operadora?"))setMaquininhas(prev=>prev.filter(m=>m.id!==id));}
   function updateFaixa(i,key,val){setMaqForm(p=>({...p,taxas:p.taxas.map((f,fi)=>fi===i?{...f,[key]:val}:f)}));}
   function addFaixa(){setMaqForm(p=>({...p,taxas:[...(p.taxas||[]),{faixaLabel:"",de:2,ate:3,taxa:0}]}));}
   function delFaixa(i){setMaqForm(p=>({...p,taxas:p.taxas.filter((_,fi)=>fi!==i)}));}
   function addCat(){const t=newCat.trim();if(t&&!cats.includes(t)){setProcCats([...cats,t]);setNewCat("");setNewCatIcon("🩺");}}
-  function delCat(cat){
+  async function delCat(cat){
     if(procedures.map(p=>typeof p==="object"?p.categoria:"").includes(cat)){
       showAlert("Esta categoria está em uso por um ou mais procedimentos. Remova-os primeiro.");return;
     }
-    if(window.confirm("Excluir categoria: "+cat+"?"))setProcCats(cats.filter(c=>c!==cat));
+    if(await confirmar("Excluir categoria: "+cat+"?"))setProcCats(cats.filter(c=>c!==cat));
   }
   const[editingProc,setEditingProc]=useState(null); // proc object being edited
   const[showNewProc,setShowNewProc]=useState(false);
@@ -13644,8 +13743,8 @@ function Configuracoes({onZerar,patients=[],setPatients=()=>{},procedures,setPro
     setShowNewProc(false);
   }
 
-  function delProc(name){
-    if(window.confirm("Excluir procedimento: "+name+"?")){
+  async function delProc(name){
+    if(await confirmar("Excluir procedimento: "+name+"?")){
       setProcedures(prev=>prev.filter(x=>getName(x)!==name));
       setReturnRules(prev=>prev.filter(r=>r.procedure!==name));
     }
@@ -13659,7 +13758,7 @@ function Configuracoes({onZerar,patients=[],setPatients=()=>{},procedures,setPro
   }
 
   function addLoc(){const t=newLoc.trim();if(t&&!locations.find(x=>getName(x)===t)){setLocations(prev=>[...prev,{id:"loc_"+genId(),name:t}]);setNewLoc("");}}
-  function delLoc(l){if(window.confirm("Excluir: "+l))setLocations(prev=>prev.filter(x=>getName(x)!==l));}
+  async function delLoc(l){if(await confirmar("Excluir: "+l))setLocations(prev=>prev.filter(x=>getName(x)!==l));}
   function addSkProd(){const t=newSkProd.trim();if(t&&!skProds.includes(t)){setSkincareConfig(s=>({...(s||{}),produtos:[...skProds,t],frequencias:skFreqs}));setNewSkProd("");}}
   function delSkProd(p){setSkincareConfig(s=>({...(s||{}),produtos:skProds.filter(x=>x!==p),frequencias:skFreqs}));}
   function addSkFreq(){const t=newSkFreq.trim();if(t&&!skFreqs.includes(t)){setSkincareConfig(s=>({...(s||{}),produtos:skProds,frequencias:[...skFreqs,t]}));setNewSkFreq("");}}
@@ -13970,6 +14069,8 @@ function Configuracoes({onZerar,patients=[],setPatients=()=>{},procedures,setPro
 // e não entram no arquivo — o backup guarda o caminho delas.
 const BACKUP_PREFIX="_backup_";
 const BACKUP_SLOTS=["_backup_w0","_backup_w1","_backup_w2","_backup_w3"];
+const BACKUP_ZERAR="_backup_antes_de_zerar"; // cópia feita antes de limpar os dados de teste
+const BASE_LIMPA_KEY="base_limpa_v1";
 const BACKUP_LABELS={patients:"Pacientes",agenda:"Agendamentos",expenses:"Despesas",incomes:"Receitas",products:"Produtos",vouchers:"Vouchers",procedures:"Procedimentos",recurring_expenses:"Despesas recorrentes",room_bookings:"Reservas de sala",agenda_log:"Histórico da agenda",wa_log:"Mensagens enviadas"};
 async function readAllAppData(){
   const uid=await getUserId();if(!uid)throw new Error("Sessão expirada. Entre de novo.");
@@ -13991,7 +14092,7 @@ async function writeAllAppData(obj){
 }
 async function listSnapshots(){
   const uid=await getUserId();if(!uid)return[];
-  const{data,error}=await supabase.from("app_data").select("key,updated_at").eq("user_id",uid).in("key",BACKUP_SLOTS);
+  const{data,error}=await supabase.from("app_data").select("key,updated_at").eq("user_id",uid).in("key",[...BACKUP_SLOTS,BACKUP_ZERAR]);
   if(error)return[];
   return(data||[]).filter(r=>r.updated_at).sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at)));
 }
@@ -14015,7 +14116,7 @@ async function makeSnapshot(){
 // Faz a cópia semanal sozinha (chamada uma vez ao abrir o sistema)
 async function autoSnapshotIfDue(){
   try{
-    const list=await listSnapshots();
+    const list=(await listSnapshots()).filter(r=>r.key!==BACKUP_ZERAR);
     const last=list[0]?new Date(list[0].updated_at):null;
     if(last&&Date.now()-last.getTime()<7*864e5)return;
     await makeSnapshot();
@@ -14073,7 +14174,7 @@ function BackupPanel(){
   }
   async function restaurar(){
     if(!pending)return;
-    if(!window.confirm(`Restaurar a ${pending.origem}?\n\nTudo o que está no sistema agora será substituído por esta versão. Antes, o sistema baixa automaticamente um arquivo com os dados atuais, por segurança.`))return;
+    if(!await confirmar(`Restaurar a ${pending.origem}?\n\nTudo o que está no sistema agora será substituído por esta versão. Antes, o sistema baixa automaticamente um arquivo com os dados atuais, por segurança.`))return;
     setBusy("restaurar");
     try{
       const atual=await readAllAppData();
@@ -14091,7 +14192,7 @@ function BackupPanel(){
       snaps===null?h("div",{style:{fontSize:12.5,color:P.text3}},"Carregando…"):
       snaps.length===0?h("div",{style:{fontSize:12.5,color:P.text3,marginBottom:10}},"Nenhuma cópia ainda. A primeira é feita automaticamente — ou clique em \"Fazer cópia agora\"."):
       h("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:10}},snaps.map(s=>h("div",{key:s.key,style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"8px 12px",background:P.card,borderRadius:9,border:`1px solid ${P.border}`}},
-        h("span",{style:{fontSize:13,color:P.text}},"Cópia de "+fmt(s.updated_at)),
+        h("span",{style:{fontSize:13,color:P.text}},(s.key===BACKUP_ZERAR?"Dados de teste (antes de limpar) · ":"Cópia de ")+fmt(s.updated_at)),
         h(Btn,{variant:"ghost",disabled:!!busy,onClick:()=>abrirSnapshot(s.key),style:{fontSize:12,padding:"5px 12px"}},busy==="abrir"+s.key?"Abrindo…":"Restaurar esta")
       ))),
       h(Btn,{variant:"ghost",disabled:!!busy,onClick:copiaAgora,style:{fontSize:12.5}},busy==="copia"?"Fazendo cópia…":"Fazer cópia agora")
@@ -14470,7 +14571,7 @@ function AvatarBtn({settings,setSettings,size=32}){
   const h=createElement;
   const pic=settings&&settings.userAvatar;
   return h("label",{title:"Trocar foto de perfil",style:{width:size,height:size,borderRadius:"50%",background:pic?`url(${pic}) center/cover`:"linear-gradient(135deg,#7A2942,#B0566E)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontFamily:"'Cormorant Garamond',serif",cursor:"pointer",flexShrink:0}},
-    !pic&&initials((settings&&settings.doctorName)||"Dra Sofia"),
+    !pic&&initials((settings&&settings.doctorName)||(settings&&settings.clinicName)||"HP"),
     h("input",{type:"file",accept:"image/*",style:{display:"none"},onChange:e=>{const f=e.target.files&&e.target.files[0];if(f)resizeAvatar(f,d=>setSettings(s=>({...s,userAvatar:d})));e.target.value="";}})
   );
 }
@@ -14502,9 +14603,11 @@ function salaBlocosDaAgenda(agenda,rooms,desde){
     let cur=null;
     g.itens.forEach(it=>{if(cur&&it.ini<=cur.fim+15){cur.fim=Math.max(cur.fim,it.fim);cur.ids.push(it.id);}else{if(cur)blocos.push(cur);cur={ini:it.ini,fim:it.fim,ids:[it.id]};}});
     if(cur)blocos.push(cur);
-    blocos.filter(b=>!b.r).forEach(b=>{b.r=g.r;b.date=g.date;});
+    const doGrupo=blocos.filter(b=>!b.r);
+    const dayMin=doGrupo.reduce((a,b)=>a+(b.fim-b.ini),0);
+    doGrupo.forEach(b=>{b.r=g.r;b.date=g.date;b.dayMin=dayMin;});
   });
-  return blocos.map(b=>{const min=b.fim-b.ini;return{autoKey:b.date+"|"+b.r.id+"|"+fromMin(b.ini),roomId:b.r.id,roomName:b.r.name,renter:b.r.dono||"",date:b.date,start:fromMin(b.ini),end:fromMin(b.fim),hours:Math.round(min/60*100)/100,value:roomCostFor(b.r,min),apptIds:b.ids,auto:true,paid:false};});
+  return blocos.map(b=>{const min=b.fim-b.ini;return{autoKey:b.date+"|"+b.r.id+"|"+fromMin(b.ini),roomId:b.r.id,roomName:b.r.name,renter:b.r.dono||"",date:b.date,start:fromMin(b.ini),end:fromMin(b.fim),hours:Math.round(min/60*100)/100,value:roomCostFor(b.r,min,b.dayMin),apptIds:b.ids,auto:true,paid:false};});
 }
 // Mantém as reservas automáticas iguais à agenda (as já pagas não mudam)
 function syncSalaBookings(bookings,agenda,rooms,desde){
@@ -14524,7 +14627,7 @@ function Salas({rooms,setRooms,bookings,setBookings,setExpenses,locations=[],set
   const today=localISO();
   const R=Array.isArray(rooms)?rooms.filter(Boolean):[];
   const B=Array.isArray(bookings)?bookings.filter(Boolean):[];
-  const blankRf={name:"",price:"",price30:"",local:"",mensal:"",diaVenc:"",dono:"",endereco:"",instrucao:"",id:null};
+  const blankRf={faixas:[],name:"",price:"",price30:"",local:"",mensal:"",diaVenc:"",dono:"",endereco:"",instrucao:"",id:null};
   const[rf,setRf]=useState(blankRf);
   const[bf,setBf]=useState({roomId:"",renter:"",date:today,start:"09:00",end:"10:00"});
   const[err,setErr]=useState("");
@@ -14533,7 +14636,9 @@ function Salas({rooms,setRooms,bookings,setBookings,setExpenses,locations=[],set
   const toMin=s=>{const[a,b]=String(s||"0:0").split(":").map(Number);return a*60+(b||0);};
   const room=R.find(r=>String(r.id)===String(bf.roomId))||R[0]||null;
   const hours=Math.max(0,(toMin(bf.end)-toMin(bf.start))/60);
-  const value=room?roomCostFor(room,Math.round(hours*60)):0;
+  const minDiaOutros=room?B.filter(b=>String(b.roomId)===String(room.id)&&b.date===bf.date).reduce((a,b)=>a+Math.round((Number(b.hours)||0)*60),0):0;
+  const value=room?roomCostFor(room,Math.round(hours*60),minDiaOutros+Math.round(hours*60)):0;
+  const faixaAtiva=room&&hours>0?roomRateFor(room,minDiaOutros+Math.round(hours*60)).faixa:null;
   const br=d=>{const p=String(d||"").split("-");return p.length===3?p[2]+"/"+p[1]:d;};
   const money=v=>"R$ "+(Number(v)||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
   const num=v=>Number(String(v??"").replace(",","."))||0;
@@ -14554,7 +14659,7 @@ function Salas({rooms,setRooms,bookings,setBookings,setExpenses,locations=[],set
   function addRoom(){
     const price=num(rf.price);
     if(!rf.name.trim()||rf.price===""||!(price>=0))return;
-    const dados={name:rf.name.trim(),price,price30:num(rf.price30),local:rf.local||"",mensal:num(rf.mensal),diaVenc:Number(rf.diaVenc)||0,dono:rf.dono.trim(),endereco:String(rf.endereco||"").trim(),instrucao:String(rf.instrucao||"").trim()};
+    const dados={faixas:(rf.faixas||[]).map(f=>({horas:num(f.horas),preco:num(f.preco)})).filter(f=>f.horas>0&&f.preco>0).sort((a,b)=>a.horas-b.horas),name:rf.name.trim(),price,price30:num(rf.price30),local:rf.local||"",mensal:num(rf.mensal),diaVenc:Number(rf.diaVenc)||0,dono:rf.dono.trim(),endereco:String(rf.endereco||"").trim(),instrucao:String(rf.instrucao||"").trim()};
     // Endereço vai junto na mensagem de confirmação de quem é atendida nesse local
     if(dados.local&&setSettings)setSettings(st=>({...st,localInfo:{...((st&&st.localInfo)||{}),[dados.local]:{endereco:dados.endereco,instrucao:dados.instrucao}}}));
     let obj;
@@ -14563,9 +14668,9 @@ function Salas({rooms,setRooms,bookings,setBookings,setExpenses,locations=[],set
     syncMensalidade(obj,true);
     setRf(blankRf);
   }
-  function delRoom(r){
+  async function delRoom(r){
     if(B.some(b=>String(b.roomId)===String(r.id)&&(!b.auto||b.paid))){showAlert("Esta sala tem horários registrados. Exclua-os antes.");return;}
-    if(!window.confirm("Excluir a sala "+r.name+"?"))return;
+    if(!await confirmar("Excluir a sala "+r.name+"?"))return;
     setRooms(p=>p.filter(x=>x.id!==r.id));
     setBookings(p=>(Array.isArray(p)?p:[]).filter(b=>!(b.auto&&!b.paid&&String(b.roomId)===String(r.id))));
     syncMensalidade(r,false);
@@ -14583,9 +14688,9 @@ function Salas({rooms,setRooms,bookings,setBookings,setExpenses,locations=[],set
     setBookings(p=>p.map(x=>x.id===b.id?{...x,paid:true}:x));
     setExpenses(p=>[...(Array.isArray(p)?p:[]),{id:genId(),bookingId:b.id,desc:"Sala "+b.roomName+(b.renter?" — "+b.renter:""),date:b.date,dueDate:b.date,cat:"Aluguel",value:b.value,status:"Pago",paid:true,notes:b.start+" às "+b.end}]);
   }
-  function payAll(lista){
+  async function payAll(lista){
     if(!lista.length)return;
-    if(!window.confirm(`Marcar ${lista.length} horário(s) como pago(s), total ${money(lista.reduce((a,b)=>a+(Number(b.value)||0),0))}?`))return;
+    if(!await confirmar(`Marcar ${lista.length} horário(s) como pago(s), total ${money(lista.reduce((a,b)=>a+(Number(b.value)||0),0))}?`))return;
     const ids=new Set(lista.map(b=>b.id));
     setBookings(p=>p.map(x=>ids.has(x.id)?{...x,paid:true}:x));
     setExpenses(p=>[...(Array.isArray(p)?p:[]),...lista.map(b=>({id:genId(),bookingId:b.id,desc:"Sala "+b.roomName+(b.renter?" — "+b.renter:""),date:b.date,dueDate:b.date,cat:"Aluguel",value:b.value,status:"Pago",paid:true,notes:b.start+" às "+b.end}))]);
@@ -14594,9 +14699,9 @@ function Salas({rooms,setRooms,bookings,setBookings,setExpenses,locations=[],set
     setBookings(p=>p.map(x=>x.id===b.id?{...x,paid:false}:x));
     setExpenses(p=>p.filter(i=>i.bookingId!==b.id));
   }
-  function del(b){
+  async function del(b){
     if(b.auto&&!b.paid){showAlert("Este horário vem da agenda. Para tirar, cancele ou mude o agendamento.");return;}
-    if(!window.confirm("Excluir este horário?"))return;
+    if(!await confirmar("Excluir este horário?"))return;
     setBookings(p=>p.filter(x=>x.id!==b.id));
     setExpenses(p=>p.filter(i=>i.bookingId!==b.id));
   }
@@ -14648,16 +14753,16 @@ function Salas({rooms,setRooms,bookings,setBookings,setExpenses,locations=[],set
         ),
       R.length>0&&h("div",{style:{display:"flex",alignItems:"center",gap:12,marginTop:12,flexWrap:"wrap"}},
         h(Btn,{onClick:book},"Registrar"),
-        h("div",{style:{fontSize:13,color:P.text2}},(room&&hours>0?fmtHM(hours)+" em "+room.name+" = ":"")+"",h("b",null,money(value)))),
+        h("div",{style:{fontSize:13,color:P.text2}},(room&&hours>0?fmtHM(hours)+" em "+room.name+" = ":"")+"",h("b",null,money(value)),faixaAtiva?h("span",{style:{color:P.text3}}," · hora a "+money(faixaAtiva.preco)+" (a partir de "+String(faixaAtiva.horas).replace(".",",")+"h no dia)"):null)),
       err&&h("div",{style:{color:P.red,fontSize:12.5,marginTop:8}},err)),
     h(Card,{style:{padding:16}},
       h("div",{style:{fontSize:15,color:P.text,marginBottom:4}},"Salas que eu uso"),
       h("div",{style:lbl},"Ligue cada sala ao \"Local\" da agenda: todo agendamento nesse local reserva a sala sozinho, já com o valor. Se a sala tem mensalidade, ela entra como despesa fixa no Financeiro. Toque numa sala para editar."),
       R.map(r=>h("div",{key:r.id,style:{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:`0.5px solid ${P.border}`,flexWrap:"wrap"}},
-        h("button",{onClick:()=>setRf({name:r.name,price:String(r.price??""),price30:Number(r.price30)>0?String(r.price30):"",local:r.local||"",mensal:Number(r.mensal)>0?String(r.mensal):"",diaVenc:Number(r.diaVenc)>0?String(r.diaVenc):"",dono:r.dono||"",endereco:r.endereco||"",instrucao:r.instrucao||"",id:r.id}),style:{flex:"1 1 160px",textAlign:"left",background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},
+        h("button",{onClick:()=>setRf({faixas:roomFaixas(r).map(f=>({horas:String(f.horas),preco:String(f.preco)})),name:r.name,price:String(r.price??""),price30:Number(r.price30)>0?String(r.price30):"",local:r.local||"",mensal:Number(r.mensal)>0?String(r.mensal):"",diaVenc:Number(r.diaVenc)>0?String(r.diaVenc):"",dono:r.dono||"",endereco:r.endereco||"",instrucao:r.instrucao||"",id:r.id}),style:{flex:"1 1 160px",textAlign:"left",background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},
           h("div",{style:{fontSize:13.5,color:P.text}},r.name),
           h("div",{style:{fontSize:11,color:r.local?P.text3:P.statusAmber}},r.local?"Agenda: "+r.local:"Sem local da agenda ligado")),
-        h("div",{style:{...lbl,textAlign:"right"}},money(r.price)+"/h"+(Number(r.price30)>0?" · "+money(r.price30)+"/30 min":"")+(Number(r.mensal)>0?" · "+money(r.mensal)+"/mês":"")),
+        h("div",{style:{...lbl,textAlign:"right"}},money(r.price)+"/h"+(Number(r.price30)>0?" · "+money(r.price30)+"/30 min":"")+roomFaixas(r).map(f=>" · a partir de "+String(f.horas).replace(".",",")+"h: "+money(f.preco)+"/h").join("")+(Number(r.mensal)>0?" · "+money(r.mensal)+"/mês":"")),
         h("button",{onClick:()=>delRoom(r),title:"Excluir",style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15}},"🗑"))),
       h("div",{style:{display:"flex",gap:10,marginTop:10,flexWrap:"wrap",alignItems:"flex-end"}},
         h(Field,{label:"Nome da sala",half:true},h(Inp,{value:rf.name,onChange:v=>setRf(f=>({...f,name:v})),placeholder:"Ex: Nova América"})),
@@ -14665,6 +14770,16 @@ function Salas({rooms,setRooms,bookings,setBookings,setExpenses,locations=[],set
         h(Field,{label:"Valor por hora (R$)",third:true},h(Inp,{value:rf.price,onChange:v=>setRf(f=>({...f,price:v})),placeholder:"Ex: 40"})),
         h(Field,{label:"Valor 30 min (opcional)",third:true},h(Inp,{value:rf.price30,onChange:v=>setRf(f=>({...f,price30:v})),placeholder:"Ex: 25"})),
         h(Field,{label:"Sala de quem (opcional)",third:true},h(Inp,{value:rf.dono,onChange:v=>setRf(f=>({...f,dono:v})),placeholder:"Ex: Dra. Ana"})),
+        h("div",{style:{flex:"1 1 100%",marginBottom:14,padding:"12px 14px",borderRadius:10,background:P.bg3,border:`0.5px solid ${P.border}`}},
+          h("div",{style:{fontSize:10,textTransform:"uppercase",letterSpacing:".12em",color:P.text3,fontWeight:500,marginBottom:4}},"Hora mais barata quando alugo mais horas"),
+          h("div",{style:{fontSize:12,color:P.text3,lineHeight:1.5,marginBottom:(rf.faixas||[]).length?10:8}},"Somando o dia na sala. Ex.: a partir de 4h, a hora sai R$ 30, então 5h no dia = 5 × R$ 30."),
+          (rf.faixas||[]).map((fx,i)=>h("div",{key:i,style:{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}},
+            h("span",{style:{fontSize:13,color:P.text2}},"A partir de"),
+            h(Inp,{type:"number",value:fx.horas,onChange:v=>setRf(f=>({...f,faixas:f.faixas.map((x,j)=>j===i?{...x,horas:v}:x)})),placeholder:"4",style:{width:70,padding:"8px 10px"}}),
+            h("span",{style:{fontSize:13,color:P.text2}},"horas no dia, a hora sai R$"),
+            h(Inp,{value:fx.preco,onChange:v=>setRf(f=>({...f,faixas:f.faixas.map((x,j)=>j===i?{...x,preco:v}:x)})),placeholder:"30",style:{width:90,padding:"8px 10px"}}),
+            h("button",{onClick:()=>setRf(f=>({...f,faixas:f.faixas.filter((_,j)=>j!==i)})),title:"Remover faixa",style:{background:"none",border:"none",color:P.text3,cursor:"pointer",fontSize:15}},"🗑"))),
+          h("button",{onClick:()=>setRf(f=>({...f,faixas:[...(f.faixas||[]),{horas:"",preco:""}]})),style:{background:"none",border:`1px dashed ${P.border}`,borderRadius:8,padding:"6px 12px",color:P.accent,fontSize:12.5,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif"}},(rf.faixas||[]).length?"+ Outra faixa":"+ Adicionar preço por quantidade de horas")),
         h(Field,{label:"Mensalidade fixa (R$/mês)",half:true},h(Inp,{value:rf.mensal,onChange:v=>setRf(f=>({...f,mensal:v})),placeholder:"Deixe vazio se não tem"})),
         h(Field,{label:"Vence todo dia",half:true},h(Inp,{type:"number",value:rf.diaVenc,onChange:v=>setRf(f=>({...f,diaVenc:v})),placeholder:"Ex: 5"})),
         h(Field,{label:"Endereço (vai na confirmação)"},h(Inp,{value:rf.endereco,onChange:v=>setRf(f=>({...f,endereco:v})),placeholder:"Ex: Av. das Américas, 4666, Barra da Tijuca"})),
@@ -14932,7 +15047,8 @@ function App(){
 
   return createElement(Fragment, null,
     createElement(AppInner, { session, onLogout: () => { clearLocalPatientData(session?.user?.id); return supabase.auth.signOut(); } }),
-    createElement(ToastHost, {})
+    createElement(ToastHost, {}),
+    createElement(DialogHost, {})
   );
 }
 
@@ -15204,9 +15320,9 @@ function Vouchers({settings,patients,vouchers,setVouchers,onSelectPatient,onNav,
     setVoucherTemplates(prev=>[...(Array.isArray(prev)&&prev.length?prev:DEFAULT_VOUCHER_TEMPLATES),nt]);
     setTplForm(blankTpl);
   }
-  function removeTemplate(k){
+  async function removeTemplate(k){
     if(templates.length<=1){showAlert("É preciso manter ao menos um tipo de voucher.");return;}
-    if(!window.confirm("Remover este tipo de voucher? Vouchers já criados com ele continuarão existindo."))return;
+    if(!await confirmar("Remover este tipo de voucher? Vouchers já criados com ele continuarão existindo."))return;
     setVoucherTemplates(prev=>(Array.isArray(prev)&&prev.length?prev:DEFAULT_VOUCHER_TEMPLATES).filter(t=>t.k!==k));
   }
 
@@ -15251,8 +15367,8 @@ function Vouchers({settings,patients,vouchers,setVouchers,onSelectPatient,onNav,
   }
   function removeProcTag(i){ setForm(p=>({...p,procedures:p.procedures.filter((_,idx)=>idx!==i)})); }
 
-  function cancelVoucher(id){
-    if(!window.confirm("Cancelar este voucher? Essa ação não poderá ser desfeita."))return;
+  async function cancelVoucher(id){
+    if(!await confirmar("Cancelar este voucher? Essa ação não poderá ser desfeita."))return;
     setVouchers(prev=>prev.map(v=>v.id===id?{...v,status:"cancelado"}:v));
     setViewing(null);
   }
@@ -15517,13 +15633,13 @@ function ControleSessoes({patients=[],setPatients,agenda=[],onSelectPatient,onNa
     updPkg(e,pk=>pkgUse(pk,{obs:`Sessão ${pk.done+1}/${pk.total} marcada no Controle de Sessões`}));
     notify(`Sessão ${e.done+1} de ${e.total} marcada · ${e.patientName}.`,"ok",{label:"Desfazer",fn:()=>updPkg(e,pk=>pkgUndo(pk,{obs:"Check desfeito"}))});
   }
-  function desfazer(e){
+  async function desfazer(e){
     if(e.done<=0)return;
-    if(!window.confirm(`Voltar a sessão ${e.done} de "${e.name}" (${e.patientName})? Ela volta a ficar disponível no pacote.`))return;
+    if(!await confirmar(`Voltar a sessão ${e.done} de "${e.name}" (${e.patientName})? Ela volta a ficar disponível no pacote.`))return;
     updPkg(e,pk=>pkgUndo(pk,{obs:"Sessão voltada no Controle de Sessões"}));
   }
-  function editarIntervalo(e){
-    const v=window.prompt(`Intervalo entre sessões de "${e.name}" (em dias):`,String(e.interval));
+  async function editarIntervalo(e){
+    const v=await pedirTexto(`Intervalo entre sessões de "${e.name}" (em dias):`,String(e.interval));
     const n=Number(v);
     if(!v||!n||n<1)return;
     updPkg(e,pk=>({...pk,intervalDays:n}));
@@ -15715,7 +15831,7 @@ function PackageCard({pkg,onUpdate,onDelete}){
       ),
       h("div",{style:{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}},
         !st.concluido&&!st.congelado&&sbtn("✓ Dar check",()=>{onUpdate(p=>pkgUse(p,{obs:`Sessão ${p.done+1}/${p.total} marcada manualmente`}));notify(`Sessão ${st.done+1} de ${st.total} marcada em "${pkg.name}".`,"ok",{label:"Desfazer",fn:()=>onUpdate(p=>pkgUndo(p,{obs:"Check desfeito"}))});},{filled:true}),
-        st.done>0&&sbtn("Voltar 1 sessão",()=>{if(window.confirm(`Voltar a sessão ${st.done} de "${pkg.name}"? Ela volta a ficar disponível no pacote.`))onUpdate(p=>pkgUndo(p,{obs:"Sessão voltada manualmente"}));}),
+        st.done>0&&sbtn("Voltar 1 sessão",async()=>{if(await confirmar(`Voltar a sessão ${st.done} de "${pkg.name}"? Ela volta a ficar disponível no pacote.`))onUpdate(p=>pkgUndo(p,{obs:"Sessão voltada manualmente"}));}),
         !st.concluido&&(st.congelado?sbtn("☀ Descongelar",()=>onUpdate(p=>pkgUnfreeze(p)),{c:"#8FADD6"}):sbtn("❄ Congelar",()=>toggle("congelar"),{c:"#8FADD6"})),
         h("button",{onClick:onDelete,style:{padding:"6px 8px",borderRadius:8,background:"transparent",border:"1px solid rgba(192,112,112,.2)",color:P.red,cursor:"pointer",fontSize:11}},"🗑")
       )
@@ -15734,7 +15850,7 @@ function PackageCard({pkg,onUpdate,onDelete}){
         const checked=i<st.done;
         const sess=pkg.sessions&&(pkg.sessions.find(s=>s.num===i+1)||pkg.sessions[i]);
         const ultimo=checked&&i===st.done-1;
-        return h("div",{key:i,onClick:ultimo?()=>{if(window.confirm(`Voltar a sessão ${st.done} de "${pkg.name}"?`))onUpdate(p=>pkgUndo(p,{obs:"Sessão voltada manualmente"}));}:undefined,title:sess?"Realizada em "+sess.date+(sess.sessId?" (sessão do prontuário)":"")+(ultimo?" · clique para voltar":""):"Pendente",style:{width:36,height:36,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,border:`2px solid ${checked?P.green:P.border}`,background:checked?"rgba(122,173,138,.15)":P.bg3,color:checked?P.green:P.text3,position:"relative",cursor:ultimo?"pointer":"default"}},
+        return h("div",{key:i,onClick:ultimo?async()=>{if(await confirmar(`Voltar a sessão ${st.done} de "${pkg.name}"?`))onUpdate(p=>pkgUndo(p,{obs:"Sessão voltada manualmente"}));}:undefined,title:sess?"Realizada em "+sess.date+(sess.sessId?" (sessão do prontuário)":"")+(ultimo?" · clique para voltar":""):"Pendente",style:{width:36,height:36,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,border:`2px solid ${checked?P.green:P.border}`,background:checked?"rgba(122,173,138,.15)":P.bg3,color:checked?P.green:P.text3,position:"relative",cursor:ultimo?"pointer":"default"}},
           checked?"✓":(i+1),
           checked&&sess&&h("div",{style:{position:"absolute",bottom:-18,left:"50%",transform:"translateX(-50%)",fontSize:10,color:P.text3,whiteSpace:"nowrap"}},String(sess.date||"").slice(0,5))
         );
@@ -16171,10 +16287,21 @@ function printReciboPDF(sess,patient,settings){
 
 // Custo da sala para um atendimento: hora cheia pelo valor/hora; sobra de até 30 min pelo valor de
 // meia hora (se cadastrado) ou metade da hora. Ex.: 1h30 numa sala de R$40/h e R$25/30min = R$65.
-function roomCostFor(room,minutes){
+// Faixas: "a partir de X horas no dia, a hora sai R$ Y". Vale para todas as horas daquele dia na sala.
+function roomFaixas(room){
+  return ((room&&room.faixas)||[]).map(f=>({horas:Number(f&&f.horas)||0,preco:Number(f&&f.preco)||0})).filter(f=>f.horas>0&&f.preco>0).sort((a,b)=>a.horas-b.horas);
+}
+function roomRateFor(room,dayMinutes){
+  const ph=Number(room&&room.price)||0,p30=Number(room&&room.price30)||0;
+  const hDia=Math.max(0,Number(dayMinutes)||0)/60;
+  let faixa=null;roomFaixas(room).forEach(f=>{if(hDia>=f.horas-1e-9)faixa=f;});
+  return faixa?{ph:faixa.preco,p30:Math.round(faixa.preco/2*100)/100,faixa}:{ph,p30,faixa:null};
+}
+function roomCostFor(room,minutes,dayMinutes){
   if(!room)return 0;
-  const ph=Number(room.price)||0,p30=Number(room.price30)||0,m=Math.max(0,Number(minutes)||0);
+  const m=Math.max(0,Number(minutes)||0);
   if(!m)return 0;
+  const{ph,p30}=roomRateFor(room,dayMinutes!=null?Math.max(dayMinutes,m):m);
   const horas=Math.floor(m/60),resto=m-horas*60;
   let c=horas*ph;
   if(resto>0)c+=resto<=30?(p30>0?p30:ph/2):ph;
@@ -16268,9 +16395,9 @@ function Precificadora({settings,setSettings,proceduresFull=[],setProcedures,pro
     setProdRows(hist&&hist.products.length?hist.products.map(x=>({product:x.product,qty:String(x.qty),hist:true})):[]);
     setHistInfo(hist);setSimBase("");
   }
-  function aplicar(){
+  async function aplicar(){
     if(!proc||!valido)return;
-    if(!window.confirm(`Definir ${fmtCurr(Math.round(preco))} como valor padrão de "${proc.name}"?`))return;
+    if(!await confirmar(`Definir ${fmtCurr(Math.round(preco))} como valor padrão de "${proc.name}"?`))return;
     setProcedures(prev=>prev.map(p=>(typeof p==="object"&&p.name===proc.name)?{...p,defaultValue:Math.round(preco)}:p));
     notify(`Valor de ${proc.name} atualizado.`,"ok");
   }
@@ -17317,10 +17444,7 @@ function AppInner({ session, onLogout }) {
   }
   function handleSelectPatient(p,openTab){setSelectedPatient(p);setPatientDetailTab(openTab||null);setPage("prontuario");if(isMobile)setSidebarOpen(false);}
   const[showZerar,setShowZerar]=useState(false);
-  async function zerarDados(grupos){
-    const G=new Set(grupos);
-    try{const data=await readAllAppData();downloadJSON({app:"HarmonizaPro",version:1,exportedAt:new Date().toISOString(),motivo:"antes de começar do zero",data},`harmonizapro-backup-antes-de-zerar-${localISO()}.json`);}
-    catch(e){if(!window.confirm("Não consegui baixar o backup automático. Apagar mesmo assim?"))return;}
+  function limparGrupos(G){
     if(G.has("pacientes"))setPatientsBase([]);
     if(G.has("agenda")){setAgenda([]);setAgendaLog([]);setWaitlist([]);setWaLog([]);}
     if(G.has("financeiro")){setExpensesBase([]);setIncomesBase([]);setRecurringExpenses([]);setGoals({});setBookings([]);}
@@ -17330,9 +17454,42 @@ function AppInner({ session, onLogout }) {
     const hoje=localISO();
     setSettings(st=>({...st,registroDesde:hoje,salaAutoDesde:hoje,conquistasVistas:undefined,resumoSemanaVisto:undefined,relatorioVisto:undefined,filaDia:undefined,...(G.has("financeiro")?{financeLocks:[],financeLockLog:[]}:{}),...(G.has("cadastros")?{localInfo:{}}:{})}));
     try{Object.keys(localStorage).filter(k=>k.startsWith("hp_fila_")).forEach(k=>localStorage.removeItem(k));}catch(e){}
+  }
+  async function zerarDados(grupos){
+    const G=new Set(grupos);
+    try{const data=await readAllAppData();downloadJSON({app:"HarmonizaPro",version:1,exportedAt:new Date().toISOString(),motivo:"antes de começar do zero",data},`harmonizapro-backup-antes-de-zerar-${localISO()}.json`);}
+    catch(e){if(!await confirmar("Não consegui baixar o backup automático. Apagar mesmo assim?"))return;}
+    limparGrupos(G);
     notify("Pronto. O sistema está limpo para os seus dados de verdade. O backup foi baixado no seu computador.","ok");
     handleNav("dashboard");
   }
+  // ── Base limpa (uma vez só): apaga os dados de teste para começar com as pacientes de verdade ──
+  // Guarda antes uma cópia completa na nuvem (aparece em Configurações → Backup) e marca a conta
+  // para nunca mais repetir. Se não conseguir ler a nuvem com certeza, não faz nada.
+  const baseLimpaRef=useRef(false);
+  const tudoCarregado=!loadingPatients&&!loadingAgenda&&!loadingExpenses&&!loadingRecurringExpenses&&!loadingIncomes&&!loadingProducts&&!loadingVouchers&&!loadingBookings&&!loadingSettings;
+  useEffect(()=>{
+    if(!tudoCarregado||baseLimpaRef.current)return;
+    baseLimpaRef.current=true;
+    (async()=>{
+      try{
+        const uid=await getUserId();if(!uid)return;
+        const{data:marca,error}=await supabase.from("app_data").select("key").eq("user_id",uid).eq("key",BASE_LIMPA_KEY).maybeSingle();
+        if(error||marca)return;
+        const tudo=await readAllAppData();
+        const at=new Date().toISOString();
+        if(Object.keys(tudo).length){
+          const{error:e1}=await supabase.from("app_data").upsert({key:BACKUP_ZERAR,user_id:uid,value:{at,data:tudo},updated_at:at},{onConflict:"key,user_id"});
+          if(e1)return;
+        }
+        const{error:e2}=await supabase.from("app_data").upsert({key:BASE_LIMPA_KEY,user_id:uid,value:{at},updated_at:at},{onConflict:"key,user_id"});
+        if(e2)return;
+        limparGrupos(new Set(["pacientes","agenda","financeiro","estoque","vouchers"]));
+        try{localStorage.removeItem("hapro2_patients");}catch(e){}
+        handleNav("dashboard");
+      }catch(e){console.warn("[base limpa]",e);}
+    })();
+  },[tudoCarregado]);
   // ── Prontuário integrado à agenda: atendimento realizado vira sessão preenchida ──
   const[sessPrefill,setSessPrefill]=useState(null);
   const[showRegistrar,setShowRegistrar]=useState(false);
@@ -17534,7 +17691,7 @@ function AppInner({ session, onLogout }) {
     h("div",{style:{padding:sidebarCollapsed&&!isMobile?"10px 7px":"12px 9px",borderTop:`0.5px solid ${P.border}`,flexShrink:0}},
       sidebarCollapsed&&!isMobile
         ? h("div",{style:{display:"flex",justifyContent:"center"}},
-            h("div",{onClick:onLogout,title:"Sair",style:{width:32,height:32,borderRadius:"50%",background:settings.userAvatar?`url(${settings.userAvatar}) center/cover`:"linear-gradient(135deg,#7A2942,#B0566E)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:500,color:"#fff",cursor:"pointer",fontFamily:"'Cormorant Garamond',serif"}},settings.userAvatar?null:initials(settings.doctorName||"Dra Sofia"))
+            h("div",{onClick:onLogout,title:"Sair",style:{width:32,height:32,borderRadius:"50%",background:settings.userAvatar?`url(${settings.userAvatar}) center/cover`:"linear-gradient(135deg,#7A2942,#B0566E)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:500,color:"#fff",cursor:"pointer",fontFamily:"'Cormorant Garamond',serif"}},settings.userAvatar?null:initials(settings.doctorName||"HP"))
           )
         : h("div",{style:{display:"flex",alignItems:"center",gap:10,padding:"9px 11px",borderRadius:9,background:dark?"rgba(122,41,66,.06)":"rgba(122,41,66,.05)",border:`0.5px solid ${P.border}`,cursor:"pointer",transition:"background .18s"},onMouseEnter:e=>e.currentTarget.style.background=dark?"rgba(122,41,66,.1)":"rgba(122,41,66,.08)",onMouseLeave:e=>e.currentTarget.style.background=dark?"rgba(122,41,66,.06)":"rgba(122,41,66,.05)"},
         h("div",{style:{position:"relative",flexShrink:0}},
@@ -17542,8 +17699,8 @@ function AppInner({ session, onLogout }) {
             h("div",{title:todayAppts.some(a=>a.status==="Realizado")?"Em atendimento":"Disponível",style:{position:"absolute",bottom:1,right:1,width:9,height:9,borderRadius:"50%",background:todayAppts.some(a=>{const[hh,mm]=(a.time||"00:00").split(":").map(Number);const end=hh*60+mm+(Number(a.duration?.split(" ")[0])||60);const now=new Date();return a.status==="Confirmado"&&now.getHours()*60+now.getMinutes()>=hh*60+mm&&now.getHours()*60+now.getMinutes()<=end;})?"#4a9668":"#9F8475",border:`1.5px solid ${dark?"#110809":"#FDFAF7"}`,transition:"background .3s"}})
           ),
             h("div",{style:{flex:1,minWidth:0}},
-              h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12.5,color:P.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},settings.doctorName||"Dra. Sofia"),
-              h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:1}},settings.doctorTitle||"Biomédica Esteta")
+              h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:400,fontSize:12.5,color:P.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},settings.doctorName||"Seu nome"),
+              h("div",{style:{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:10,color:P.text3,marginTop:1}},settings.doctorTitle||"")
             ),
             h("button",{onClick:onLogout,title:"Sair",style:{background:"none",border:`0.5px solid ${P.border}`,borderRadius:6,color:P.text3,cursor:"pointer",fontSize:13,padding:"4px 6px",lineHeight:1,transition:"all .15s",flexShrink:0},onMouseEnter:e=>{e.currentTarget.style.background="#7A2942";e.currentTarget.style.color="#fff";},onMouseLeave:e=>{e.currentTarget.style.background="none";e.currentTarget.style.color=P.text3;}},"⏻")
           )
@@ -17645,7 +17802,7 @@ function AppInner({ session, onLogout }) {
             page==="prontuario"&&!currentPatient&&h(Patients,{patients,setPatients,onSelect:handleSelectPatient,procedures:procedureNames,locations:locationNames,agenda}),
             page==="prontuario"&&currentPatient&&h(PatientDetail,{sessPrefill,onConsumeSessPrefill:()=>setSessPrefill(null),onAgendar:pf=>{setApptPrefill({date:localISO(),location:locationNames[0]||"",status:"Agendado",...pf});handleNav("agenda");},setClinicSettings:setSettings,rooms:roomsRaw,patient:currentPatient,patients,setPatients,onBack:()=>setSelectedPatient(null),procedures:procedureNames,proceduresFull:procedures,locations:locationNames,products:products.map(p=>typeof p==="string"?p:(p.name||p)),setProducts,allProducts:products,returnRules,setIncomes,onSelectPatient:handleSelectPatient,skincareConfig,vouchers,setVouchers,onNavVouchers:()=>handleNav("vouchers"),voucherTemplates,clinicSettings:settingsData,agenda,setAgenda,setAgendaLog,maquininhas,initialTab:patientDetailTab}),
             page==="estoque"&&h(Estoque,{products,setProducts,stockCats,setStockCats,patients,onSelectPatient:handleSelectPatient,agenda,proceduresFull:procedures,setExpenses}),
-            page==="financeiro"&&h(Financeiro,{agenda,bookings:bookingsRaw,patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,setSettings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products,maquininhas,setMaquininhas}),
+            page==="financeiro"&&h(Financeiro,{agenda,bookings:bookingsRaw,setBookings,patients,setPatients,expenses,setExpenses,recurringExpenses,setRecurringExpenses,incomes,setIncomes,settings,setSettings,goals:goalsData,setGoals,procedures:procedureNames,proceduresFull:procedures,products,maquininhas,setMaquininhas}),
             page==="salas"&&h(Salas,{rooms:roomsRaw,setRooms,bookings:bookingsRaw,setBookings,setExpenses,locations:locationNames,setRecurringExpenses,setSettings}),
             page==="precificadora"&&h(Precificadora,{settings,setSettings,proceduresFull:procedures,setProcedures,products,recurringExpenses,rooms:roomsRaw,patients,agenda,expenses}),
             page==="sessoes"&&h(ControleSessoes,{patients,setPatients,agenda,onSelectPatient:handleSelectPatient,onNav:handleNav,onSchedule:handleSchedulePackage}),
