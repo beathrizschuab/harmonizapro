@@ -505,7 +505,8 @@ const INIT_EXPENSES=[];
 const INIT_RECURRING_EXPENSES=[];
 // ─── HELPERS & BASE UI ────────────────────────────────────────────────────────
 const initials=n=>n.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
-const fmtCurr=v=>"R$"+Number(v).toLocaleString("pt-BR",{minimumFractionDigits:0});
+const _fmtBRL=new Intl.NumberFormat("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:2});
+const fmtCurr=v=>"R$"+_fmtBRL.format(Number(v));
 // Converte texto de duração ("1h30", "45 min", "2 horas"...) em minutos
 const durationToMin=d=>{
   if(!d)return 60;
@@ -537,7 +538,9 @@ const apptEndTime=a=>a&&a.time?addMinToTime(a.time,durationToMin(a.duration)):""
 // horários que se cruzam) e "unidade" (outro atendimento no mesmo local). Cancelado/Faltou/Reagendado não contam.
 // Obs.: a agenda ainda não tem campo "profissional/sala"; por isso a checagem de unidade é um AVISO (pode confirmar).
 const APPT_INACTIVE=["Cancelado","Faltou","Reagendado"];
-const _normName=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim();
+// Desempenho: nomes e datas são convertidos milhares de vezes por tela; guardamos o resultado
+const _normCache=new Map();
+const _normName=s=>{const k=String(s||"");let v=_normCache.get(k);if(v===undefined){v=k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim();if(_normCache.size>20000)_normCache.clear();_normCache.set(k,v);}return v;};
 // Agendamento ↔ paciente: pelo ID quando existe; nome só para agendamentos antigos ainda sem ID
 // Agendamento com vários procedimentos: "procedures" guarda a lista e "procedure" mostra "A + B"
 function apptProcsOut(f){
@@ -564,6 +567,21 @@ function apptProcs(a){return a&&Array.isArray(a.procedures)&&a.procedures.length
 function apptTemSessao(a,patients){
   const p=patientOfAppt(a,patients);if(!p)return true;
   return (p.sessions||[]).some(s=>s&&(String(s.fromApptId||"")===String(a.id)||(()=>{const d=parseAnyDate(String(s.date||""));return d&&localISO(d)===a.date;})()));
+}
+// Agendamentos de uma paciente, sem varrer a agenda inteira a cada paciente (índice por agenda)
+const _agIdx=new WeakMap();
+function agendaDe(agenda,p){
+  if(!Array.isArray(agenda)||!p)return[];
+  let ix=_agIdx.get(agenda);
+  if(!ix){
+    ix={id:new Map(),nome:new Map()};
+    agenda.forEach(a=>{if(!a)return;
+      if(a.patientId!=null&&a.patientId!==""){const k=String(a.patientId);if(!ix.id.has(k))ix.id.set(k,[]);ix.id.get(k).push(a);}
+      else{const k=_normName(a.patientName);if(!ix.nome.has(k))ix.nome.set(k,[]);ix.nome.get(k).push(a);}});
+    _agIdx.set(agenda,ix);
+  }
+  const a1=ix.id.get(String(p.id))||[],a2=ix.nome.get(_normName(p.name))||[];
+  return a2.length?(a1.length?[...a1,...a2]:a2):a1;
 }
 function apptIsFor(a,p){
   if(!a||!p)return false;
@@ -1559,6 +1577,14 @@ function isInsumoSimples(products, productName) {
 // "fracionado": uma embalagem rende várias pacientes (ex.: toxina 100U) → custo por unidade, a sobra fica no frasco aberto.
 // "unico": uma embalagem por paciente (ex.: ácido hialurônico 1ml) → usou 0,5ml, sai a seringa inteira e o custo é a seringa inteira.
 const EMBALAGENS=["frasco","seringa","ampola","caixa","fio","unidade","bisnaga","pote"];
+// O que falta num injetável para o custo e o estoque saírem certos (vazio = está tudo certo)
+function ajusteProduto(p){
+  if(!p||typeof p!=="object"||p.cat===INSUMO_CAT)return"";
+  if(!p.modoUso)return"falta dizer como você usa";
+  if(!(Number(p.tamFrasco)>0))return p.modoUso==="unico"?"falta o conteúdo da embalagem (ex.: 1 ml)":"falta quanto rende a embalagem (ex.: 100 U)";
+  if(!(Number(p.cost)>0))return"falta o preço pago";
+  return"";
+}
 function isUsoUnico(p){return !!(p&&p.modoUso==="unico"&&Number(p.tamFrasco)>0);}
 function qtdEfetiva(p,q){q=Number(q)||0;if(!isUsoUnico(p)||!(q>0))return q;const t=Number(p.tamFrasco);return Math.ceil(q/t-1e-9)*t;}
 function custoDeUso(p,q){if(!p)return 0;return isUsoUnico(p)?qtdEfetiva(p,q)*(Number(p.cost)||0):(Number(q)||0)*realUnitCost(p);}
@@ -1763,7 +1789,7 @@ function stripPhotos(data){
     if(out.stored&&out.path)out.url=null;
     if(out.baseImagePath)out.baseImage=null;
     if(out.profilePhotoPath)out.profilePhoto=null;
-    else if(typeof out.profilePhoto==="string"&&(out.profilePhoto.startsWith("data:")||out.profilePhoto.startsWith("blob:")))out.profilePhoto=null;
+    else if(typeof out.profilePhoto==="string"&&(out.profilePhoto.startsWith("blob:")||(out.profilePhoto.startsWith("data:")&&out.profilePhoto.length>200000)))out.profilePhoto=null;
     ["photos","docs"].forEach(k=>{if(Array.isArray(out[k]))out[k]=out[k].filter(x=>!isLegacyStr(x));});
     return out;
   });
@@ -1845,13 +1871,13 @@ async function signPaths(paths){
 }
 let _storageErro=null;
 // Foto vira JPEG de no máximo 1600 px (~200 KB); outros arquivos até 3 MB vão como estão
-async function blobParaInline(blob){
+async function blobParaInline(blob,maxPx=1600){
   const lerUrl=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(b);});
   try{
     if(blob.type&&blob.type.startsWith("image/")){
       const src=await lerUrl(blob);
       const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});
-      const k=Math.min(1,1600/Math.max(img.naturalWidth||1,img.naturalHeight||1));
+      const k=Math.min(1,maxPx/Math.max(img.naturalWidth||1,img.naturalHeight||1));
       const c=document.createElement("canvas");c.width=Math.round(img.naturalWidth*k);c.height=Math.round(img.naturalHeight*k);
       c.getContext("2d").drawImage(img,0,0,c.width,c.height);
       return{url:c.toDataURL("image/jpeg",.82),type:"image/jpeg"};
@@ -2058,6 +2084,17 @@ function useSupaTable(key, initFallback = []) {
   const inFlightRef = useRef(false);
   const dirtyRef = useRef(false);
   const pendingRef = useRef(0);
+  // Alterações feitas antes de a nuvem responder (ex.: ajustes automáticos ao abrir) esperam numa fila
+  // e são aplicadas SOBRE o que veio da nuvem — antes elas gravavam a lista padrão por cima dos seus dados
+  const loadedRef = useRef(false);
+  const filaRef = useRef([]);
+  const setDataRef = useRef(null);
+  const liberar = () => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
+    const fila = filaRef.current; filaRef.current = [];
+    fila.forEach(f => setDataRef.current && setDataRef.current(f));
+  };
   const shapeOk = remote => wantArray ? Array.isArray(remote) : (!Array.isArray(remote) && remote && typeof remote === "object");
 
   useEffect(() => {
@@ -2072,6 +2109,7 @@ function useSupaTable(key, initFallback = []) {
       if (!res.ok) {
         // Não deu para ler a nuvem: segue com o que está no aparelho e tenta de novo depois
         if (tentativas++ < 20) setTimeout(() => { if (!cancelled) carregar(); }, 15000);
+        liberar();
         return;
       }
       knownTsRef.current = res.updatedAt || null;
@@ -2087,12 +2125,14 @@ function useSupaTable(key, initFallback = []) {
         latestRef.current = localWrittenRef.current ? latestRef.current : merged;
         if (remote === null || _J(merged) !== _J(remote)) { if (!localWrittenRef.current) flushRef.current && flushRef.current(); }
         else { try { localStorage.setItem(lsBaseKey, JSON.stringify(remote)); localStorage.removeItem(lsDirtyKey); } catch {} }
+        liberar();
         return;
       }
       if (remote !== null) {
         try { localStorage.setItem(lsBaseKey, JSON.stringify(remote)); localStorage.setItem(lsKey, JSON.stringify(remote)); } catch {}
         if (!localWrittenRef.current) setDataRaw(remote);
       }
+      liberar();
     });
     carregar();
     return () => { cancelled = true; };
@@ -2167,6 +2207,7 @@ function useSupaTable(key, initFallback = []) {
   }, [key, flush]);
 
   const setData = useCallback((valOrFn) => {
+    if (!loadedRef.current) { filaRef.current.push(valOrFn); return; }
     localWrittenRef.current = true;
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
@@ -2176,6 +2217,7 @@ function useSupaTable(key, initFallback = []) {
       return next;
     });
   }, [flush]);
+  setDataRef.current = setData;
 
   return [data, setData, !synced];
 }
@@ -2861,7 +2903,7 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
                       actualLotes.map(l=>h("option",{key:l.id,value:String(l.id)},l.codigo+" — "+l.qtd+" disponível"+(l.validade?" · val "+l.validade:"")))
                     ),
                     selected.stockDebit&&h("div",{style:{fontSize:10,color:P.green,marginTop:4}},`✓ Estoque debitado: ${selected.stockDebit.qty}${selected.actualUnit||selected.plannedUnit||""} do lote selecionado`),
-                    !selected.stockDebit&&selected.actualLoteId&&h("div",{style:{fontSize:10,color:P.text3,marginTop:4}},setProducts?"⚠ Salve para debitar do estoque":"Só para registro. O estoque sai pela sessão no Prontuário."),
+                    !selected.stockDebit&&selected.actualLoteId&&h("div",{style:{fontSize:10,color:P.text3,marginTop:4}},setProducts?"⚠ Salve para debitar do estoque":"Ao salvar o mapa, isso vai para a sessão. O estoque sai quando você salva a sessão."),
                     selected.stockDebit&&(String(selected.stockDebit.loteId)!==String(selected.actualLoteId)||Number(selected.stockDebit.qty)!==Number(selected.actualQty))&&h("div",{style:{fontSize:10,color:P.yellow,marginTop:4}},"⚠ Lote/quantidade alterados — salve para corrigir o estoque")
                   ),
                   h("div",{style:{fontSize:11,color:P.text3}},"Custo real: "+fmtCurr((Number(selected.actualQty)||0)*cu(selected.actualProduct||selected.plannedProduct)))
@@ -3568,7 +3610,7 @@ function GlobalSearch({patients,agenda,onSelectPatient,onNav}){
         if(!seen.has("p"+p.id)){
           seen.add("p"+p.id);
           const lastSess=[...(p.sessions||[])].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];
-          const nextAppt=agenda.filter(a=>apptIsFor(a,p)&&a.date>=localISO()).sort((a,b)=>a.date.localeCompare(b.date))[0];
+          const nextAppt=agendaDe(agenda,p).filter(a=>a.date>=localISO()).sort((a,b)=>a.date.localeCompare(b.date))[0];
           out.push({type:"paciente",label:p.name,sub:lastSess?`Última visita: ${lastSess.date} · ${lastSess.procedure}`:"Sem sessões",extra:nextAppt?`Próximo: ${nextAppt.date} ${nextAppt.time}`:null,status:p.status,pat:p,id:p.id});
         }
       }
@@ -3777,9 +3819,9 @@ function RetornosPendentes({patients,setPatients,returnRules,onSelectPatient,onN
       const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];
       const lastDate=last?parseDMY(last.date):null;
       const diasSemVisita=lastDate?daysBetween(lastDate,today):null;
-      const cancelamentos=agenda.filter(a=>apptIsFor(a,p)&&a.status==="Cancelado").length;
+      const cancelamentos=agendaDe(agenda,p).filter(a=>a.status==="Cancelado").length;
       const semProtocolo=sessions.length>0&&!sessions.some(s=>s.protocol||s.returnReminderDays);
-      const hasUpcoming=agenda.some(a=>apptIsFor(a,p)&&a.date>=todayStr&&a.status!=="Cancelado");
+      const hasUpcoming=agendaDe(agenda,p).some(a=>a.date>=todayStr&&a.status!=="Cancelado");
       let score=0;
       if(diasSemVisita!=null){
         if(diasSemVisita>180)score+=40;
@@ -4938,7 +4980,7 @@ function Dashboard({pendRegistro=[],onAbrirRegistro,setSettings,bookings=[],pati
           const todayISO2=localISO(today);
           const cg=patients.map(p=>{
             const d=parseDMY(p.lastVisit);const days=d?daysBetween(d,today):null;
-            const hasUp=agenda.some(a=>apptIsFor(a,p)&&a.date>=todayISO2&&a.date<=localISO(new Date(today.getTime()+30*864e5)));
+            const hasUp=agendaDe(agenda,p).some(a=>a.date>=todayISO2&&a.date<=localISO(new Date(today.getTime()+30*864e5)));
             return{...p,_days:days,_inTreatment:hasUp||(days!==null&&days<=60),_protocolOverdue:isProtocolOverdue(p)};
           });
           const groups=[
@@ -6278,7 +6320,7 @@ function patientActivity(p,agenda,todayISOstr){
   const last=ss[0]||null;
   const lastD=last?last.d:parseAnyDate(String(p.lastVisit||"").replace("—",""));
   const dias=lastD?Math.floor((t-lastD)/864e5):null;
-  const next=(agenda||[]).filter(a=>a&&!a.blocked&&apptIsFor(a,p)&&a.date>=todayISOstr&&!APPT_INACTIVE.includes(a.status)).sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")))[0]||null;
+  const next=agendaDe(agenda,p).filter(a=>a&&!a.blocked&&a.date>=todayISOstr&&!APPT_INACTIVE.includes(a.status)).sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")))[0]||null;
   let retorno=null,retornoDias=null;
   if(last&&Number(last.s.returnReminderDays)>0){retorno=new Date(last.d);retorno.setDate(retorno.getDate()+Number(last.s.returnReminderDays));retornoDias=Math.round((retorno-t)/864e5);}
   const pacoteAberto=(p.sessions_packages||[]).some(pk=>pkgState(pk).aberto);
@@ -6347,6 +6389,10 @@ function Patients({patients,setPatients,onSelect,procedures,locations,agenda=[]}
     if(sortBy==="sessoes")return b._act.nSess-a._act.nSess;
     return a.name.localeCompare(b.name,"pt-BR",{sensitivity:"base"});
   });
+  // Mostra as pacientes aos poucos (a tela fica leve mesmo com centenas de cadastros)
+  const[limiteLista,setLimiteLista]=useState(60);
+  useEffect(()=>{setLimiteLista(60);},[search,filter,sortBy]);
+  const visiveis=visible.slice(0,limiteLista);
   const dupMatches=showNew?findSimilarPatients(patients,{name:form.name,phone:form.phone,cpf:form.cpf}):[];
   async function addPatient(){
     if(!String(form.name||"").trim()){showAlert("Preencha o nome da paciente.");return;}
@@ -6359,7 +6405,10 @@ function Patients({patients,setPatients,onSelect,procedures,locations,agenda=[]}
         const path=await uploadToStorage(profPhotoFile,`patients/${newId}/profile`,profPhotoFile.name);
         const u=await signPaths([path]);
         photoPatch={profilePhoto:u[path]||null,profilePhotoPath:path};
-      }catch(e){showAlert("Não foi possível enviar a foto: "+(e.message||e));}
+      }catch(e){
+        const inl=await blobParaInline(profPhotoFile,400);
+        if(inl)photoPatch={profilePhoto:inl.url};else showAlert("Não foi possível enviar a foto: "+(e.message||e));
+      }
     }
     const np={id:newId,...form,age:Number(form.age),...photoPatch,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
       complaints:form.complaints.split(",").map(s=>s.trim()).filter(Boolean),tags:[],
@@ -6377,7 +6426,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations,agenda=[]}
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},filtersBtns.map(fi=>h("button",{key:fi.k,onClick:()=>setFilter(fi.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===fi.k?P.rose:"transparent",border:`1px solid ${filter===fi.k?P.rose:P.border}`,color:filter===fi.k?P.accent3:P.text2}},fi.l)))
     ),
     h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}},
-      visible.map((p,i)=>{
+      visiveis.map((p,i)=>{
         const bd_p=p.birthDate?new Date(p.birthDate+"T12:00"):null;
         let calcAge=p.age;if(bd_p&&!isNaN(bd_p)){let a=new Date().getFullYear()-bd_p.getFullYear();const m=new Date().getMonth()-bd_p.getMonth();if(m<0||(m===0&&new Date().getDate()<bd_p.getDate()))a--;calcAge=a;}
         const lastSess=(p.sessions||[]).length>0?[...(p.sessions||[])].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0]:null;
@@ -6419,6 +6468,8 @@ function Patients({patients,setPatients,onSelect,procedures,locations,agenda=[]}
         );
       })
     ),
+    visible.length>visiveis.length&&h("div",{style:{textAlign:"center",marginTop:16}},
+      h(Btn,{variant:"ghost",onClick:()=>setLimiteLista(n=>n+60)},`Mostrar mais (${visible.length-visiveis.length} restantes)`)),
     h(Modal,{open:showNew,onClose:()=>setShowNew(false),title:"✦ Novo Paciente",width:620},
       h("div",{style:{display:"flex",alignItems:"center",gap:16,marginBottom:20,padding:14,background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
         profPhoto?h("img",{src:profPhoto,alt:"foto",style:{width:64,height:64,borderRadius:"50%",objectFit:"cover",border:`2px solid ${P.rose}`}}):h("div",{style:{width:64,height:64,borderRadius:"50%",background:P.card2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,border:`2px dashed ${P.border}`}},"👤"),
@@ -7345,7 +7396,8 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
   }
   async function delSession(id){
     const sess=(patient.sessions||[]).find(s=>s.id===id);
-    if(!await confirmar(isSessLocked(sess)?"Este registro tem mais de 24h e faz parte do prontuário.\n\nExcluir mesmo assim? Esta ação não pode ser desfeita.":"Excluir sessão?"))return;
+    if(!await confirmar(isSessLocked(sess)?"Excluir este registro?\nEle tem mais de 24h e faz parte do prontuário.":"Excluir sessão?"))return;
+    const mapasLigados=(patient.planejamento||[]).filter(pl=>pl.sessionId===id).map(pl=>pl.id);
     if(sess?.stockDebit&&Number(sess.stockDebit.qty)>0){
       estornarLote(setProducts,sess.stockDebit.product,sess.stockDebit.loteId,sess.stockDebit.qty,`Estorno · sessão excluída (${patient.name})`);
     }
@@ -7368,6 +7420,20 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
       // se a sessão tinha usado um pacote, a sessão volta para o pacote
       sessions_packages:sess&&sess.pkgId?(p.sessions_packages||[]).map(x=>x.id===sess.pkgId?pkgUndo(x,{sessId:id,obs:"Sessão excluída do prontuário"}):x):p.sessions_packages
     }));
+    if(!sess)return;
+    notify("Sessão excluída.","ok",{label:"Desfazer",fn:()=>{
+      // Volta a sessão, o vínculo com o mapa, o pacote e o que tinha saído do estoque
+      const obs=`Sessão restaurada (${patient.name})`;
+      if(sess.stockDebit&&Number(sess.stockDebit.qty)>0)debitarLote(setProducts,sess.stockDebit.product,sess.stockDebit.loteId,sess.stockDebit.qty,obs);
+      (sess.itemStockDebits||[]).forEach(d=>{if(d&&Number(d.qty)>0)debitarLote(setProducts,d.product,d.loteId,d.qty,obs);});
+      (sess.autoStockDebits||[]).forEach(d=>{if(d&&d.loteId&&Number(d.qty)>0)debitarLote(setProducts,d.product,d.loteId,d.qty,obs+" · ficha técnica");});
+      upd(p=>({
+        ...p,
+        sessions:(p.sessions||[]).some(x=>x.id===id)?p.sessions:[sess,...(p.sessions||[])],
+        planejamento:(p.planejamento||[]).map(pl=>mapasLigados.includes(pl.id)?{...pl,sessionId:id}:pl),
+        sessions_packages:sess.pkgId?(p.sessions_packages||[]).map(x=>x.id===sess.pkgId?pkgUse(x,{sessId:id,obs:"Sessão restaurada"}):x):p.sessions_packages
+      }));
+    }});
   }
   async function addMedia(sessId,files,type,extra){
     try{
@@ -7452,17 +7518,59 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
     });
     upd(p=>({...p,planejamento:(p.planejamento||[]).filter(pl=>pl.id!==id)}));
   }
+  // Mapa da sessão → sessão: o que foi marcado como realizado (produto, lote, quantidade) vai para os itens da sessão.
+  // Abre a sessão já preenchida para você conferir e salvar; é ao salvar a sessão que o estoque sai (uma vez só).
+  function mapaParaSessao(sessId,markers){
+    const sess=(patient.sessions||[]).find(x=>x.id===sessId);
+    if(!sess)return;
+    const tot={};
+    (markers||[]).filter(m=>m&&m.done).forEach(m=>{
+      const prod=m.actualProduct||m.plannedProduct;const q=Number(m.actualQty||m.plannedQty)||0;
+      if(!prod||!(q>0))return;
+      const k=prod+"|"+(m.actualLoteId||"");
+      if(!tot[k])tot[k]={product:prod,loteId:m.actualLoteId||"",qty:0};
+      tot[k].qty+=q;
+    });
+    const grupos=Object.values(tot);
+    if(!grupos.length)return;
+    const items=(sess.items&&sess.items.length?sess.items:[{procedure:sess.procedure||"",product:sess.product||"",loteId:sess.loteId||"",qtdUsada:sess.qtdUsada||"",dose:sess.dose||"",region:sess.region||"",value:String(sess.value||""),debitarEstoque:true,skipAutoInsumos:false}]).map(it=>({...it,value:String(it.value||"")}));
+    const usados=new Set();
+    let mudou=false;
+    grupos.forEach(g=>{
+      const qtd=String(Math.round(g.qty*100)/100);
+      let i=items.findIndex((it,ix)=>!usados.has(ix)&&it.product===g.product);
+      if(i<0)i=items.findIndex((it,ix)=>!usados.has(ix)&&!it.product);
+      if(i>=0){
+        usados.add(i);
+        const it=items[i];
+        if(it.product!==g.product||String(it.qtdUsada)!==qtd||(g.loteId&&String(it.loteId)!==String(g.loteId)))mudou=true;
+        items[i]={...it,product:g.product,qtdUsada:qtd,loteId:g.loteId||it.loteId||"",debitarEstoque:true};
+      }else{
+        mudou=true;
+        items.push({procedure:(items[0]&&items[0].procedure)||sess.procedure||"",product:g.product,loteId:g.loteId||"",qtdUsada:qtd,dose:"",region:"",value:"0",debitarEstoque:true,skipAutoInsumos:true});
+        usados.add(items.length-1);
+      }
+    });
+    if(!mudou)return;
+    setEditSess(sess);
+    setSForm({...sess,value:String(sess.value),finStatus:sess.finStatus||"Pendente",items});
+    setTab("prontuario");setShowNewS(true);
+    notify("Passei os produtos do mapa para a sessão. Confira o lote e salve: o estoque sai uma vez só, ao salvar.","ok");
+  }
   async function saveMarkerPlanNew(data){
     data=await packMarkerPlan(data,`patients/${patient.id}/plans`);
     const ehMapa=tab==="mapa"||!!markerPlanningForSession;
     const pl={id:genId(),tipo:ehMapa?"mapa":"plano",title:ehMapa?(markerPlanningForSession?"Mapa Facial · Sessão":"Mapa Facial"):"Planejamento",steps:[],notes:"",done:false,created:new Date().toLocaleDateString("pt-BR"),markerPlan:data,sessionId:markerPlanningForSession||null};
     upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
     setMarkerPlanning(null);setMarkerPlanningForSession(null);setMarkerInitial(null);
+    if(pl.sessionId)setTimeout(()=>mapaParaSessao(pl.sessionId,data.markers),0);
   }
   async function saveMarkerPlan(planId,data){
     data=await packMarkerPlan(data,`patients/${patient.id}/plans`);
     upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>pl.id===planId?{...pl,markerPlan:data,updatedAt:new Date().toLocaleDateString("pt-BR")}:pl)}));
     setMarkerPlanning(null);setMarkerPlanningForSession(null);setMarkerInitial(null);
+    const plSess=(patient.planejamento||[]).find(x=>x.id===planId);
+    if(plSess&&plSess.sessionId&&ehMapaFacial(plSess))setTimeout(()=>mapaParaSessao(plSess.sessionId,data.markers),0);
   }
 
   function togglePlanStep(planId,stepIdx){
@@ -7577,7 +7685,10 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
               const path=await uploadToStorage(f,`patients/${patient.id}/profile`,f.name);
               const u=await signPaths([path]);
               upd(p=>({...p,profilePhotoPath:path,profilePhoto:u[path]||null}));
-            }catch(err){showAlert("Não foi possível enviar a foto: "+(err.message||err));}
+            }catch(err){
+              const inl=await blobParaInline(f,400);
+              if(inl)upd(p=>({...p,profilePhotoPath:null,profilePhoto:inl.url}));else showAlert("Não foi possível enviar a foto: "+(err.message||err));
+            }
           }})
         ),
         h("div",{style:{flex:1,minWidth:200}},
@@ -7836,6 +7947,18 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
             h(Field,{label:"Valor total (R$)",half:true},h("div",null,
               h(Inp,{value:F.value,onChange:v=>setOrcForm(p=>({...p,value:v,valorManual:true})),placeholder:"0,00"}),
               tabela>0&&h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},F.valorManual?h("button",{onClick:()=>setOrcForm(p=>orcRecalc({...p,valorManual:false})),style:{background:"none",border:"none",padding:0,color:P.accent,cursor:"pointer",fontSize:11}},"Voltar ao valor calculado"):`Tabela ${fmtCurr(tabela)}`+(Number(F.desc)>0?` − ${F.desc}%`:"")))),
+            // Total digitado diferente da soma: pergunta em qual procedimento foi o desconto (em vez de espalhar entre todos)
+            (()=>{const somaItens=Math.round(tabela*100)/100;const dif=Math.round((somaItens-vNum)*100)/100;
+              if(!F.valorManual||!(tabela>0)||!(vNum>0)||Math.abs(dif)<0.01||F.difDividida||!grupos.length)return null;
+              const aplicar=g=>setOrcForm(p=>{const unit=orcPrecoItem(p,g.name,orcPrecoPadrao(g.name));const novo=Math.max(0,Math.round((unit-dif/g.n)*100)/100);
+                const nx=orcRecalc({...p,desc:"0",valorManual:false,precos:{...(p.precos||{}),[g.name]:String(novo)}});
+                const v2=Number(String(nx.value).replace(",","."))||0;
+                return Math.abs(v2-vNum)>=0.01?{...nx,value:String(vNum),valorManual:true}:nx;});
+              return h("div",{style:{flex:"1 1 100%",padding:"11px 13px",borderRadius:10,background:"rgba(122,41,66,.05)",border:`0.5px solid ${P.border}`,marginBottom:12}},
+                h("div",{style:{fontSize:12.5,color:P.text2,marginBottom:8,lineHeight:1.5}},`Os procedimentos somam ${fmtCurr(somaItens)} e o total está ${fmtCurr(vNum)}. `+(dif>0?`Em qual procedimento foi o desconto de ${fmtCurr(dif)}?`:`Em qual procedimento entra o acréscimo de ${fmtCurr(-dif)}?`)),
+                h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+                  grupos.map(g=>chip(false,g.name+(g.n>1?` (${g.n}×)`:""),()=>aplicar(g),g.name)),
+                  chip(false,"Dividir entre todos",()=>setOrcForm(p=>({...p,difDividida:true})),"__div")));})(),
             h(Field,{label:"Título"},h(Inp,{value:F.title,onChange:v=>setOrcForm(p=>({...p,title:v,tituloManual:!!v})),placeholder:"Preenchido pelos procedimentos"})),
             h(Field,{label:"Data do orçamento",half:true},h(Inp,{type:"date",value:F.createdISO||"",onChange:v=>setOrcForm(p=>({...p,createdISO:v}))})),
             h(Field,{label:"Validade (opcional)",half:true},h("div",null,
@@ -7954,7 +8077,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
             (s.paid||s.finStatus==="Pago")&&Number(s.value)>0&&h("button",{onClick:()=>printReciboPDF(s,patient,clinicSettings),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"Recibo"),
             h("button",{onClick:()=>openMapForSession(s),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},mapPlanBySession[s.id]?"🗺 Editar Mapa":"🗺 Mapa"),
             h("button",{onClick:()=>{setEditSess(s);setSForm({...s,value:String(s.value),finStatus:s.finStatus||"Pendente",items:s.items&&s.items.length>0?s.items.map(it=>({...it,value:String(it.value||"")})):[{procedure:s.procedure||"",product:s.product||"",loteId:s.loteId||"",qtdUsada:s.qtdUsada||"",dose:s.dose||"",region:s.region||"",value:String(s.value||""),debitarEstoque:true,skipAutoInsumos:false}]});setShowNewS(true);},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"✎"),
-            h("button",{onClick:()=>delSession(s.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"🗑")
+            h("button",{onClick:()=>delSession(s.id),title:"Excluir sessão",style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"🗑")
           )
         ),
         s.region&&h("div",{style:{fontSize:12,color:P.text2,marginBottom:8}},`🎯 Região: `,h("strong",{style:{color:P.text}},s.region)),
@@ -8622,7 +8745,8 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
                     h("select",{value:item.product,onChange:e=>sItemPatch(idx,{product:e.target.value,loteId:"",qtdUsada:""}),style:{...IS}},products.map(p=>typeof p==="string"?h("option",{key:p,value:p},p):h("option",{key:p.name||p,value:p.name||p},p.name||p))),
                     _lts.length>0&&h("div",{style:{marginTop:4,display:"flex",gap:4,flexWrap:"wrap"}},
                       _lts.map(l=>h("span",{key:l.id,style:{fontSize:10,padding:"1px 7px",borderRadius:8,background:"rgba(122,173,138,.1)",color:P.green,border:"1px solid rgba(122,173,138,.2)"}},l.codigo+": "+l.qtd+(l.validade?" · val "+l.validade:"")))
-                    )
+                    ),
+                    _prodObj&&ajusteProduto(_prodObj)&&h("div",{style:{fontSize:11,marginTop:4,color:P.red}},"Cadastro do produto incompleto: "+ajusteProduto(_prodObj)+". Ajuste em Estoque para o custo sair certo.")
                   )
                 )
               ),
@@ -9063,6 +9187,7 @@ function Estoque({products,setProducts,stockCats,setStockCats,patients=[],onSele
     if(!String(form.name||"").trim())return;
     const n=v=>Number(String(v??"").replace(",","."))||0;
     const tam=n(form.tamFrasco);
+    if(!(tam>0)){showAlert(form.modoUso==="unico"?"Preencha o conteúdo de cada embalagem (ex.: 1 ml na seringa). Sem isso o custo por paciente sai errado.":"Preencha quanto rende cada embalagem (ex.: 100 U no frasco). Sem isso o custo por unidade sai errado.");return;}
     const preco=n(form.preco);
     const cost=tam>0?(preco>0?Math.round(preco/tam*10000)/10000:n(form.cost)):(preco>0?preco:n(form.cost));
     const min=tam>0?n(form.minEmb)*tam:n(form.minEmb);
@@ -9267,6 +9392,12 @@ function Estoque({products,setProducts,stockCats,setStockCats,patients=[],onSele
       ))
     ),
 
+    // ── Produtos com cadastro incompleto (o custo sairia errado) ──
+    subTab==="injetaveis"&&(()=>{const faltam=injetaveis.map(p=>({p,m:ajusteProduto(p)})).filter(x=>x.m);if(!faltam.length)return null;
+      return h("div",{style:{marginBottom:16,padding:"12px 14px",borderRadius:12,background:"rgba(176,67,75,.06)",border:"1px solid rgba(176,67,75,.28)"}},
+        h("div",{style:{fontSize:13,color:P.red,fontWeight:500,marginBottom:6}},faltam.length===1?"1 produto precisa de ajuste para o custo sair certo":faltam.length+" produtos precisam de ajuste para o custo sair certo"),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:4}},faltam.map(({p,m})=>h("button",{key:p.id,onClick:()=>openEdit(p),style:{display:"flex",justifyContent:"space-between",gap:10,background:"none",border:"none",padding:"3px 0",cursor:"pointer",textAlign:"left",fontFamily:"'Jost',system-ui,sans-serif",fontSize:12.5}},
+          h("span",{style:{color:P.text}},p.name),h("span",{style:{color:P.text3}},m+"  ›")))));})(),
     // ── Avisos do topo ──
     (compras.length>0||sobrasVencidas.length>0)&&subTab!=="compras"&&h("div",{style:{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}},
       compras.length>0&&h("button",{onClick:()=>setSubTab("compras"),style:{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",borderRadius:10,background:"rgba(192,112,112,.08)",border:"1px solid rgba(192,112,112,.3)",color:P.red,cursor:"pointer",fontSize:12.5,fontWeight:600,fontFamily:"'Jost',system-ui,sans-serif"}},`🛒 ${compras.length} item(ns) para comprar · ver lista de compras →`),
@@ -9694,11 +9825,18 @@ function Estoque({products,setProducts,stockCats,setStockCats,patients=[],onSele
 
 // ─── FINANCEIRO ───────────────────────────────────────────────────────────────
 // Parser flexível: aceita DD/MM/YYYY ou YYYY-MM-DD
+const _dtCache=new Map();
 function parseAnyDate(s){
   if(!s)return null;
-  if(s.includes("/")){const[d,m,y]=s.split("/");return new Date(`${y}-${m}-${d}T12:00:00`);}
-  if(s.includes("-")){return new Date(s+"T12:00:00");}
-  return null;
+  let t=_dtCache.get(s);
+  if(t===undefined){
+    t=null;
+    if(s.includes("/")){const[d,m,y]=s.split("/");t=new Date(`${y}-${m}-${d}T12:00:00`).getTime();}
+    else if(s.includes("-")){t=new Date(s+"T12:00:00").getTime();}
+    if(_dtCache.size>20000)_dtCache.clear();
+    _dtCache.set(s,t);
+  }
+  return t===null?null:new Date(t); // sempre um Date novo: quem chama pode alterar (setHours) sem estragar o cache
 }
 // ─── VENCIMENTO / ATRASO (Contas a Pagar & Receber) ───────────────────────────
 // Calcula a situação de vencimento de uma conta (despesa, entrada extra ou sessão pendente).
@@ -15798,7 +15936,7 @@ function ControleSessoes({patients=[],setPatients,agenda=[],onSelectPatient,onNa
     const dias=Math.round((next-today)/864e5); // negativo = atrasada
     const st=pkgState(pk);
     const concluido=st.concluido;
-    const agendada=agenda.find(a=>!a.blocked&&apptIsFor(a,p)&&a.procedure===pk.procedure&&a.date>=todayStr&&a.status!=="Cancelado");
+    const agendada=agendaDe(agenda,p).find(a=>!a.blocked&&a.procedure===pk.procedure&&a.date>=todayStr&&a.status!=="Cancelado");
     let status,label,color,bg;
     if(concluido){status="concluido";label="Concluído";color=P.text3;bg=P.bg3;}
     else if(st.congelado){status="congelado";label="❄ Congelado desde "+isoToBR(pk.frozenSince).slice(0,5);color="#8FADD6";bg="rgba(143,173,214,.12)";}
@@ -16917,7 +17055,7 @@ function computeRetention({patients,agenda,returnRules,procedures,products}){
   const T=new Date();T.setHours(12,0,0,0);
   const todayStr=localISO(T);
   const pats=(patients||[]).map(p=>({p,v:(p.sessions||[]).map(s=>({s,d:parseAnyDate(s.date)})).filter(x=>x.d).sort((a,b)=>a.d-b.d)})).filter(x=>x.v.length>0);
-  const hasUpcoming=pp=>(agenda||[]).some(a=>!a.blocked&&apptIsFor(a,pp)&&a.date>=todayStr&&a.status!=="Cancelado");
+  const hasUpcoming=pp=>agendaDe(agenda,pp).some(a=>!a.blocked&&a.date>=todayStr&&a.status!=="Cancelado");
   const paidTotal=p=>(p.sessions||[]).filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0);
   const first=n=>String(n||"").trim().split(" ")[0];
 
@@ -17786,7 +17924,7 @@ function AppInner({ session, onLogout }) {
       {k:"dashboard",l:"Início",ti:"ti-layout-dashboard"},
       {k:"agenda",l:"Agenda",ti:"ti-calendar",badge:todayApptCount||null,badgeColor:P.statusBlue},
       {k:"pacientes",l:"Pacientes",ti:"ti-users"},
-      {k:"filadia",group:"relac",l:"Relacionamento",ti:"ti-heart-handshake",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>apptIsFor(a,p)&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
+      {k:"filadia",group:"relac",l:"Relacionamento",ti:"ti-heart-handshake",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agendaDe(agenda,p).filter(a=>a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
     ]},
     {label:"Atendimento",items:[
       {k:"sessoes",l:"Controle de sessões",ti:"ti-list-check"},
