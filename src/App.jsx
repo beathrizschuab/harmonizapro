@@ -1901,6 +1901,19 @@ async function supaRead(key) {
   } catch(e) { _setSupaOk(false); console.warn("[sync] read exception", key, e); return null; }
 }
 
+// Igual à supaReadMeta, mas diz se a leitura FALHOU (ok:false) ou se só não existe nada salvo (ok:true, value:null)
+async function supaReadMeta2(key){
+  const uid=await getUserId();
+  if(!uid)return{ok:false};
+  try{
+    const{data,error}=await supabase.from("app_data").select("value,updated_at").eq("key",key).eq("user_id",uid).maybeSingle();
+    if(error){_syncErro=error.message||"Erro ao ler";_setSupaOk(false);return{ok:false};}
+    if(!data)return{ok:true,value:null,updatedAt:null};
+    let val=data.value;
+    if(typeof val==="string"){try{val=JSON.parse(val);}catch{}}
+    return{ok:true,value:val,updatedAt:data.updated_at};
+  }catch{return{ok:false};}
+}
 async function supaReadMeta(key){
   const uid=await getUserId();
   if(!uid)return null;
@@ -1984,9 +1997,14 @@ const SYNC_LABELS={patients:"pacientes",agenda:"agenda",expenses:"despesas",inco
 
 function useSupaTable(key, initFallback = []) {
   const lsKey = "hapro2_" + key;
-  const [data, setDataRaw] = useState(initFallback);
-  const [synced, setSynced] = useState(false);
+  const lsBaseKey = "hapro2_base_" + key;   // última versão que a nuvem confirmou
+  const lsDirtyKey = "hapro2_dirty_" + key; // há alteração deste aparelho que ainda não chegou na nuvem
   const wantArray = Array.isArray(initFallback);
+  const shapeOk0 = v => wantArray ? Array.isArray(v) : (!Array.isArray(v) && v && typeof v === "object");
+  const lsGet = k => { try { const s = localStorage.getItem(k); if (s == null) return undefined; const v = JSON.parse(s); return shapeOk0(v) ? v : undefined; } catch { return undefined; } };
+  // Começa com o que está guardado neste aparelho: nada se perde se a nuvem falhar
+  const [data, setDataRaw] = useState(() => { const v = lsGet(lsKey); return v !== undefined ? v : initFallback; });
+  const [synced, setSynced] = useState(false);
   const localWrittenRef = useRef(false);
   const knownTsRef = useRef(null);   // updated_at da última versão do servidor que conhecemos
   const baseRef = useRef(null);      // conteúdo dessa versão (base para juntar alterações)
@@ -1999,17 +2017,38 @@ function useSupaTable(key, initFallback = []) {
   useEffect(() => {
     let cancelled = false;
     localWrittenRef.current = false;
-    supaReadMeta(key).then(res => {
+    let tentativas = 0;
+    const carregar = () => supaReadMeta2(key).then(res => {
       if (cancelled) return;
       setSynced(true);
-      if (!res) return;
-      knownTsRef.current = res.updatedAt;
-      if (res.value !== null && shapeOk(res.value)) baseRef.current = res.value;
-      if (!localWrittenRef.current && res.value !== null) {
-        if (shapeOk(res.value)) setDataRaw(res.value);
-        else console.warn("[sync] formato inesperado para", key, res.value);
+      const local = lsGet(lsKey);
+      let dirty = false; try { dirty = localStorage.getItem(lsDirtyKey) === "1"; } catch {}
+      if (!res.ok) {
+        // Não deu para ler a nuvem: segue com o que está no aparelho e tenta de novo depois
+        if (tentativas++ < 20) setTimeout(() => { if (!cancelled) carregar(); }, 15000);
+        return;
+      }
+      knownTsRef.current = res.updatedAt || null;
+      const remote = (res.value != null && shapeOk(res.value)) ? res.value : null;
+      if (remote === null && res.value != null) console.warn("[sync] formato inesperado para", key, res.value);
+      baseRef.current = remote;
+      const temBase = lsGet(lsBaseKey) !== undefined;
+      // Há coisa deste aparelho que não chegou na nuvem (ou veio de uma versão antiga do sistema): junta e envia
+      if (local !== undefined && (dirty || !temBase)) {
+        const base = temBase ? lsGet(lsBaseKey) : null;
+        const merged = remote === null ? local : syncMerge(base, local, remote).value;
+        if (!localWrittenRef.current) setDataRaw(merged);
+        latestRef.current = localWrittenRef.current ? latestRef.current : merged;
+        if (remote === null || _J(merged) !== _J(remote)) { if (!localWrittenRef.current) flushRef.current && flushRef.current(); }
+        else { try { localStorage.setItem(lsBaseKey, JSON.stringify(remote)); localStorage.removeItem(lsDirtyKey); } catch {} }
+        return;
+      }
+      if (remote !== null) {
+        try { localStorage.setItem(lsBaseKey, JSON.stringify(remote)); localStorage.setItem(lsKey, JSON.stringify(remote)); } catch {}
+        if (!localWrittenRef.current) setDataRaw(remote);
       }
     });
+    carregar();
     return () => { cancelled = true; };
   }, [key]);
 
@@ -2024,7 +2063,7 @@ function useSupaTable(key, initFallback = []) {
         let toWrite = stripPhotos(local);
         let merged = false;
         const ts = await supaReadTs(key);
-        if (ts && knownTsRef.current && ts !== knownTsRef.current) {
+        if (ts && ts !== knownTsRef.current) {
           const remote = await supaReadMeta(key);
           if (remote && remote.value != null && shapeOk(remote.value)) {
             const m = syncMerge(baseRef.current, toWrite, remote.value);
@@ -2034,8 +2073,11 @@ function useSupaTable(key, initFallback = []) {
           }
         }
         const wts = await supaWrite(key, toWrite);
-        if (wts) { if (typeof wts === "string") knownTsRef.current = wts; baseRef.current = toWrite; _retryQueue.delete(key); }
-        else _queueRetry(key, () => flushRef.current && flushRef.current());
+        if (wts) {
+          if (typeof wts === "string") knownTsRef.current = wts; baseRef.current = toWrite; _retryQueue.delete(key);
+          try { localStorage.setItem(lsBaseKey, JSON.stringify(toWrite)); if (!dirtyRef.current && latestRef.current === local) localStorage.removeItem(lsDirtyKey); } catch {}
+        }
+        else { _queueRetry(key, () => flushRef.current && flushRef.current()); try { localStorage.setItem(lsDirtyKey, "1"); } catch {} }
         try { localStorage.setItem(lsKey, JSON.stringify(toWrite)); } catch {}
         if (merged) {
           // aplica a junção na tela, preservando o que você mexeu enquanto gravava
@@ -2083,6 +2125,7 @@ function useSupaTable(key, initFallback = []) {
     setDataRaw(prev => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
       latestRef.current = next;
+      try { localStorage.setItem(lsKey, JSON.stringify(stripPhotos(next))); localStorage.setItem(lsDirtyKey, "1"); } catch {}
       Promise.resolve().then(flush);
       return next;
     });
@@ -2115,6 +2158,8 @@ function useLocalStorage(key, init) {
 function clearLocalPatientData(uid){
   try{
     if(!uid||!localStorage.getItem("hapro2_migrated_v1_"+uid))return;
+    // Se alguma coisa ainda não chegou na nuvem, não apaga nada deste aparelho
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith("hapro2_dirty_")&&localStorage.getItem(k)==="1")return;}
     const rm=[];
     for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith("hapro2_")&&!k.startsWith("hapro2_migrated_"))rm.push(k);}
     rm.forEach(k=>localStorage.removeItem(k));
@@ -3433,14 +3478,14 @@ function SyncIndicator(){
     if(ok){notify("Tudo salvo na nuvem. O que você vê aqui aparece nos outros aparelhos.","ok");return;}
     notify("Tentando salvar de novo…","info");
     await _runRetries();
-    setTimeout(()=>{if(_supaOk!==true)notify("Ainda sem conexão com a nuvem: "+(_syncErro||"verifique a internet")+" Fica tudo salvo neste aparelho e vai sozinho quando voltar.","warn");},1500);
+    setTimeout(()=>{if(_supaOk!==true)notify("A nuvem não está aceitando salvar. Motivo: "+(_syncErro||"sem internet")+"\n\nO que você cadastrar fica guardado neste aparelho e vai para a nuvem sozinho quando isso for resolvido.","warn");},1500);
   };
   return h("button",{onClick:tentar,
     style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:ok?"rgba(122,173,138,.10)":"rgba(175,85,109,.12)",border:`1px solid ${ok?"rgba(122,173,138,.25)":"rgba(175,85,109,.3)"}`},
     title:ok?"Dados sincronizados: aparecem em todos os aparelhos":"Sem conexão com a nuvem agora. O que você fizer fica salvo neste aparelho e é enviado sozinho quando a conexão voltar. Toque para tentar de novo."
   },
     h("div",{style:{width:7,height:7,borderRadius:"50%",background:ok?"#7aad8a":"#AF556D"}}),
-    h("span",{style:{fontSize:11,color:ok?"#7aad8a":"#AF556D",fontWeight:500,whiteSpace:"nowrap"}},ok?"Nuvem \u2713":"Offline · salvo aqui")
+    h("span",{style:{fontSize:11,color:ok?"#7aad8a":"#AF556D",fontWeight:500,whiteSpace:"nowrap"}},ok?"Nuvem \u2713":"Não salvou na nuvem")
   );
 }
 
