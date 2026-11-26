@@ -1889,7 +1889,7 @@ async function supaRead(key) {
   if (!uid) { _setSupaOk(false); return null; }
   try {
     const { data, error } = await supabase
-      .from("app_data").select("value").eq("key", key).eq("user_id", uid).maybeSingle();
+      .from("app_data").select("value").eq("key", key).eq("user_id", uid).order("updated_at",{ascending:false,nullsFirst:false}).limit(1).maybeSingle();
     if (error) { _syncErro = error.message || "Erro ao ler"; _setSupaOk(false); console.warn("[sync] read error", key, error.message); return null; }
     _setSupaOk(true);
     let val = data?.value ?? null;
@@ -1906,7 +1906,7 @@ async function supaReadMeta2(key){
   const uid=await getUserId();
   if(!uid)return{ok:false};
   try{
-    const{data,error}=await supabase.from("app_data").select("value,updated_at").eq("key",key).eq("user_id",uid).maybeSingle();
+    const{data,error}=await supabase.from("app_data").select("value,updated_at").eq("key",key).eq("user_id",uid).order("updated_at",{ascending:false,nullsFirst:false}).limit(1).maybeSingle();
     if(error){_syncErro=error.message||"Erro ao ler";_setSupaOk(false);return{ok:false};}
     if(!data)return{ok:true,value:null,updatedAt:null};
     let val=data.value;
@@ -1918,7 +1918,7 @@ async function supaReadMeta(key){
   const uid=await getUserId();
   if(!uid)return null;
   try{
-    const{data,error}=await supabase.from("app_data").select("value,updated_at").eq("key",key).eq("user_id",uid).maybeSingle();
+    const{data,error}=await supabase.from("app_data").select("value,updated_at").eq("key",key).eq("user_id",uid).order("updated_at",{ascending:false,nullsFirst:false}).limit(1).maybeSingle();
     if(error||!data)return null;
     let val=data.value;
     if(typeof val==="string"){try{val=JSON.parse(val);}catch{}}
@@ -1931,9 +1931,19 @@ async function supaWrite(key, value) {
   if (!uid) { _syncErro = "Sessão expirada. Saia e entre de novo no sistema."; _setSupaOk(false); return false; }
   try {
     const clean = stripPhotos(value);
-    const { data, error } = await supabase.from("app_data")
-      .upsert({ key, user_id: uid, value: clean, updated_at: new Date().toISOString() }, { onConflict: "key,user_id" })
+    const agora = new Date().toISOString();
+    let { data, error } = await supabase.from("app_data")
+      .upsert({ key, user_id: uid, value: clean, updated_at: agora }, { onConflict: "key,user_id" })
       .select("updated_at").maybeSingle();
+    // Tabela sem a regra de "uma linha por item" (ou com linhas repetidas): atualiza direto e, se não existir, cria
+    if (error) {
+      const up = await supabase.from("app_data").update({ value: clean, updated_at: agora }).eq("key", key).eq("user_id", uid).select("updated_at");
+      if (!up.error && Array.isArray(up.data) && up.data.length) { data = { updated_at: agora }; error = null; }
+      else if (!up.error) {
+        const ins = await supabase.from("app_data").insert({ key, user_id: uid, value: clean, updated_at: agora }).select("updated_at");
+        if (!ins.error) { data = { updated_at: agora }; error = null; } else error = ins.error;
+      } else error = up.error;
+    }
     if (error) { _syncErro = error.message || "Erro ao gravar"; _setSupaOk(false); console.warn("[sync] write error", key, error.message); return false; }
     _syncErro = ""; _setSupaOk(true);
     return (data && data.updated_at) || true;
@@ -1988,7 +1998,7 @@ async function supaReadTs(key){
   const uid=await getUserId();
   if(!uid)return null;
   try{
-    const{data,error}=await supabase.from("app_data").select("updated_at").eq("key",key).eq("user_id",uid).maybeSingle();
+    const{data,error}=await supabase.from("app_data").select("updated_at").eq("key",key).eq("user_id",uid).order("updated_at",{ascending:false,nullsFirst:false}).limit(1).maybeSingle();
     if(error)return null;
     return data?data.updated_at:"";
   }catch{return null;}
@@ -14142,7 +14152,7 @@ async function listSnapshots(){
 }
 async function loadSnapshot(key){
   const uid=await getUserId();if(!uid)return null;
-  const{data,error}=await supabase.from("app_data").select("value").eq("user_id",uid).eq("key",key).maybeSingle();
+  const{data,error}=await supabase.from("app_data").select("value").eq("user_id",uid).eq("key",key).order("updated_at",{ascending:false,nullsFirst:false}).limit(1).maybeSingle();
   if(error||!data)return null;
   let v=data.value;if(typeof v==="string"){try{v=JSON.parse(v);}catch{}}
   return v&&v.data?v:null;
