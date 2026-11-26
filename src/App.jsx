@@ -505,7 +505,8 @@ const INIT_EXPENSES=[];
 const INIT_RECURRING_EXPENSES=[];
 // ─── HELPERS & BASE UI ────────────────────────────────────────────────────────
 const initials=n=>n.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
-const fmtCurr=v=>"R$"+Number(v).toLocaleString("pt-BR",{minimumFractionDigits:0});
+const _fmtBRL=new Intl.NumberFormat("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:2});
+const fmtCurr=v=>"R$"+_fmtBRL.format(Number(v));
 // Converte texto de duração ("1h30", "45 min", "2 horas"...) em minutos
 const durationToMin=d=>{
   if(!d)return 60;
@@ -537,7 +538,9 @@ const apptEndTime=a=>a&&a.time?addMinToTime(a.time,durationToMin(a.duration)):""
 // horários que se cruzam) e "unidade" (outro atendimento no mesmo local). Cancelado/Faltou/Reagendado não contam.
 // Obs.: a agenda ainda não tem campo "profissional/sala"; por isso a checagem de unidade é um AVISO (pode confirmar).
 const APPT_INACTIVE=["Cancelado","Faltou","Reagendado"];
-const _normName=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim();
+// Desempenho: nomes e datas são convertidos milhares de vezes por tela; guardamos o resultado
+const _normCache=new Map();
+const _normName=s=>{const k=String(s||"");let v=_normCache.get(k);if(v===undefined){v=k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim();if(_normCache.size>20000)_normCache.clear();_normCache.set(k,v);}return v;};
 // Agendamento ↔ paciente: pelo ID quando existe; nome só para agendamentos antigos ainda sem ID
 // Agendamento com vários procedimentos: "procedures" guarda a lista e "procedure" mostra "A + B"
 function apptProcsOut(f){
@@ -564,6 +567,21 @@ function apptProcs(a){return a&&Array.isArray(a.procedures)&&a.procedures.length
 function apptTemSessao(a,patients){
   const p=patientOfAppt(a,patients);if(!p)return true;
   return (p.sessions||[]).some(s=>s&&(String(s.fromApptId||"")===String(a.id)||(()=>{const d=parseAnyDate(String(s.date||""));return d&&localISO(d)===a.date;})()));
+}
+// Agendamentos de uma paciente, sem varrer a agenda inteira a cada paciente (índice por agenda)
+const _agIdx=new WeakMap();
+function agendaDe(agenda,p){
+  if(!Array.isArray(agenda)||!p)return[];
+  let ix=_agIdx.get(agenda);
+  if(!ix){
+    ix={id:new Map(),nome:new Map()};
+    agenda.forEach(a=>{if(!a)return;
+      if(a.patientId!=null&&a.patientId!==""){const k=String(a.patientId);if(!ix.id.has(k))ix.id.set(k,[]);ix.id.get(k).push(a);}
+      else{const k=_normName(a.patientName);if(!ix.nome.has(k))ix.nome.set(k,[]);ix.nome.get(k).push(a);}});
+    _agIdx.set(agenda,ix);
+  }
+  const a1=ix.id.get(String(p.id))||[],a2=ix.nome.get(_normName(p.name))||[];
+  return a2.length?(a1.length?[...a1,...a2]:a2):a1;
 }
 function apptIsFor(a,p){
   if(!a||!p)return false;
@@ -1527,7 +1545,7 @@ function buildLoteUsage(patients){
     });
     (p.planejamento||[]).forEach(pl=>{
       ((pl.markerPlan&&pl.markerPlan.markers)||[]).forEach(m=>{
-        const lid=(m.stockDebit&&m.stockDebit.loteId)||m.actualLoteId;
+        const lid=m.stockDebit&&m.stockDebit.loteId; // só conta se o mapa descontou (antes); hoje quem desconta é a sessão
         const prod=(m.stockDebit&&m.stockDebit.product)||m.actualProduct||m.plannedProduct;
         if(m.done&&lid)add(prod,lid,{patient:p,date:pl.updatedAt||pl.created,procedure:pl.title||"Mapa facial",qty:Number((m.stockDebit&&m.stockDebit.qty)||m.actualQty)||0,dose:"",region:"",source:"Mapa facial"});
       });
@@ -1559,6 +1577,14 @@ function isInsumoSimples(products, productName) {
 // "fracionado": uma embalagem rende várias pacientes (ex.: toxina 100U) → custo por unidade, a sobra fica no frasco aberto.
 // "unico": uma embalagem por paciente (ex.: ácido hialurônico 1ml) → usou 0,5ml, sai a seringa inteira e o custo é a seringa inteira.
 const EMBALAGENS=["frasco","seringa","ampola","caixa","fio","unidade","bisnaga","pote"];
+// O que falta num injetável para o custo e o estoque saírem certos (vazio = está tudo certo)
+function ajusteProduto(p){
+  if(!p||typeof p!=="object"||p.cat===INSUMO_CAT)return"";
+  if(!p.modoUso)return"falta dizer como você usa";
+  if(!(Number(p.tamFrasco)>0))return p.modoUso==="unico"?"falta o conteúdo da embalagem (ex.: 1 ml)":"falta quanto rende a embalagem (ex.: 100 U)";
+  if(!(Number(p.cost)>0))return"falta o preço pago";
+  return"";
+}
 function isUsoUnico(p){return !!(p&&p.modoUso==="unico"&&Number(p.tamFrasco)>0);}
 function qtdEfetiva(p,q){q=Number(q)||0;if(!isUsoUnico(p)||!(q>0))return q;const t=Number(p.tamFrasco);return Math.ceil(q/t-1e-9)*t;}
 function custoDeUso(p,q){if(!p)return 0;return isUsoUnico(p)?qtdEfetiva(p,q)*(Number(p.cost)||0):(Number(q)||0)*realUnitCost(p);}
@@ -1763,7 +1789,7 @@ function stripPhotos(data){
     if(out.stored&&out.path)out.url=null;
     if(out.baseImagePath)out.baseImage=null;
     if(out.profilePhotoPath)out.profilePhoto=null;
-    else if(typeof out.profilePhoto==="string"&&(out.profilePhoto.startsWith("data:")||out.profilePhoto.startsWith("blob:")))out.profilePhoto=null;
+    else if(typeof out.profilePhoto==="string"&&(out.profilePhoto.startsWith("blob:")||(out.profilePhoto.startsWith("data:")&&out.profilePhoto.length>200000)))out.profilePhoto=null;
     ["photos","docs"].forEach(k=>{if(Array.isArray(out[k]))out[k]=out[k].filter(x=>!isLegacyStr(x));});
     return out;
   });
@@ -1843,17 +1869,44 @@ async function signPaths(paths){
   data.forEach(x=>{if(x&&x.path&&x.signedUrl)map[x.path]=x.signedUrl;});
   return map;
 }
+let _storageErro=null;
+// Foto vira JPEG de no máximo 1600 px (~200 KB); outros arquivos até 3 MB vão como estão
+async function blobParaInline(blob,maxPx=1600){
+  const lerUrl=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(b);});
+  try{
+    if(blob.type&&blob.type.startsWith("image/")){
+      const src=await lerUrl(blob);
+      const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});
+      const k=Math.min(1,maxPx/Math.max(img.naturalWidth||1,img.naturalHeight||1));
+      const c=document.createElement("canvas");c.width=Math.round(img.naturalWidth*k);c.height=Math.round(img.naturalHeight*k);
+      c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+      return{url:c.toDataURL("image/jpeg",.82),type:"image/jpeg"};
+    }
+    if(blob.size<=3*1024*1024)return{url:await lerUrl(blob),type:blob.type||""};
+  }catch(e){console.warn("[storage] inline",e);}
+  return null;
+}
 // Aceita File/Blob OU item já lido {name,type,url:"data:..."} (é o que o MediaGallery entrega)
 async function filesToStored(files,folder){
   const items=await Promise.all((files||[]).map(async f=>{
     let blob=f;
     if(!(f instanceof Blob)&&f&&typeof f.url==="string"&&f.url.startsWith("data:"))blob=await dataUrlToBlob(f.url);
     const name=f.name||"arquivo";
-    const path=await uploadToStorage(blob,folder,name);
-    return{id:genId(),name,type:blob.type||f.type||"",date:new Date().toLocaleDateString("pt-BR"),stored:true,path,url:null};
+    try{
+      const path=await uploadToStorage(blob,folder,name);
+      return{id:genId(),name,type:blob.type||f.type||"",date:new Date().toLocaleDateString("pt-BR"),stored:true,path,url:null};
+    }catch(e){
+      // A pasta de arquivos da nuvem não aceitou (não criada ou sem permissão): guarda a foto
+      // comprimida junto com os dados da paciente, para nunca perder a foto
+      console.warn("[storage] upload falhou, guardando junto dos dados:",e&&e.message);
+      _storageErro=(e&&e.message)||"erro";
+      const inline=await blobParaInline(blob);
+      if(!inline)throw e;
+      return{id:genId(),name,type:inline.type,date:new Date().toLocaleDateString("pt-BR"),url:inline.url};
+    }
   }));
   const urls=await signPaths(items.map(i=>i.path));
-  return items.map(i=>({...i,url:urls[i.path]||null}));
+  return items.map(i=>i.path?{...i,url:urls[i.path]||null}:i);
 }
 function storagePathFromUrl(u){const m=String(u||"").match(/\/object\/sign\/clinic-files\/([^?]+)/);return m?decodeURIComponent(m[1]):null;}
 async function persistImage(src,folder){
@@ -2465,7 +2518,9 @@ function sessionCost(s,allProducts){
   const items=(s.items&&s.items.length)?s.items:[{product:s.product,qtdUsada:s.qtdUsada}];
   const po=name=>(allProducts||[]).find(x=>x&&typeof x==="object"&&x.name===name);
   const c=(name,q)=>{const p=po(name);return p&&isUsoUnico(p)?custoDeUso(p,q):markerUnitCost(allProducts,name)*q;};
-  items.forEach(it=>{ if(it&&it.product&&Number(it.qtdUsada)>0)cost+=c(it.product,Number(it.qtdUsada)); });
+  const somaPorProd={};
+  items.forEach(it=>{ if(it&&it.product&&Number(it.qtdUsada)>0)somaPorProd[it.product]=(somaPorProd[it.product]||0)+Number(it.qtdUsada); });
+  Object.entries(somaPorProd).forEach(([name,q])=>{cost+=c(name,q);});
   (s.autoStockDebits||[]).forEach(d=>{ if(d&&d.product)cost+=c(d.product,Number(d.qty)||0); });
   return cost;
 }
@@ -2494,7 +2549,7 @@ function MarkerDot({m,idx,active,onClick}){
     }
   },idx+1);
 }
-function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSave,onClose}){
+function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSave,onClose,modo="mapa",procedimentos=[]}){
   const h=createElement;
   const[baseImage,setBaseImage]=useState(initial?.baseImage||null);
   const[markers,setMarkers]=useState(initial?.markers||[]);
@@ -2715,7 +2770,7 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
 
   return h("div",{style:{position:"fixed",inset:0,background:"rgba(8,4,6,.97)",zIndex:3000,display:"flex",flexDirection:"column",padding:"14px 16px",overflow:"auto",gap:12}},
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,flexShrink:0}},
-      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent3}},"📍 Mapa Facial · Foto da Paciente"),
+      h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.accent3}},modo==="plano"?"📍 Planejamento · Foto da Paciente":"📍 Mapa Facial · Foto da Paciente"),
       h("div",{style:{display:"flex",gap:8}},
         h("button",{onClick:()=>setShowPicker(true),style:{padding:"7px 14px",borderRadius:8,background:"transparent",border:`1px solid ${P.border}`,color:P.text2,cursor:"pointer",fontSize:12.5}},"🔄 Trocar foto"),
         h("button",{onClick:handleSave,style:{padding:"7px 18px",borderRadius:8,background:`linear-gradient(135deg,${P.rose},${P.gold})`,border:"none",color:P.accent3,cursor:"pointer",fontSize:13,fontWeight:600}},"💾 Salvar"),
@@ -2759,10 +2814,10 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
         ),
         h("div",{style:{background:P.bg2,border:`1px solid ${P.border}`,borderRadius:10,padding:14,flexShrink:0}},
           h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}},"Resumo"),
-          h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Marcadores"),h("span",{style:{color:P.text}},doneMarkers.length+" / "+markers.length+" realizados")),
+          h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Marcadores"),h("span",{style:{color:P.text}},modo==="plano"?String(markers.length):doneMarkers.length+" / "+markers.length+" realizados")),
           h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Custo planejado (total)"),h("span",{style:{color:P.rose,fontWeight:600}},fmtCurr(totalPlanned))),
-          h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Custo realizado"),h("span",{style:{color:P.green,fontWeight:600}},fmtCurr(totalActual))),
-          h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Restante a executar"),h("span",{style:{color:P.yellow,fontWeight:600}},fmtCurr(totalPending))),
+          modo!=="plano"&&h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Custo realizado"),h("span",{style:{color:P.green,fontWeight:600}},fmtCurr(totalActual))),
+          modo!=="plano"&&h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}},h("span",{style:{color:P.text2}},"Restante a executar"),h("span",{style:{color:P.yellow,fontWeight:600}},fmtCurr(totalPending))),
           doneMarkers.length>0&&h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0",borderTop:`1px solid ${P.border}`,marginTop:6,paddingTop:8}},
             h("span",{style:{color:P.text2}},"Diferença (realizado − planejado)"),
             h("span",{style:{color:diff>0?P.red:(diff<0?P.green:P.text2),fontWeight:600}},(diff>0?"+":"")+fmtCurr(diff))
@@ -2774,6 +2829,11 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
                 h("div",{style:{fontSize:13,color:P.rose,fontWeight:600}},"Marcador "+(markers.findIndex(m=>m.id===selected.id)+1)),
                 h("button",{onClick:()=>removeMarker(selected.id),style:{background:"transparent",border:"1px solid rgba(192,112,112,.25)",color:P.red,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11}},"🗑 Remover")
               ),
+              modo==="plano"&&h("div",null,
+                h("label",{style:{display:"block",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Procedimento"),
+                h("select",{value:selected.procedure||"",onChange:e=>updateMarker(selected.id,{procedure:e.target.value}),style:IS},
+                  h("option",{value:""},"Escolher procedimento…"),
+                  (procedimentos||[]).map(pn=>h("option",{key:pn,value:pn},pn)))),
               h("div",null,
                 h("label",{style:{display:"block",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Produto previsto"),
                 h(Sel,{value:selected.plannedProduct,onChange:v=>updateMarker(selected.id,{plannedProduct:v,plannedUnit:guessMarkerUnit(v),plannedLoteId:""}),options:prodOptions})
@@ -2798,10 +2858,10 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
               ),
               selected.plannedProduct&&h("div",{style:{fontSize:11,color:P.text3}},"Custo estimado: "+fmtCurr((Number(selected.plannedQty)||0)*cu(selected.plannedProduct))),
               h("div",null,
-                h("label",{style:{display:"block",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},"Observação"),
-                h(TA,{value:selected.notes,onChange:v=>updateMarker(selected.id,{notes:v}),rows:2,placeholder:"Ex: técnica em leque, simetria, etc."})
+                h("label",{style:{display:"block",fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}},modo==="plano"?"Anotação (o que é esta marcação)":"Observação"),
+                h(TA,{value:selected.notes,onChange:v=>updateMarker(selected.id,{notes:v}),rows:2,placeholder:modo==="plano"?"Ex.: preenchimento de olheira, 0,5 ml de cada lado":"Ex: técnica em leque, simetria, etc."})
               ),
-              h("div",{style:{borderTop:`1px solid ${P.border}`,paddingTop:10,marginTop:2}},
+              modo!=="plano"&&h("div",{style:{borderTop:`1px solid ${P.border}`,paddingTop:10,marginTop:2}},
                 h("button",{onClick:()=>toggleDone(selected),style:{width:"100%",padding:"7px 0",borderRadius:8,cursor:"pointer",fontSize:12,fontFamily:"'Jost',system-ui,sans-serif",background:selected.done?P.green:"transparent",border:`1px solid ${selected.done?P.green:P.border}`,color:selected.done?"#fff":P.text2,marginBottom:selected.done?10:0}},
                   selected.done?"✓ Marcado como Realizado":"＋ Marcar como Realizado"
                 ),
@@ -2827,7 +2887,7 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
                       actualLotes.map(l=>h("option",{key:l.id,value:String(l.id)},l.codigo+" — "+l.qtd+" disponível"+(l.validade?" · val "+l.validade:"")))
                     ),
                     selected.stockDebit&&h("div",{style:{fontSize:10,color:P.green,marginTop:4}},`✓ Estoque debitado: ${selected.stockDebit.qty}${selected.actualUnit||selected.plannedUnit||""} do lote selecionado`),
-                    !selected.stockDebit&&selected.actualLoteId&&h("div",{style:{fontSize:10,color:P.yellow,marginTop:4}},"⚠ Salve para debitar do estoque"),
+                    !selected.stockDebit&&selected.actualLoteId&&h("div",{style:{fontSize:10,color:P.text3,marginTop:4}},setProducts?"⚠ Salve para debitar do estoque":"Ao salvar o mapa, isso vai para a sessão. O estoque sai quando você salva a sessão."),
                     selected.stockDebit&&(String(selected.stockDebit.loteId)!==String(selected.actualLoteId)||Number(selected.stockDebit.qty)!==Number(selected.actualQty))&&h("div",{style:{fontSize:10,color:P.yellow,marginTop:4}},"⚠ Lote/quantidade alterados — salve para corrigir o estoque")
                   ),
                   h("div",{style:{fontSize:11,color:P.text3}},"Custo real: "+fmtCurr((Number(selected.actualQty)||0)*cu(selected.actualProduct||selected.plannedProduct)))
@@ -2853,8 +2913,8 @@ function MarkerPhotoPlanner({initial,allProducts,setProducts,patientPhotos,onSav
         ),
         markers.length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:6}},
           markers.map((m,i)=>h("div",{key:m.id,onClick:()=>setSelectedId(m.id),style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",borderRadius:8,background:selectedId===m.id?P.card2:P.bg3,border:`1px solid ${selectedId===m.id?P.rose:P.border}`,cursor:"pointer",fontSize:11.5}},
-            h("span",{style:{color:P.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},(i+1)+". "+(m.plannedProduct||"sem produto")+(m.plannedQty?(" · "+m.plannedQty+(m.plannedUnit||"")):"")+(m.prev&&m.prev.qty?(" (ant. "+m.prev.qty+(m.prev.unit||"")+")"):"")),
-            h("span",{style:{color:m.done?P.green:P.yellow,fontSize:10,flexShrink:0,marginLeft:8}},m.done?"✓ Realizado":"Planejado")
+            h("span",{style:{color:P.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},(i+1)+". "+(modo==="plano"?([m.procedure,m.notes].filter(Boolean).join(" · ")||m.plannedProduct||"sem anotação"):(m.plannedProduct||"sem produto"))+(m.plannedQty?(" · "+m.plannedQty+(m.plannedUnit||"")):"")+(m.prev&&m.prev.qty?(" (ant. "+m.prev.qty+(m.prev.unit||"")+")"):"")),
+            modo!=="plano"&&h("span",{style:{color:m.done?P.green:P.yellow,fontSize:10,flexShrink:0,marginLeft:8}},m.done?"✓ Realizado":"Planejado")
           ))
         )
       )
@@ -3534,7 +3594,7 @@ function GlobalSearch({patients,agenda,onSelectPatient,onNav}){
         if(!seen.has("p"+p.id)){
           seen.add("p"+p.id);
           const lastSess=[...(p.sessions||[])].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];
-          const nextAppt=agenda.filter(a=>apptIsFor(a,p)&&a.date>=localISO()).sort((a,b)=>a.date.localeCompare(b.date))[0];
+          const nextAppt=agendaDe(agenda,p).filter(a=>a.date>=localISO()).sort((a,b)=>a.date.localeCompare(b.date))[0];
           out.push({type:"paciente",label:p.name,sub:lastSess?`Última visita: ${lastSess.date} · ${lastSess.procedure}`:"Sem sessões",extra:nextAppt?`Próximo: ${nextAppt.date} ${nextAppt.time}`:null,status:p.status,pat:p,id:p.id});
         }
       }
@@ -3743,9 +3803,9 @@ function RetornosPendentes({patients,setPatients,returnRules,onSelectPatient,onN
       const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];
       const lastDate=last?parseDMY(last.date):null;
       const diasSemVisita=lastDate?daysBetween(lastDate,today):null;
-      const cancelamentos=agenda.filter(a=>apptIsFor(a,p)&&a.status==="Cancelado").length;
+      const cancelamentos=agendaDe(agenda,p).filter(a=>a.status==="Cancelado").length;
       const semProtocolo=sessions.length>0&&!sessions.some(s=>s.protocol||s.returnReminderDays);
-      const hasUpcoming=agenda.some(a=>apptIsFor(a,p)&&a.date>=todayStr&&a.status!=="Cancelado");
+      const hasUpcoming=agendaDe(agenda,p).some(a=>a.date>=todayStr&&a.status!=="Cancelado");
       let score=0;
       if(diasSemVisita!=null){
         if(diasSemVisita>180)score+=40;
@@ -4904,7 +4964,7 @@ function Dashboard({pendRegistro=[],onAbrirRegistro,setSettings,bookings=[],pati
           const todayISO2=localISO(today);
           const cg=patients.map(p=>{
             const d=parseDMY(p.lastVisit);const days=d?daysBetween(d,today):null;
-            const hasUp=agenda.some(a=>apptIsFor(a,p)&&a.date>=todayISO2&&a.date<=localISO(new Date(today.getTime()+30*864e5)));
+            const hasUp=agendaDe(agenda,p).some(a=>a.date>=todayISO2&&a.date<=localISO(new Date(today.getTime()+30*864e5)));
             return{...p,_days:days,_inTreatment:hasUp||(days!==null&&days<=60),_protocolOverdue:isProtocolOverdue(p)};
           });
           const groups=[
@@ -6244,7 +6304,7 @@ function patientActivity(p,agenda,todayISOstr){
   const last=ss[0]||null;
   const lastD=last?last.d:parseAnyDate(String(p.lastVisit||"").replace("—",""));
   const dias=lastD?Math.floor((t-lastD)/864e5):null;
-  const next=(agenda||[]).filter(a=>a&&!a.blocked&&apptIsFor(a,p)&&a.date>=todayISOstr&&!APPT_INACTIVE.includes(a.status)).sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")))[0]||null;
+  const next=agendaDe(agenda,p).filter(a=>a&&!a.blocked&&a.date>=todayISOstr&&!APPT_INACTIVE.includes(a.status)).sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")))[0]||null;
   let retorno=null,retornoDias=null;
   if(last&&Number(last.s.returnReminderDays)>0){retorno=new Date(last.d);retorno.setDate(retorno.getDate()+Number(last.s.returnReminderDays));retornoDias=Math.round((retorno-t)/864e5);}
   const pacoteAberto=(p.sessions_packages||[]).some(pk=>pkgState(pk).aberto);
@@ -6313,6 +6373,10 @@ function Patients({patients,setPatients,onSelect,procedures,locations,agenda=[]}
     if(sortBy==="sessoes")return b._act.nSess-a._act.nSess;
     return a.name.localeCompare(b.name,"pt-BR",{sensitivity:"base"});
   });
+  // Mostra as pacientes aos poucos (a tela fica leve mesmo com centenas de cadastros)
+  const[limiteLista,setLimiteLista]=useState(60);
+  useEffect(()=>{setLimiteLista(60);},[search,filter,sortBy]);
+  const visiveis=visible.slice(0,limiteLista);
   const dupMatches=showNew?findSimilarPatients(patients,{name:form.name,phone:form.phone,cpf:form.cpf}):[];
   async function addPatient(){
     if(!String(form.name||"").trim()){showAlert("Preencha o nome da paciente.");return;}
@@ -6325,7 +6389,10 @@ function Patients({patients,setPatients,onSelect,procedures,locations,agenda=[]}
         const path=await uploadToStorage(profPhotoFile,`patients/${newId}/profile`,profPhotoFile.name);
         const u=await signPaths([path]);
         photoPatch={profilePhoto:u[path]||null,profilePhotoPath:path};
-      }catch(e){showAlert("Não foi possível enviar a foto: "+(e.message||e));}
+      }catch(e){
+        const inl=await blobParaInline(profPhotoFile,400);
+        if(inl)photoPatch={profilePhoto:inl.url};else showAlert("Não foi possível enviar a foto: "+(e.message||e));
+      }
     }
     const np={id:newId,...form,age:Number(form.age),...photoPatch,lastVisit:"—",nextReturn:"—",sessions:[],sessions_packages:[],intercorrencias:[],planejamento:[],
       complaints:form.complaints.split(",").map(s=>s.trim()).filter(Boolean),tags:[],
@@ -6343,7 +6410,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations,agenda=[]}
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},filtersBtns.map(fi=>h("button",{key:fi.k,onClick:()=>setFilter(fi.k),style:{padding:"6px 14px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:filter===fi.k?P.rose:"transparent",border:`1px solid ${filter===fi.k?P.rose:P.border}`,color:filter===fi.k?P.accent3:P.text2}},fi.l)))
     ),
     h("div",{className:"resp-grid-2",style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}},
-      visible.map((p,i)=>{
+      visiveis.map((p,i)=>{
         const bd_p=p.birthDate?new Date(p.birthDate+"T12:00"):null;
         let calcAge=p.age;if(bd_p&&!isNaN(bd_p)){let a=new Date().getFullYear()-bd_p.getFullYear();const m=new Date().getMonth()-bd_p.getMonth();if(m<0||(m===0&&new Date().getDate()<bd_p.getDate()))a--;calcAge=a;}
         const lastSess=(p.sessions||[]).length>0?[...(p.sessions||[])].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0]:null;
@@ -6356,7 +6423,7 @@ function Patients({patients,setPatients,onSelect,procedures,locations,agenda=[]}
               h(LoyaltyBadge,{patient:p,allPatients:patients,size:"sm"})
             ),
             h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:3}},
-              h("span",{style:{fontSize:12,color:P.text3}},(calcAge||p.age)+" anos"),
+              Number(calcAge||p.age)>0&&h("span",{style:{fontSize:12,color:P.text3}},(calcAge||p.age)+" anos"),
               bd_p&&!isNaN(bd_p)&&h("span",{style:{fontSize:12,color:P.text3}},"· 🎂 "+String(bd_p.getDate()).padStart(2,"0")+"/"+String(bd_p.getMonth()+1).padStart(2,"0")),
               p.phone&&h("span",{style:{fontSize:12,color:P.text3}},"· "+p.phone)
             ),
@@ -6385,6 +6452,8 @@ function Patients({patients,setPatients,onSelect,procedures,locations,agenda=[]}
         );
       })
     ),
+    visible.length>visiveis.length&&h("div",{style:{textAlign:"center",marginTop:16}},
+      h(Btn,{variant:"ghost",onClick:()=>setLimiteLista(n=>n+60)},`Mostrar mais (${visible.length-visiveis.length} restantes)`)),
     h(Modal,{open:showNew,onClose:()=>setShowNew(false),title:"✦ Novo Paciente",width:620},
       h("div",{style:{display:"flex",alignItems:"center",gap:16,marginBottom:20,padding:14,background:P.bg3,borderRadius:10,border:`1px solid ${P.border}`}},
         profPhoto?h("img",{src:profPhoto,alt:"foto",style:{width:64,height:64,borderRadius:"50%",objectFit:"cover",border:`2px solid ${P.rose}`}}):h("div",{style:{width:64,height:64,borderRadius:"50%",background:P.card2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,border:`2px dashed ${P.border}`}},"👤"),
@@ -6876,7 +6945,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
   // ─ Orçamentos ─
   const[showOrc,setShowOrc]=useState(false);
   const[editOrc,setEditOrc]=useState(null);
-  const blankOrc={title:"",items:[],value:"",status:"espera",obs:"",created:"",expiry:"",expiryISO:"",desc:"0",pixDesc:"0",parcelas:"",valorManual:false,tituloManual:false};
+  const blankOrc={precos:{},createdISO:"",title:"",items:[],value:"",status:"espera",obs:"",created:"",expiry:"",expiryISO:"",desc:"0",pixDesc:"0",parcelas:"",valorManual:false,tituloManual:false};
   const[orcForm,setOrcForm]=useState(blankOrc);
   const[orcItemInput,setOrcItemInput]=useState("");
   const[showPdfPac,setShowPdfPac]=useState(false);
@@ -6898,7 +6967,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
   },[sessPrefill&&sessPrefill.apptId,patient.id]);
   const orcCtx={settings:clinicSettings,rooms,products:allProducts||[],patients,proceduresFull};
   const orcPrecoPadrao=name=>{const pf=(proceduresFull||[]).find(x=>x&&typeof x==="object"&&x.name===name);return pf?Number(pf.defaultValue)||0:0;};
-  const orcTabela=items=>(items||[]).reduce((a,it)=>a+orcPrecoPadrao(it),0);
+  const orcTabela=(items,precos)=>(items||[]).reduce((a,it)=>a+orcPrecoItem({precos},it,orcPrecoPadrao(it)),0);
   // Agenda todos os procedimentos do orçamento no mesmo horário (pacote: agenda a 1ª sessão)
   const agendarOrc=orc=>{if(!onAgendar)return;const g=orcGroupItems(orc.items);const pac=orcEhPacote(orc);
     const procs=pac?[g.sort((a,b)=>b.n-a.n)[0].name]:g.map(x=>x.name);
@@ -6907,7 +6976,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
   // Pacote = o mesmo procedimento em várias sessões (ex.: microagulhamento 3×). Harmonização com vários procedimentos diferentes não é pacote.
   const orcEhPacote=orc=>orcGroupItems(orc&&orc.items).some(g=>g.n>1||(()=>{const pf=(proceduresFull||[]).find(x=>x&&typeof x==="object"&&x.name===g.name);return pf&&Number(pf.sessoesPadrao)>1;})());
   // Recalcula o valor (soma da tabela − desconto do combo) e o título, a não ser que você tenha digitado
-  const orcRecalc=f=>{const tab=orcTabela(f.items);const out={...f};
+  const orcRecalc=f=>{const tab=orcTabela(f.items,f.precos);const out={...f};
     if(!f.valorManual)out.value=tab>0?String(Math.round(tab*(1-(Number(f.desc)||0)/100))):(f.value||"");
     if(!f.tituloManual){const g=orcGroupItems(f.items);out.title=g.length===0?"":g.length<=3?g.map(x=>x.name+(x.n>1?" ("+x.n+"×)":"")).join(" + "):"Plano de tratamento · "+g.length+" procedimentos";}
     return out;};
@@ -7199,8 +7268,27 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
       const before=sessSnapshot(editSess),after=sessSnapshot(s);
       if(JSON.stringify(before)!==JSON.stringify(after))s.versions=[...s.versions,{savedAt:new Date().toISOString(),data:before}];
     }
+    // ── Produto de uso único (ex.: seringa de AH) usado em mais de um item, do mesmo lote:
+    //    sai uma embalagem pela soma, não uma por item (0,5 ml no lábio + 0,5 ml no mento = 1 seringa) ──
+    const _qtdDebito=(()=>{
+      const grupos={};
+      items.forEach((it,idx)=>{
+        if(!(it&&it.debitarEstoque!==false&&it.loteId&&Number(it.qtdUsada)>0))return;
+        const po=(allProducts||[]).find(x=>x&&typeof x==="object"&&x.name===it.product);
+        if(!po||!isUsoUnico(po))return;
+        const k=it.product+"|"+it.loteId;
+        if(!grupos[k])grupos[k]={first:idx,total:0};
+        grupos[k].total+=Number(it.qtdUsada);
+      });
+      return(it,idx)=>{
+        const k=it&&(it.product+"|"+it.loteId);
+        const g=k&&grupos[k];
+        if(!g)return Number(it.qtdUsada)||0;
+        return idx===g.first?g.total:0;
+      };
+    })();
     // ── Lote do item principal (legado stockDebit) ──────────────────────────────
-    const nextDebit=(mainItem.debitarEstoque!==false&&mainItem.loteId&&Number(mainItem.qtdUsada)>0)?{product:mainItem.product,loteId:mainItem.loteId,qty:Number(mainItem.qtdUsada)}:null;
+    const nextDebit=(mainItem.debitarEstoque!==false&&mainItem.loteId&&_qtdDebito(mainItem,0)>0)?{product:mainItem.product,loteId:mainItem.loteId,qty:_qtdDebito(mainItem,0)}:null;
     s.stockDebit=ajustarDebitoLote(setProducts,s.stockDebit,nextDebit,`Sessão ${mainProc} · ${patient.name}`);
     // ── Débitos manuais dos itens extras (idx >= 1) ─────────────────────────────
     const prevItemDebits=(editSess?.itemStockDebits)||[];
@@ -7210,7 +7298,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
       // O item 1 já é debitado acima (s.stockDebit). Antes ele era debitado de novo aqui (saída em dobro):
       // agora o item 1 nunca debita neste laço e, se uma sessão antiga tinha esse débito duplicado, ele é devolvido.
       if(idx===0){newItemDebits.push(ajustarDebitoLote(setProducts,prev,null,`Correção de débito duplicado · ${patient.name}`));return;}
-      const next=(it.debitarEstoque!==false&&it.loteId&&Number(it.qtdUsada)>0)?{product:it.product,loteId:it.loteId,qty:Number(it.qtdUsada)}:null;
+      const next=(it.debitarEstoque!==false&&it.loteId&&_qtdDebito(it,idx)>0)?{product:it.product,loteId:it.loteId,qty:_qtdDebito(it,idx)}:null;
       const debit=ajustarDebitoLote(setProducts,prev,next,`Sessão ${it.procedure||mainProc} · item ${idx+1} · ${patient.name}`);
       newItemDebits.push(debit);
     });
@@ -7223,7 +7311,8 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
       if(it.skipAutoInsumos)return;
       const procObj=(proceduresFull||[]).find(p=>(typeof p==="string"?p:(p.name||p))===it.procedure);
       const fichaInsumos=(procObj&&typeof procObj==="object"&&Array.isArray(procObj.insumos))?procObj.insumos:[];
-      const insumosQty=fichaInsumos.map(i=>({product:i.product,qty:Number(i.qty)||0})).filter(i=>i.product&&i.qty>0);
+      const jaNaSessao=new Set(items.filter(x=>x&&x.product&&Number(x.qtdUsada)>0).map(x=>x.product));
+      const insumosQty=fichaInsumos.map(i=>({product:i.product,qty:Number(i.qty)||0})).filter(i=>i.product&&i.qty>0&&!jaNaSessao.has(i.product));
       if(insumosQty.length===0)return;
       // pega débitos antigos deste item (identificados por itemIdx)
       const prevDebitsForItem=(allAutoDebits||[]).filter(d=>d.itemIdx===idx);
@@ -7238,7 +7327,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
     const _procsSess=items.map(it=>it.procedure).filter(Boolean);
     s.fromApptId=sForm.fromApptId||(editSess&&editSess.fromApptId)||null;
     s.orcId=sForm.orcId||(editSess&&editSess.orcId)||null;
-    const orcMatch=(s.orcId&&(patient.orcamentos||[]).find(o=>o.id===s.orcId))||(patient.orcamentos||[]).find(o=>o.status!=="recusado"&&o.status!=="expirado"&&_procsSess.some(pr=>(o.items||[]).includes(pr)&&!(o.linkedProcs||[]).includes(pr)));
+    const orcMatch=(s.orcId&&(patient.orcamentos||[]).find(o=>o.id===s.orcId))||(patient.orcamentos||[]).find(o=>o.status!=="recusado"&&o.status!=="expirado"&&_procsSess.some(pr=>{const c=orcFeitosCont(o);return (o.items||[]).filter(x=>x===pr).length>(c[pr]||0);}));
     s.fromOrcId=orcMatch?orcMatch.id:(editSess?editSess.fromOrcId:null)||null;
     upd(p=>{
       const sessions=editSess?(p.sessions||[]).map(x=>x.id===s.id?s:x):[s,...(p.sessions||[])];
@@ -7246,9 +7335,10 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
       if(orcMatch){
         orcamentos=orcamentos.map(o=>{
           if(o.id!==orcMatch.id)return o;
-          const linkedProcs=[...new Set([...(o.linkedProcs||[]),..._procsSess.filter(pr=>(o.items||[]).includes(pr))])];
-          const isFull=(o.items||[]).length>0&&(o.items||[]).every(it=>linkedProcs.includes(it));
-          return{...o,linkedProcs,status:o.status==="espera"?"aprovado":o.status,convertedAt:o.convertedAt||s.date,fullyConvertedAt:isFull?(o.fullyConvertedAt||s.date):(o.fullyConvertedAt||null)};
+          if(editSess&&editSess.fromOrcId===o.id)return o; // sessão editada: já foi contada
+          const feitos=[...orcFeitosLista(o)];
+          _procsSess.forEach(pr=>{const tem=(o.items||[]).filter(x=>x===pr).length;const ja=feitos.filter(x=>x===pr).length;if(ja<tem)feitos.push(pr);});
+          return{...orcComFeitos(o,feitos,s.date),status:o.status==="espera"?"aprovado":o.status};
         });
       }
       const sessions_packages=_usePkg?(p.sessions_packages||[]).map(x=>x.id===_usePkg.id?pkgUse(x,{sessId:s.id,obs:`Sessão do prontuário · ${isoToBR(s.date)||s.date}`}):x):p.sessions_packages;
@@ -7290,7 +7380,8 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
   }
   async function delSession(id){
     const sess=(patient.sessions||[]).find(s=>s.id===id);
-    if(!await confirmar(isSessLocked(sess)?"Este registro tem mais de 24h e faz parte do prontuário.\n\nExcluir mesmo assim? Esta ação não pode ser desfeita.":"Excluir sessão?"))return;
+    if(!await confirmar(isSessLocked(sess)?"Excluir este registro?\nEle tem mais de 24h e faz parte do prontuário.":"Excluir sessão?"))return;
+    const mapasLigados=(patient.planejamento||[]).filter(pl=>pl.sessionId===id).map(pl=>pl.id);
     if(sess?.stockDebit&&Number(sess.stockDebit.qty)>0){
       estornarLote(setProducts,sess.stockDebit.product,sess.stockDebit.loteId,sess.stockDebit.qty,`Estorno · sessão excluída (${patient.name})`);
     }
@@ -7313,6 +7404,20 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
       // se a sessão tinha usado um pacote, a sessão volta para o pacote
       sessions_packages:sess&&sess.pkgId?(p.sessions_packages||[]).map(x=>x.id===sess.pkgId?pkgUndo(x,{sessId:id,obs:"Sessão excluída do prontuário"}):x):p.sessions_packages
     }));
+    if(!sess)return;
+    notify("Sessão excluída.","ok",{label:"Desfazer",fn:()=>{
+      // Volta a sessão, o vínculo com o mapa, o pacote e o que tinha saído do estoque
+      const obs=`Sessão restaurada (${patient.name})`;
+      if(sess.stockDebit&&Number(sess.stockDebit.qty)>0)debitarLote(setProducts,sess.stockDebit.product,sess.stockDebit.loteId,sess.stockDebit.qty,obs);
+      (sess.itemStockDebits||[]).forEach(d=>{if(d&&Number(d.qty)>0)debitarLote(setProducts,d.product,d.loteId,d.qty,obs);});
+      (sess.autoStockDebits||[]).forEach(d=>{if(d&&d.loteId&&Number(d.qty)>0)debitarLote(setProducts,d.product,d.loteId,d.qty,obs+" · ficha técnica");});
+      upd(p=>({
+        ...p,
+        sessions:(p.sessions||[]).some(x=>x.id===id)?p.sessions:[sess,...(p.sessions||[])],
+        planejamento:(p.planejamento||[]).map(pl=>mapasLigados.includes(pl.id)?{...pl,sessionId:id}:pl),
+        sessions_packages:sess.pkgId?(p.sessions_packages||[]).map(x=>x.id===sess.pkgId?pkgUse(x,{sessId:id,obs:"Sessão restaurada"}):x):p.sessions_packages
+      }));
+    }});
   }
   async function addMedia(sessId,files,type,extra){
     try{
@@ -7397,16 +7502,59 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
     });
     upd(p=>({...p,planejamento:(p.planejamento||[]).filter(pl=>pl.id!==id)}));
   }
+  // Mapa da sessão → sessão: o que foi marcado como realizado (produto, lote, quantidade) vai para os itens da sessão.
+  // Abre a sessão já preenchida para você conferir e salvar; é ao salvar a sessão que o estoque sai (uma vez só).
+  function mapaParaSessao(sessId,markers){
+    const sess=(patient.sessions||[]).find(x=>x.id===sessId);
+    if(!sess)return;
+    const tot={};
+    (markers||[]).filter(m=>m&&m.done).forEach(m=>{
+      const prod=m.actualProduct||m.plannedProduct;const q=Number(m.actualQty||m.plannedQty)||0;
+      if(!prod||!(q>0))return;
+      const k=prod+"|"+(m.actualLoteId||"");
+      if(!tot[k])tot[k]={product:prod,loteId:m.actualLoteId||"",qty:0};
+      tot[k].qty+=q;
+    });
+    const grupos=Object.values(tot);
+    if(!grupos.length)return;
+    const items=(sess.items&&sess.items.length?sess.items:[{procedure:sess.procedure||"",product:sess.product||"",loteId:sess.loteId||"",qtdUsada:sess.qtdUsada||"",dose:sess.dose||"",region:sess.region||"",value:String(sess.value||""),debitarEstoque:true,skipAutoInsumos:false}]).map(it=>({...it,value:String(it.value||"")}));
+    const usados=new Set();
+    let mudou=false;
+    grupos.forEach(g=>{
+      const qtd=String(Math.round(g.qty*100)/100);
+      let i=items.findIndex((it,ix)=>!usados.has(ix)&&it.product===g.product);
+      if(i<0)i=items.findIndex((it,ix)=>!usados.has(ix)&&!it.product);
+      if(i>=0){
+        usados.add(i);
+        const it=items[i];
+        if(it.product!==g.product||String(it.qtdUsada)!==qtd||(g.loteId&&String(it.loteId)!==String(g.loteId)))mudou=true;
+        items[i]={...it,product:g.product,qtdUsada:qtd,loteId:g.loteId||it.loteId||"",debitarEstoque:true};
+      }else{
+        mudou=true;
+        items.push({procedure:(items[0]&&items[0].procedure)||sess.procedure||"",product:g.product,loteId:g.loteId||"",qtdUsada:qtd,dose:"",region:"",value:"0",debitarEstoque:true,skipAutoInsumos:true});
+        usados.add(items.length-1);
+      }
+    });
+    if(!mudou)return;
+    setEditSess(sess);
+    setSForm({...sess,value:String(sess.value),finStatus:sess.finStatus||"Pendente",items});
+    setTab("prontuario");setShowNewS(true);
+    notify("Passei os produtos do mapa para a sessão. Confira o lote e salve: o estoque sai uma vez só, ao salvar.","ok");
+  }
   async function saveMarkerPlanNew(data){
     data=await packMarkerPlan(data,`patients/${patient.id}/plans`);
-    const pl={id:genId(),title:markerPlanningForSession?"Mapa Facial · Sessão":"Mapa Facial",steps:[],notes:"",done:false,created:new Date().toLocaleDateString("pt-BR"),markerPlan:data,sessionId:markerPlanningForSession||null};
+    const ehMapa=tab==="mapa"||!!markerPlanningForSession;
+    const pl={id:genId(),tipo:ehMapa?"mapa":"plano",title:ehMapa?(markerPlanningForSession?"Mapa Facial · Sessão":"Mapa Facial"):"Planejamento",steps:[],notes:"",done:false,created:new Date().toLocaleDateString("pt-BR"),markerPlan:data,sessionId:markerPlanningForSession||null};
     upd(p=>({...p,planejamento:[...(p.planejamento||[]),pl]}));
     setMarkerPlanning(null);setMarkerPlanningForSession(null);setMarkerInitial(null);
+    if(pl.sessionId)setTimeout(()=>mapaParaSessao(pl.sessionId,data.markers),0);
   }
   async function saveMarkerPlan(planId,data){
     data=await packMarkerPlan(data,`patients/${patient.id}/plans`);
     upd(p=>({...p,planejamento:(p.planejamento||[]).map(pl=>pl.id===planId?{...pl,markerPlan:data,updatedAt:new Date().toLocaleDateString("pt-BR")}:pl)}));
     setMarkerPlanning(null);setMarkerPlanningForSession(null);setMarkerInitial(null);
+    const plSess=(patient.planejamento||[]).find(x=>x.id===planId);
+    if(plSess&&plSess.sessionId&&ehMapaFacial(plSess))setTimeout(()=>mapaParaSessao(plSess.sessionId,data.markers),0);
   }
 
   function togglePlanStep(planId,stepIdx){
@@ -7417,8 +7565,8 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
   function saveOrcamento(){
     const F=orcForm;
     const orc={...(editOrc||{}),id:editOrc?editOrc.id:genId(),title:F.title||orcGroupItems(F.items).map(x=>x.name).join(" + ")||"Orçamento",items:F.items,value:Number(String(F.value||"").replace(",","."))||0,status:F.status,obs:F.obs,
-      expiryISO:F.expiryISO||"",expiry:F.expiryISO?isoToBR(F.expiryISO):"",tabela:orcTabela(F.items),desc:Number(F.desc)||0,pixDesc:Number(F.pixDesc)||0,parcelas:Number(F.parcelas)||0,valorManual:!!F.valorManual,tituloManual:!!F.tituloManual,
-      created:editOrc?editOrc.created:new Date().toLocaleDateString("pt-BR"),convertedAt:editOrc?.convertedAt||null};
+      expiryISO:F.expiryISO||"",expiry:F.expiryISO?isoToBR(F.expiryISO):"",tabela:orcTabela(F.items,F.precos),precos:{...(F.precos||{})},desc:Number(F.desc)||0,pixDesc:Number(F.pixDesc)||0,parcelas:Number(F.parcelas)||0,valorManual:!!F.valorManual,tituloManual:!!F.tituloManual,
+      created:F.createdISO?isoToBR(F.createdISO):(editOrc?editOrc.created:new Date().toLocaleDateString("pt-BR")),createdISO:F.createdISO||(editOrc&&editOrc.createdISO)||todayISO(),convertedAt:editOrc?.convertedAt||null};
     upd(p=>({...p,orcamentos:editOrc?(p.orcamentos||[]).map(o=>o.id===orc.id?orc:o):[orc,...(p.orcamentos||[])]}));
     setShowOrc(false);setEditOrc(null);setOrcForm(blankOrc);setOrcItemInput("");
   }
@@ -7440,11 +7588,39 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
     setPkgForm({name:orc.title||"Pacote",procedure:(g&&g.name)||procedures[0]||"",total:tot,price:orc.value?String(orc.value):"",notes:"Gerado do orçamento: "+(orc.title||""),fromOrcId:orc.id});
     setShowNewPkg(true);setTab("pacotes");
   }
+  // Valor de um procedimento dentro do orçamento, já com o desconto proporcional do total
+  function valorItemOrc(orc,item){
+    const itens=orc.items||[];
+    const tab=itens.reduce((a,it)=>a+orcPrecoItem(orc,it,orcPrecoPadrao(it)),0);
+    const total=Number(orc.value)||0;
+    if(tab>0)return Math.round(orcPrecoItem(orc,item,orcPrecoPadrao(item))*total/tab);
+    return itens.length?Math.round(total/itens.length):0;
+  }
+  // Tocar num procedimento do orçamento: dar baixa (feito), lançar no prontuário ou desfazer
+  async function acaoItemOrc(orc,item,feito){
+    if(feito){
+      const r=await escolher(`${item}\nJá foi dado baixa neste procedimento.`,[{label:"Desfazer baixa",value:"desfazer",primary:true}]);
+      if(r!=="desfazer")return;
+      upd(p=>({...p,orcamentos:(p.orcamentos||[]).map(o=>{if(o.id!==orc.id)return o;const f=[...orcFeitosLista(o)];const i=f.lastIndexOf(item);if(i>=0)f.splice(i,1);return orcComFeitos(o,f);})}));
+      return;
+    }
+    const r=await escolher(`${item}\nO que fazer com este procedimento?`,[{label:"Lançar no prontuário",value:"lancar"},{label:"Dar baixa",value:"baixa",primary:true}]);
+    if(!r)return;
+    const hoje=new Date().toLocaleDateString("pt-BR");
+    if(r==="lancar"){
+      const ns={id:genId(),date:hoje,procedure:item,doctor:(clinicSettings&&clinicSettings.doctorName)||"",product:"",dose:"",region:"",location:locations[0]||"",value:valorItemOrc(orc,item),paid:false,finStatus:"Pendente",payMethod:"Pendente",parcelas:1,notes:"Gerado do orçamento: "+orc.title,evolution:"",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:90,lote:"",qtdUsada:"",fromOrcId:orc.id};
+      upd(p=>({...p,sessions:[ns,...(p.sessions||[])],lastVisit:hoje,orcamentos:(p.orcamentos||[]).map(o=>o.id===orc.id?{...orcComFeitos(o,[...orcFeitosLista(o),item],hoje),status:"aprovado"}:o)}));
+      setTimeout(()=>syncIncome(ns,patient.name),0);
+      notify(item+" lançado no prontuário e no financeiro.","ok");
+      return;
+    }
+    upd(p=>({...p,orcamentos:(p.orcamentos||[]).map(o=>o.id===orc.id?{...orcComFeitos(o,[...orcFeitosLista(o),item],hoje),status:"aprovado"}:o)}));
+  }
   function converterEmTratamento(orc){
-    const linkedProcs=orc.linkedProcs||[];
-    const pendingItems=(orc.items||[]).filter(item=>!linkedProcs.includes(item));
-    const novasSessoes=pendingItems.map((item,i)=>({id:genId(),date:new Date().toLocaleDateString("pt-BR"),procedure:item,doctor:(clinicSettings&&clinicSettings.doctorName)||"",product:"",dose:"",region:"",location:locations[0]||"",value:orc.items.length>0?Math.round(orc.value/orc.items.length):0,paid:false,finStatus:"Pendente",payMethod:"Pendente",parcelas:1,notes:"Gerado do orçamento: "+orc.title,evolution:"",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:90,lote:"",qtdUsada:"",fromOrcId:orc.id}));
-    upd(p=>({...p,sessions:[...novasSessoes,...(p.sessions||[])],lastVisit:novasSessoes.length?new Date().toLocaleDateString("pt-BR"):p.lastVisit,orcamentos:(p.orcamentos||[]).map(o=>o.id===orc.id?{...o,status:"aprovado",convertedAt:o.convertedAt||new Date().toLocaleDateString("pt-BR"),fullyConvertedAt:o.fullyConvertedAt||new Date().toLocaleDateString("pt-BR"),linkedProcs:[...new Set([...linkedProcs,...pendingItems])]}:o)}));
+    const _cnt=orcFeitosCont(orc);
+    const pendingItems=(orc.items||[]).filter(item=>{if((_cnt[item]||0)>0){_cnt[item]--;return false;}return true;});
+    const novasSessoes=pendingItems.map((item,i)=>({id:genId(),date:new Date().toLocaleDateString("pt-BR"),procedure:item,doctor:(clinicSettings&&clinicSettings.doctorName)||"",product:"",dose:"",region:"",location:locations[0]||"",value:valorItemOrc(orc,item),paid:false,finStatus:"Pendente",payMethod:"Pendente",parcelas:1,notes:"Gerado do orçamento: "+orc.title,evolution:"",faceMap:null,photos:[],docs:[],intercorrencias:[],returnReminderDays:90,lote:"",qtdUsada:"",fromOrcId:orc.id}));
+    upd(p=>({...p,sessions:[...novasSessoes,...(p.sessions||[])],lastVisit:novasSessoes.length?new Date().toLocaleDateString("pt-BR"):p.lastVisit,orcamentos:(p.orcamentos||[]).map(o=>o.id===orc.id?{...o,status:"aprovado",convertedAt:o.convertedAt||new Date().toLocaleDateString("pt-BR"),fullyConvertedAt:o.fullyConvertedAt||new Date().toLocaleDateString("pt-BR"),linkedProcs:[...new Set([...(o.linkedProcs||[]),...pendingItems])],feitos:[...(o.items||[])]}:o)}));
     // Criar lançamentos pendentes no Financeiro para cada sessão gerada
     setTimeout(()=>novasSessoes.forEach(s=>syncIncome(s,patient.name)),0);
     setTab("prontuario");
@@ -7493,7 +7669,10 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
               const path=await uploadToStorage(f,`patients/${patient.id}/profile`,f.name);
               const u=await signPaths([path]);
               upd(p=>({...p,profilePhotoPath:path,profilePhoto:u[path]||null}));
-            }catch(err){showAlert("Não foi possível enviar a foto: "+(err.message||err));}
+            }catch(err){
+              const inl=await blobParaInline(f,400);
+              if(inl)upd(p=>({...p,profilePhotoPath:null,profilePhoto:inl.url}));else showAlert("Não foi possível enviar a foto: "+(err.message||err));
+            }
           }})
         ),
         h("div",{style:{flex:1,minWidth:200}},
@@ -7502,9 +7681,9 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
             h(StatusBadge,{status:patient.status})
           ),
           h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginBottom:6}},
-            h("span",{style:{fontSize:13,color:P.text3}},(()=>{const bd=patient.birthDate?new Date(patient.birthDate+"T12:00"):null;let age=patient.age;if(bd&&!isNaN(bd)){let a=new Date().getFullYear()-bd.getFullYear();const m=new Date().getMonth()-bd.getMonth();if(m<0||(m===0&&new Date().getDate()<bd.getDate()))a--;age=a;}return age+" anos";})()),
-            h("span",{style:{fontSize:13,color:P.text3}},"Tipo "+patient.bloodType),
-            h("span",{style:{fontSize:13,color:P.text3}},"Fitzpatrick "+patient.anamnese?.fitzpatrick),
+            h("span",{style:{fontSize:13,color:P.text3}},(()=>{const bd=patient.birthDate?new Date(patient.birthDate+"T12:00"):null;let age=patient.age;if(bd&&!isNaN(bd)){let a=new Date().getFullYear()-bd.getFullYear();const m=new Date().getMonth()-bd.getMonth();if(m<0||(m===0&&new Date().getDate()<bd.getDate()))a--;age=a;}return Number(age)>0?age+" anos":null;})()),
+            patient.bloodType&&h("span",{style:{fontSize:13,color:P.text3}},"Tipo "+patient.bloodType),
+            patient.anamnese?.fitzpatrick&&h("span",{style:{fontSize:13,color:P.text3}},"Fitzpatrick "+patient.anamnese.fitzpatrick),
             patient.birthDate&&h("span",{style:{fontSize:13,color:P.text3}},"🎂 "+(()=>{const bd=new Date(patient.birthDate+"T12:00");return String(bd.getDate()).padStart(2,"0")+"/"+String(bd.getMonth()+1).padStart(2,"0")+"/"+bd.getFullYear();})()),
             patient.since&&h("span",{style:{fontSize:13,color:P.text3}},"Desde "+patient.since)
           ),
@@ -7676,7 +7855,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
     tab==="orcamentos"&&h("div",null,
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}},
         h("div",null,h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Orçamentos"),h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},(patient.orcamentos||[]).length+" orçamento(s) no histórico")),
-        h(Btn,{onClick:()=>{setEditOrc(null);setOrcForm(blankOrc);setShowOrc(true);}},"＋ Novo Orçamento")
+        h(Btn,{onClick:()=>{setEditOrc(null);setOrcForm({...blankOrc,createdISO:todayISO()});setShowOrc(true);}},"＋ Novo Orçamento")
       ),
       (patient.orcamentos||[]).length===0&&h(Card,{style:{textAlign:"center",padding:40}},h("div",{style:{fontSize:32,marginBottom:12}},"💼"),h("div",{style:{color:P.text3,fontSize:14}},"Nenhum orçamento criado."),h(Btn,{style:{marginTop:16},onClick:()=>{setEditOrc(null);setOrcForm(blankOrc);setShowOrc(true);}},"Criar Primeiro Orçamento")),
       h("div",{style:{display:"flex",flexDirection:"column",gap:12}},
@@ -7690,7 +7869,11 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
                 (()=>{const d=orcDiasSemResposta(orc);if(d==null)return null;const late=d>=ORC_FOLLOWUP_DAYS;return h("div",{style:{fontSize:11,marginTop:4,color:late?P.red:P.text3,fontWeight:late?600:400}},(late?"⏳ Sem resposta há "+d+" dia(s)":"Aguardando resposta · "+d+" dia(s)")+(orc.lastContactAt?" · último contato "+isoToBR(orc.lastContactAt):""));})(),!orc.fullyConvertedAt&&orc.convertedAt&&h("div",{style:{fontSize:11,color:P.accent,marginTop:2}},`🔗 Em andamento desde ${orc.convertedAt} · ${(orc.linkedProcs||[]).length}/${(orc.items||[]).length} procedimento(s) realizado(s)`)),
               h("span",{style:{fontSize:11,padding:"4px 10px",borderRadius:12,color:sc.color,background:sc.bg,border:`1px solid ${sc.color}33`,flexShrink:0}},sc.label)
             ),
-            (orc.items||[]).length>0&&h("div",{style:{marginBottom:12}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"Procedimentos"),h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},(orc.items||[]).map((item,i)=>h("div",{key:i,style:{display:"flex",alignItems:"center",gap:5,fontSize:12,padding:"4px 10px",borderRadius:8,background:P.bg3,border:`1px solid ${P.border}`,color:P.text}},h("span",{style:{color:P.green}},"☑"),item)))),
+            (orc.items||[]).length>0&&h("div",{style:{marginBottom:12}},h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}},"Procedimentos"),(()=>{const cnt=orcFeitosCont(orc);const vistos={};return h("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},(orc.items||[]).map((item,i)=>{vistos[item]=(vistos[item]||0)+1;const feito=vistos[item]<=(cnt[item]||0);
+              return h("button",{key:i,onClick:()=>acaoItemOrc(orc,item,feito),title:feito?"Feito · toque para desfazer":"Toque para dar baixa ou lançar",style:{display:"flex",alignItems:"center",gap:6,fontSize:12,padding:"5px 11px",borderRadius:8,cursor:"pointer",fontFamily:"'Jost',system-ui,sans-serif",background:feito?"rgba(78,138,110,.10)":P.bg3,border:`1px solid ${feito?"rgba(78,138,110,.45)":P.border}`,color:feito?P.green:P.text,textDecoration:feito?"line-through":"none"}},
+                h("span",{style:{width:14,height:14,borderRadius:4,border:`1px solid ${feito?P.green:P.text3}`,background:feito?P.green:"transparent",color:"#fff",fontSize:10,lineHeight:"13px",textAlign:"center",display:"inline-block"}},feito?"✓":""),item,
+                h("span",{style:{color:P.text3,fontSize:11,textDecoration:"none"}},fmtCurr(valorItemOrc(orc,item))));}));})(),
+              h("div",{style:{fontSize:11,color:P.text3,marginTop:6}},"Toque num procedimento para dar baixa só nele.")),
             h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}},
               h("div",null,
                 h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:P.green}},fmtCurr(orc.value)),
@@ -7704,8 +7887,8 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
                 orc.status==="aprovado"&&!orc.fullyConvertedAt&&onAgendar&&h(Btn,{onClick:()=>agendarOrc(orc),style:{fontSize:11,padding:"5px 12px"}},"Agendar"),
                 orc.status!=="recusado"&&!orc.pkgId&&(orc.items||[]).length>0&&orcEhPacote(orc)&&h(Btn,{variant:"ghost",onClick:()=>orcToPackage(orc),style:{fontSize:11,padding:"5px 10px"}},"📦 Virar pacote"),
                 orc.status!=="recusado"&&h(Btn,{variant:"ghost",onClick:()=>updateOrcStatus(orc.id,"recusado"),style:{fontSize:11,padding:"5px 10px",color:P.red,border:`1px solid ${P.red}44`}},"🔴 Recusar"),
-                orc.status==="aprovado"&&!orc.fullyConvertedAt&&(orc.items||[]).length>(orc.linkedProcs||[]).length&&h(Btn,{onClick:()=>converterEmTratamento(orc),style:{fontSize:11,padding:"5px 12px",background:`linear-gradient(135deg,${P.green},${P.statusGreen})`}},(orc.linkedProcs||[]).length>0?"⚡ Lançar Procedimentos Restantes":"⚡ Converter em Tratamento"),
-                h(Btn,{variant:"ghost",onClick:()=>{setEditOrc(orc);setOrcForm({...blankOrc,...orc,value:String(orc.value),items:[...(orc.items||[])],expiryISO:orc.expiryISO||(()=>{const d=parseAnyDate(String(orc.expiry||""));return d?localISO(d):"";})(),desc:String(orc.desc||0),pixDesc:String(orc.pixDesc||0),parcelas:orc.parcelas?String(orc.parcelas):"",valorManual:orc.valorManual!=null?orc.valorManual:true,tituloManual:orc.tituloManual!=null?orc.tituloManual:true});setShowOrc(true);},style:{fontSize:11,padding:"5px 10px"}},"✎"),
+                orc.status==="aprovado"&&!orc.fullyConvertedAt&&(orc.items||[]).length>orcFeitosLista(orc).length&&h(Btn,{onClick:()=>converterEmTratamento(orc),style:{fontSize:11,padding:"5px 12px",background:`linear-gradient(135deg,${P.green},${P.statusGreen})`}},orcFeitosLista(orc).length>0?"⚡ Lançar Procedimentos Restantes":"⚡ Converter em Tratamento"),
+                h(Btn,{variant:"ghost",onClick:()=>{setEditOrc(orc);setOrcForm({...blankOrc,...orc,precos:{...(orc.precos||{})},createdISO:orc.createdISO||(()=>{const d=parseAnyDate(String(orc.created||""));return d?localISO(d):"";})(),value:String(orc.value),items:[...(orc.items||[])],expiryISO:orc.expiryISO||(()=>{const d=parseAnyDate(String(orc.expiry||""));return d?localISO(d):"";})(),desc:String(orc.desc||0),pixDesc:String(orc.pixDesc||0),parcelas:orc.parcelas?String(orc.parcelas):"",valorManual:orc.valorManual!=null?orc.valorManual:true,tituloManual:orc.tituloManual!=null?orc.tituloManual:true});setShowOrc(true);},style:{fontSize:11,padding:"5px 10px"}},"✎"),
                 h(Btn,{variant:"danger",onClick:()=>deleteOrcamento(orc.id),style:{fontSize:11,padding:"5px 10px"}},"🗑")
               )
             ),
@@ -7738,13 +7921,18 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
                 h("button",{onClick:()=>{const i=F.items.lastIndexOf(g.name);setItems(F.items.filter((_,j)=>j!==i));},style:{width:24,height:24,borderRadius:12,border:`0.5px solid ${P.border}`,background:"transparent",color:P.text2,cursor:"pointer"}},"−"),
                 h("span",{style:{minWidth:26,textAlign:"center",color:P.text}},g.n+"×"),
                 h("button",{onClick:()=>setItems([...F.items,g.name]),style:{width:24,height:24,borderRadius:12,border:`0.5px solid ${P.border}`,background:"transparent",color:P.text2,cursor:"pointer"}},"+"),
-                h("span",{style:{minWidth:74,textAlign:"right",color:P.text3}},orcPrecoPadrao(g.name)>0?fmtCurr(orcPrecoPadrao(g.name)*g.n):"sem valor"))))
+                h("span",{style:{fontSize:11,color:P.text3}},"R$"),
+                h("input",{value:(F.precos&&F.precos[g.name]!==undefined)?F.precos[g.name]:(orcPrecoPadrao(g.name)?String(orcPrecoPadrao(g.name)):""),inputMode:"decimal",placeholder:"valor",title:"Valor de cada "+g.name+" neste orçamento",
+                  onChange:e=>{const v=e.target.value;setOrcForm(p=>orcRecalc({...p,valorManual:false,precos:{...(p.precos||{}),[g.name]:v}}));},
+                  style:{...IS,width:84,padding:"5px 8px",fontSize:12.5,textAlign:"right"}}),
+                g.n>1&&h("span",{style:{minWidth:70,textAlign:"right",color:P.text3,fontSize:11.5}},"= "+fmtCurr(orcPrecoItem(F,g.name,orcPrecoPadrao(g.name))*g.n)))))
             )),
             h(Field,{label:"Desconto do combo",half:true},h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},["0","5","10","15"].map(d=>chip(String(F.desc||"0")===d,d==="0"?"Sem":d+"%",()=>setOrcForm(p=>orcRecalc({...p,desc:d,valorManual:false})),d)))),
             h(Field,{label:"Valor total (R$)",half:true},h("div",null,
               h(Inp,{value:F.value,onChange:v=>setOrcForm(p=>({...p,value:v,valorManual:true})),placeholder:"0,00"}),
               tabela>0&&h("div",{style:{fontSize:11,color:P.text3,marginTop:4}},F.valorManual?h("button",{onClick:()=>setOrcForm(p=>orcRecalc({...p,valorManual:false})),style:{background:"none",border:"none",padding:0,color:P.accent,cursor:"pointer",fontSize:11}},"Voltar ao valor calculado"):`Tabela ${fmtCurr(tabela)}`+(Number(F.desc)>0?` − ${F.desc}%`:"")))),
             h(Field,{label:"Título"},h(Inp,{value:F.title,onChange:v=>setOrcForm(p=>({...p,title:v,tituloManual:!!v})),placeholder:"Preenchido pelos procedimentos"})),
+            h(Field,{label:"Data do orçamento",half:true},h(Inp,{type:"date",value:F.createdISO||"",onChange:v=>setOrcForm(p=>({...p,createdISO:v}))})),
             h(Field,{label:"Validade (opcional)",half:true},h("div",null,
               h(Inp,{type:"date",value:F.expiryISO||"",onChange:v=>setOrcForm(p=>({...p,expiryISO:v}))}),
               h("div",{style:{display:"flex",gap:5,marginTop:6,flexWrap:"wrap"}},[7,15,30].map(d=>chip(false,d+" dias",()=>{const t=new Date();t.setDate(t.getDate()+d);setOrcForm(p=>({...p,expiryISO:localISO(t)}));},d)),F.expiryISO&&chip(false,"Sem validade",()=>setOrcForm(p=>({...p,expiryISO:""})),"x")))),
@@ -7861,7 +8049,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
             (s.paid||s.finStatus==="Pago")&&Number(s.value)>0&&h("button",{onClick:()=>printReciboPDF(s,patient,clinicSettings),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"Recibo"),
             h("button",{onClick:()=>openMapForSession(s),style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},mapPlanBySession[s.id]?"🗺 Editar Mapa":"🗺 Mapa"),
             h("button",{onClick:()=>{setEditSess(s);setSForm({...s,value:String(s.value),finStatus:s.finStatus||"Pendente",items:s.items&&s.items.length>0?s.items.map(it=>({...it,value:String(it.value||"")})):[{procedure:s.procedure||"",product:s.product||"",loteId:s.loteId||"",qtdUsada:s.qtdUsada||"",dose:s.dose||"",region:s.region||"",value:String(s.value||""),debitarEstoque:true,skipAutoInsumos:false}]});setShowNewS(true);},style:{fontSize:11,color:P.accent,background:"transparent",border:`1px solid ${P.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"✎"),
-            h("button",{onClick:()=>delSession(s.id),style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"🗑")
+            h("button",{onClick:()=>delSession(s.id),title:"Excluir sessão",style:{fontSize:11,color:P.red,background:"transparent",border:"1px solid rgba(192,112,112,.2)",borderRadius:6,padding:"3px 8px",cursor:"pointer"}},"🗑")
           )
         ),
         s.region&&h("div",{style:{fontSize:12,color:P.text2,marginBottom:8}},`🎯 Região: `,h("strong",{style:{color:P.text}},s.region)),
@@ -7924,7 +8112,9 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
       markerPlanning&&h(MarkerPhotoPlanner,{
         initial:markerPlanning==="new"?markerInitial:markerPlanning.markerPlan,
         allProducts,
-        setProducts,
+        setProducts:null, // o estoque sai só pela sessão do prontuário (evita desconto em dobro)
+        modo:tab==="mapa"?"mapa":"plano",
+        procedimentos:procedures,
         patientPhotos:patientPhotoGallery,
         onClose:()=>{setMarkerPlanning(null);setMarkerPlanningForSession(null);setMarkerInitial(null);},
         onSave:data=>{
@@ -8026,6 +8216,19 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
           })
         )
       ),
+      // Mapas avulsos (sem sessão)
+      (()=>{const av=(patient.planejamento||[]).filter(pl=>ehMapaFacial(pl)&&!pl.sessionId);if(!av.length)return null;
+        return h("div",{style:{marginTop:18}},
+          h("div",{style:{fontSize:10,textTransform:"uppercase",letterSpacing:".12em",color:P.text3,marginBottom:8}},"Mapas avulsos"),
+          h("div",{style:{display:"flex",flexDirection:"column",gap:10}},av.map(pl=>{const mp=pl.markerPlan||{};const n=(mp.markers||[]).length;
+            return h(Card,{key:pl.id,style:{display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}},
+              mp.baseImage&&h("img",{src:mp.baseImage,alt:"",onClick:()=>setMarkerPlanning(pl),style:{width:84,height:84,objectFit:"cover",borderRadius:8,cursor:"pointer",border:`0.5px solid ${P.border}`}}),
+              h("div",{style:{flex:1,minWidth:160}},
+                h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text}},pl.title||"Mapa Facial"),
+                h("div",{style:{fontSize:12,color:P.text3}},(pl.created||"")+" · "+n+" marcação(ões)")),
+              h("div",{style:{display:"flex",gap:6}},
+                h(Btn,{variant:"ghost",onClick:()=>setMarkerPlanning(pl),style:{fontSize:12}},"Abrir"),
+                h(Btn,{variant:"danger",onClick:()=>deletePlan(pl.id),style:{fontSize:12}},"🗑")));})));})(),
       // Histórico legado: mapas simples (boneco genérico) preenchidos antes desta atualização.
       (patient.sessions||[]).filter(s=>s.faceMap&&Object.values(s.faceMap.points||{}).some(v=>v>0)).length>0&&h(Card,{style:{marginTop:14}},
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:17,color:P.text,marginBottom:6}},"Mapas Antigos (registro simplificado)"),
@@ -8094,7 +8297,9 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
       markerPlanning&&h(MarkerPhotoPlanner,{
         initial:markerPlanning==="new"?markerInitial:markerPlanning.markerPlan,
         allProducts,
-        setProducts,
+        setProducts:null, // o estoque sai só pela sessão do prontuário (evita desconto em dobro)
+        modo:tab==="mapa"?"mapa":"plano",
+        procedimentos:procedures,
         patientPhotos:patientPhotoGallery,
         onClose:()=>{setMarkerPlanning(null);setMarkerPlanningForSession(null);setMarkerInitial(null);},
         onSave:data=>{
@@ -8105,27 +8310,27 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:8}},
         h("div",null,
           h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Planejamento Facial"),
-          h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Mapas com marcadores criados aqui também aparecem na tab 🗺 Mapa.")
+          h("div",{style:{fontSize:11.5,color:P.text3,marginTop:2,maxWidth:520,lineHeight:1.5}},"O que a paciente vai fazer. Marque na foto e anote cada ponto (procedimento, produto, quantidade). Daqui sai o orçamento. O que foi feito de verdade fica no Mapa, junto da sessão.")
         ),
-        (patient.planejamento||[]).length>0&&h(Btn,{variant:"ghost",onClick:()=>printPacientePDF(patient,["planejamento"],{settings:clinicSettings,proceduresFull,titulo:"Seu planejamento facial",eyebrow:"Planejamento"}),style:{fontSize:12.5}},"PDF do planejamento"),
+        (patient.planejamento||[]).filter(pl=>!ehMapaFacial(pl)).length>0&&h(Btn,{variant:"ghost",onClick:()=>printPacientePDF(patient,["planejamento"],{settings:clinicSettings,proceduresFull,titulo:"Seu planejamento facial",eyebrow:"Planejamento"}),style:{fontSize:12.5}},"PDF do planejamento"),
         h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
           h(Btn,{variant:"ghost",onClick:()=>setShowPlan(true),style:{fontSize:12}},"＋ Plano de Texto"),
           h(Btn,{variant:"ghost",onClick:()=>{setPlanAnnotating("new");},style:{fontSize:12}},"🖼 Plano com Foto"),
-          h(Btn,{onClick:()=>{setMarkerInitial(null);setMarkerPlanningForSession(null);setMarkerPlanning("new");},style:{fontSize:12}},"📍 Plano com Marcadores")
+          h(Btn,{onClick:()=>{setMarkerInitial(null);setMarkerPlanningForSession(null);setMarkerPlanning("new");},style:{fontSize:12}},"📍 Foto com marcações")
         )
       ),
       h("div",{style:{marginBottom:16}}),
-      (patient.planejamento||[]).length===0&&h(Card,{style:{textAlign:"center",padding:40}},
+      (patient.planejamento||[]).filter(pl=>!ehMapaFacial(pl)).length===0&&h(Card,{style:{textAlign:"center",padding:40}},
         h("div",{style:{fontSize:32,marginBottom:12}},"🎯"),
         h("div",{style:{color:P.text3,fontSize:14,marginBottom:16}},"Nenhum planejamento criado."),
         h("div",{style:{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}},
           h(Btn,{variant:"ghost",onClick:()=>setShowPlan(true)},"＋ Plano de Texto"),
           h(Btn,{variant:"ghost",onClick:()=>setPlanAnnotating("new")},"🖼 Plano com Foto"),
-          h(Btn,{onClick:()=>{setMarkerInitial(null);setMarkerPlanningForSession(null);setMarkerPlanning("new");}},"📍 Plano com Marcadores")
+          h(Btn,{onClick:()=>{setMarkerInitial(null);setMarkerPlanningForSession(null);setMarkerPlanning("new");}},"📍 Foto com marcações")
         )
       ),
       h("div",{style:{display:"flex",flexDirection:"column",gap:14}},
-        (patient.planejamento||[]).map(pl=>{
+        (patient.planejamento||[]).filter(pl=>!ehMapaFacial(pl)).map(pl=>{
           // Totais do plano com marcadores (planejado x realizado), se houver
           const mp=pl.markerPlan;
           let mpPlanned=0,mpActual=0,mpDone=0,mpTotal=0,mpDiff=0;
@@ -8165,7 +8370,7 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
                       "Criado em "+pl.created,
                       pl.updatedAt&&h("span",{style:{marginLeft:8,color:P.accent}},"· Editado em "+pl.updatedAt),
                       pl.annotation&&h("span",{style:{marginLeft:8,fontSize:10,color:P.green,background:"rgba(122,173,138,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(122,173,138,.3)"}},"📷 Com anotação visual"),
-                      mp&&h("span",{style:{marginLeft:8,fontSize:10,color:P.accent,background:"rgba(156,79,102,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(156,79,102,.3)"}},"📍 "+mpDone+"/"+mpTotal+" marcadores realizados")
+                      mp&&h("span",{style:{marginLeft:8,fontSize:10,color:P.accent,background:"rgba(156,79,102,.15)",padding:"1px 7px",borderRadius:10,border:"1px solid rgba(156,79,102,.3)"}},"📍 "+mpTotal+" marcação(ões)")
                     )
                   ),
                   h("div",{style:{display:"flex",gap:5,flexShrink:0}},
@@ -8176,11 +8381,11 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
                   )
                 ),
                 pl.notes&&h("div",{style:{fontSize:13,color:P.text3,fontStyle:"italic"}},pl.notes),
-                mp&&h("div",{style:{display:"flex",gap:16,flexWrap:"wrap",padding:"8px 10px",background:P.bg3,borderRadius:8}},
-                  h("div",null,h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase"}},"Custo planejado"),h("div",{style:{fontSize:14,color:P.rose}},fmtCurr(mpPlanned))),
-                  h("div",null,h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase"}},"Custo realizado"),h("div",{style:{fontSize:14,color:P.green}},fmtCurr(mpActual))),
-                  h("div",null,h("div",{style:{fontSize:10,color:P.text3,textTransform:"uppercase"}},"Diferença"),h("div",{style:{fontSize:14,color:mpDiff>0?P.red:(mpDiff<0?P.green:P.text2)}},(mpDiff>0?"+":"")+fmtCurr(mpDiff)))
-                ),
+                mp&&(mp.markers||[]).length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:4,padding:"8px 10px",background:P.bg3,borderRadius:8}},
+                  (mp.markers||[]).map((m,mi)=>h("div",{key:m.id||mi,style:{display:"flex",gap:8,fontSize:12.5,color:P.text2,lineHeight:1.45}},
+                    h("span",{style:{width:18,height:18,borderRadius:9,background:P.accent,color:"#FFF8F2",fontSize:10,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0}},mi+1),
+                    h("span",null,[m.procedure,m.plannedProduct&&(m.plannedProduct+(m.plannedQty?" "+m.plannedQty+(m.plannedUnit||""):"")),m.notes].filter(Boolean).join(" · ")||"sem anotação"))),
+                  mpPlanned>0&&h("div",{style:{fontSize:11,color:P.text3,marginTop:2}},"Custo previsto de produto: "+fmtCurr(mpPlanned))),
                 (pl.steps||[]).length>0&&h("div",{style:{display:"flex",flexDirection:"column",gap:2}},
                   (pl.steps||[]).map((step,si)=>h("div",{key:si,onClick:()=>togglePlanStep(pl.id,si),style:{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid rgba(71,35,37,.3)`,cursor:"pointer"}},
                     h("div",{style:{width:14,height:14,borderRadius:3,border:`2px solid ${step.includes("✓")?P.green:P.border}`,background:step.includes("✓")?P.green:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#fff"}},step.includes("✓")?"✓":""),
@@ -8512,7 +8717,8 @@ function PatientDetail({sessPrefill,onConsumeSessPrefill,onAgendar,setClinicSett
                     h("select",{value:item.product,onChange:e=>sItemPatch(idx,{product:e.target.value,loteId:"",qtdUsada:""}),style:{...IS}},products.map(p=>typeof p==="string"?h("option",{key:p,value:p},p):h("option",{key:p.name||p,value:p.name||p},p.name||p))),
                     _lts.length>0&&h("div",{style:{marginTop:4,display:"flex",gap:4,flexWrap:"wrap"}},
                       _lts.map(l=>h("span",{key:l.id,style:{fontSize:10,padding:"1px 7px",borderRadius:8,background:"rgba(122,173,138,.1)",color:P.green,border:"1px solid rgba(122,173,138,.2)"}},l.codigo+": "+l.qtd+(l.validade?" · val "+l.validade:"")))
-                    )
+                    ),
+                    _prodObj&&ajusteProduto(_prodObj)&&h("div",{style:{fontSize:11,marginTop:4,color:P.red}},"Cadastro do produto incompleto: "+ajusteProduto(_prodObj)+". Ajuste em Estoque para o custo sair certo.")
                   )
                 )
               ),
@@ -8953,6 +9159,7 @@ function Estoque({products,setProducts,stockCats,setStockCats,patients=[],onSele
     if(!String(form.name||"").trim())return;
     const n=v=>Number(String(v??"").replace(",","."))||0;
     const tam=n(form.tamFrasco);
+    if(!(tam>0)){showAlert(form.modoUso==="unico"?"Preencha o conteúdo de cada embalagem (ex.: 1 ml na seringa). Sem isso o custo por paciente sai errado.":"Preencha quanto rende cada embalagem (ex.: 100 U no frasco). Sem isso o custo por unidade sai errado.");return;}
     const preco=n(form.preco);
     const cost=tam>0?(preco>0?Math.round(preco/tam*10000)/10000:n(form.cost)):(preco>0?preco:n(form.cost));
     const min=tam>0?n(form.minEmb)*tam:n(form.minEmb);
@@ -9157,6 +9364,12 @@ function Estoque({products,setProducts,stockCats,setStockCats,patients=[],onSele
       ))
     ),
 
+    // ── Produtos com cadastro incompleto (o custo sairia errado) ──
+    subTab==="injetaveis"&&(()=>{const faltam=injetaveis.map(p=>({p,m:ajusteProduto(p)})).filter(x=>x.m);if(!faltam.length)return null;
+      return h("div",{style:{marginBottom:16,padding:"12px 14px",borderRadius:12,background:"rgba(176,67,75,.06)",border:"1px solid rgba(176,67,75,.28)"}},
+        h("div",{style:{fontSize:13,color:P.red,fontWeight:500,marginBottom:6}},faltam.length===1?"1 produto precisa de ajuste para o custo sair certo":faltam.length+" produtos precisam de ajuste para o custo sair certo"),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:4}},faltam.map(({p,m})=>h("button",{key:p.id,onClick:()=>openEdit(p),style:{display:"flex",justifyContent:"space-between",gap:10,background:"none",border:"none",padding:"3px 0",cursor:"pointer",textAlign:"left",fontFamily:"'Jost',system-ui,sans-serif",fontSize:12.5}},
+          h("span",{style:{color:P.text}},p.name),h("span",{style:{color:P.text3}},m+"  ›")))));})(),
     // ── Avisos do topo ──
     (compras.length>0||sobrasVencidas.length>0)&&subTab!=="compras"&&h("div",{style:{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}},
       compras.length>0&&h("button",{onClick:()=>setSubTab("compras"),style:{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",borderRadius:10,background:"rgba(192,112,112,.08)",border:"1px solid rgba(192,112,112,.3)",color:P.red,cursor:"pointer",fontSize:12.5,fontWeight:600,fontFamily:"'Jost',system-ui,sans-serif"}},`🛒 ${compras.length} item(ns) para comprar · ver lista de compras →`),
@@ -9584,11 +9797,18 @@ function Estoque({products,setProducts,stockCats,setStockCats,patients=[],onSele
 
 // ─── FINANCEIRO ───────────────────────────────────────────────────────────────
 // Parser flexível: aceita DD/MM/YYYY ou YYYY-MM-DD
+const _dtCache=new Map();
 function parseAnyDate(s){
   if(!s)return null;
-  if(s.includes("/")){const[d,m,y]=s.split("/");return new Date(`${y}-${m}-${d}T12:00:00`);}
-  if(s.includes("-")){return new Date(s+"T12:00:00");}
-  return null;
+  let t=_dtCache.get(s);
+  if(t===undefined){
+    t=null;
+    if(s.includes("/")){const[d,m,y]=s.split("/");t=new Date(`${y}-${m}-${d}T12:00:00`).getTime();}
+    else if(s.includes("-")){t=new Date(s+"T12:00:00").getTime();}
+    if(_dtCache.size>20000)_dtCache.clear();
+    _dtCache.set(s,t);
+  }
+  return t===null?null:new Date(t); // sempre um Date novo: quem chama pode alterar (setHours) sem estragar o cache
 }
 // ─── VENCIMENTO / ATRASO (Contas a Pagar & Receber) ───────────────────────────
 // Calcula a situação de vencimento de uma conta (despesa, entrada extra ou sessão pendente).
@@ -14465,8 +14685,21 @@ function ComparacaoModal({pair,clinicName,settings,onClose}){
   );
 }
 
-function EvolucaoFotos({patient,upd,addMedia,removeMedia,clinicName,settings}){
+function EvolucaoFotos({patient,upd,addMedia:addMediaSess,removeMedia:removeMediaSess,clinicName,settings}){
   const h=createElement;
+  // Fotos que não pertencem a uma sessão (ex.: avaliação antes de começar): ficam em patient.fotosAvulsas
+  const AVULSAS="__avulsas";
+  async function addMedia(sessId,files,type,extra){
+    if(sessId!==AVULSAS)return addMediaSess(sessId,files,type,extra);
+    try{
+      const news=await filesToStored(files,`patients/${patient.id}/photos`);
+      upd(p=>({...p,fotosAvulsas:[...(p.fotosAvulsas||[]),...news]}));
+    }catch(e){showAlert("Não foi possível enviar a foto: "+(e.message||e));}
+  }
+  function removeMedia(sessId,fid,type){
+    if(sessId!==AVULSAS)return removeMediaSess(sessId,fid,type);
+    upd(p=>({...p,fotosAvulsas:(p.fotosAvulsas||[]).filter(f=>f.id!==fid)}));
+  }
   const [filterProc,setFilterProc]=useState("Todos");
   const [lightbox,setLightbox]=useState(null);
   const [annotating,setAnnotating]=useState(null); // {photo, sessId}
@@ -14474,7 +14707,8 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia,clinicName,settings}){
   const [selected,setSelected]=useState([]); // até 2 fotos {id,...}
   const [comparePair,setComparePair]=useState(null); // [antes,depois] prontos para o modal
   // Todas as sessões, ordenadas por data mais antiga primeiro
-  const allSessions=(patient.sessions||[]);
+  const avulsas=patient.fotosAvulsas||[];
+  const allSessions=[...(patient.sessions||[]),...((avulsas.length||!(patient.sessions||[]).length)?[{id:AVULSAS,procedure:"Fotos avulsas",date:(avulsas[0]&&avulsas[0].date)||new Date().toLocaleDateString("pt-BR"),photos:avulsas,_avulsas:true}]:[])];
   const parseDt=s=>{try{const[d,m,y]=String(s||"").split("/");return new Date(y+"-"+m+"-"+d);}catch{return new Date(0);}};
   const sorted=[...allSessions].sort((a,b)=>parseDt(a.date)-parseDt(b.date));
   // Procedimentos únicos de todas as sessões (não só as com fotos)
@@ -14508,7 +14742,7 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia,clinicName,settings}){
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}},
       h("div",null,
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:P.text}},"Evolução Fotográfica"),
-        h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},totalFotos+" foto(s) · "+allSessions.length+" sessão(ões)")
+        h("div",{style:{fontSize:12,color:P.text3,marginTop:2}},totalFotos+" foto(s) · "+(patient.sessions||[]).length+" sessão(ões)")
       ),
       h("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}},
         h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
@@ -14596,7 +14830,8 @@ function EvolucaoFotos({patient,upd,addMedia,removeMedia,clinicName,settings}){
       onSave:async newPhoto=>{
         try{
           const[stored]=await filesToStored([newPhoto],`patients/${patient.id}/photos`);
-          upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===annotating.sessId?{...s,photos:[...(s.photos||[]),{...stored,annotated:true}]}:s)}));
+          if(annotating.sessId===AVULSAS)upd(p=>({...p,fotosAvulsas:[...(p.fotosAvulsas||[]),{...stored,annotated:true}]}));
+          else upd(p=>({...p,sessions:(p.sessions||[]).map(s=>s.id===annotating.sessId?{...s,photos:[...(s.photos||[]),{...stored,annotated:true}]}:s)}));
         }catch(e){showAlert("Não foi possível salvar a anotação: "+(e.message||e));}
         setAnnotating(null);
       }
@@ -15442,6 +15677,13 @@ function Vouchers({settings,patients,vouchers,setVouchers,onSelectPatient,onNav,
     setViewing(null);
   }
 
+  async function excluirVoucher(v){
+    if(!await confirmar(`Excluir o voucher ${v.code||""}?\nEle some da lista e dos relatórios.`))return;
+    setVouchers(prev=>prev.filter(x=>x.id!==v.id));
+    setViewing(null);
+    notify("Voucher excluído.","ok",{label:"Desfazer",fn:()=>setVouchers(prev=>prev.some(x=>x.id===v.id)?prev:[...prev,v])});
+  }
+
   // ── Resgate ──────────────────────────────────────────────────────────────
   const redeemMatches=redeemSearch.trim().length<2?[]:enriched.filter(v=>{
     const st=v._status;
@@ -15593,7 +15835,8 @@ function Vouchers({settings,patients,vouchers,setVouchers,onSelectPatient,onNav,
             h("div",{style:{fontSize:11,color:P.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".08em"}},"Histórico de uso"),
             v.redemptions.map((r,i)=>h("div",{key:i,style:{fontSize:12,color:P.text2,padding:"4px 0"}},r.date+" — "+(r.value>0?fmtCurr(r.value):(r.procedures||[]).join(", "))))
           ),
-          h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:18}},
+          h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",marginTop:18,flexWrap:"wrap"}},
+            h(Btn,{variant:"ghost",onClick:()=>excluirVoucher(v),style:{color:P.red,marginRight:"auto"}},"Excluir voucher"),
             (st==="ativo"||st==="parcial")&&h(Btn,{variant:"ghost",onClick:()=>cancelVoucher(v.id),style:{color:P.red}},"Cancelar Voucher"),
             (st==="ativo"||st==="parcial")&&h(Btn,{onClick:()=>{setViewing(null);openRedeem(v);}},"Resgatar Agora")
           )
@@ -15665,7 +15908,7 @@ function ControleSessoes({patients=[],setPatients,agenda=[],onSelectPatient,onNa
     const dias=Math.round((next-today)/864e5); // negativo = atrasada
     const st=pkgState(pk);
     const concluido=st.concluido;
-    const agendada=agenda.find(a=>!a.blocked&&apptIsFor(a,p)&&a.procedure===pk.procedure&&a.date>=todayStr&&a.status!=="Cancelado");
+    const agendada=agendaDe(agenda,p).find(a=>!a.blocked&&a.procedure===pk.procedure&&a.date>=todayStr&&a.status!=="Cancelado");
     let status,label,color,bg;
     if(concluido){status="concluido";label="Concluído";color=P.text3;bg=P.bg3;}
     else if(st.congelado){status="congelado";label="❄ Congelado desde "+isoToBR(pk.frozenSince).slice(0,5);color="#8FADD6";bg="rgba(143,173,214,.12)";}
@@ -16019,7 +16262,8 @@ function custoAtendimentoInfo(procName,{settings,rooms=[],products=[],patients=[
   const sala=R.find(r=>String(r.id)===String(cfg.salaPadrao))||R[0]||null;
   const prodObj=name=>(products||[]).find(x=>x&&typeof x==="object"&&x.name===name)||null;
   const hist=procHistory(patients||[],procName);
-  const custoProd=hist.products.reduce((a,x)=>a+custoDeUso(prodObj(x.product),x.qty),0)+(proc?(proc.insumos||[]).reduce((a,i)=>a+custoDeUso(prodObj(i.product),n(i.qty)),0):0);
+  const jaContado=new Set(hist.products.map(x=>x.product));
+  const custoProd=hist.products.reduce((a,x)=>a+custoDeUso(prodObj(x.product),x.qty),0)+(proc?(proc.insumos||[]).filter(i=>!jaContado.has(i.product)).reduce((a,i)=>a+custoDeUso(prodObj(i.product),n(i.qty)),0):0);
   return{dur,sala,custoProd,valorHora,pctTaxas,meta,configurado:horas>0};
 }
 // Análise de um orçamento (combo): custo de tudo, lucro no valor proposto e desconto máximo
@@ -16226,7 +16470,7 @@ function secoesPacienteHtml(patient,secoes,ctx={}){
         its.map(i=>[i&&i.product,i&&i.dose,i&&i.region].filter(Boolean).join(" · ")).filter(Boolean).map(t=>`<div class="s">${_escH(t)}</div>`).join("")+(s.evolution||s.notes?`<div class="tx">${_escH(s.evolution||s.notes)}</div>`:"")+`</div>`;}).join(""):"§VAZIO§"));
   }
   if(S.has("planejamento")){
-    const pl=(patient.planejamento||[]).filter(Boolean);
+    const pl=(patient.planejamento||[]).filter(x=>x&&!ehMapaFacial(x));
     out.push(`<h2>Planejamento</h2>`+(pl.length?pl.map(p=>{
       const mk=((p.markerPlan&&p.markerPlan.markers)||[]);
       const leg=mk.map((m,i)=>`<div class="s"><b style="color:#5A1F31;font-weight:500">${i+1}.</b> ${_escH([m.procedure,m.region||m.label,m.plannedProduct,m.plannedQty?(m.plannedQty+" "+(m.plannedUnit||"")).trim():"",m.notes].filter(Boolean).join(" · ")||"Ponto marcado")}</div>`).join("");
@@ -16297,6 +16541,32 @@ function PdfPacienteModal({patient,settings,proceduresFull,onClose}){
       h(Btn,{onClick:gerar,disabled:!sel.length},"Gerar PDF")));
 }
 // Agrupa procedimentos repetidos: ["Bio","Bio","Toxina"] → Bio (2×), Toxina
+// Quantos de cada procedimento do orçamento já foram feitos (lista com repetição: "Microagulhamento" 2× = 2 sessões feitas)
+// Mapa facial (o que foi feito numa sessão) × planejamento (o que a paciente vai fazer)
+function ehMapaFacial(pl){if(!pl)return false;if(pl.tipo)return pl.tipo==="mapa";return !!pl.sessionId||/^Mapa Facial/.test(pl.title||"");}
+function orcFeitosLista(orc){
+  if(!orc)return[];
+  if(Array.isArray(orc.feitos))return orc.feitos;
+  const lk=orc.linkedProcs||[];
+  return orc.fullyConvertedAt?[...(orc.items||[])]:(orc.items||[]).filter(it=>lk.includes(it));
+}
+function orcFeitosCont(orc){const m={};orcFeitosLista(orc).forEach(n=>{m[n]=(m[n]||0)+1;});return m;}
+// Aplica uma nova lista de feitos e acerta linkedProcs, status e "concluído"
+function orcComFeitos(o,feitos,dataBR){
+  const items=o.items||[];
+  const cont={};feitos.forEach(n=>{cont[n]=(cont[n]||0)+1;});
+  const isFull=items.length>0&&orcGroupItems(items).every(g=>(cont[g.name]||0)>=g.n);
+  const hoje=dataBR||new Date().toLocaleDateString("pt-BR");
+  return{...o,feitos,linkedProcs:[...new Set(feitos)],
+    status:feitos.length&&o.status==="espera"?"aprovado":o.status,
+    convertedAt:feitos.length?(o.convertedAt||hoje):o.convertedAt,
+    fullyConvertedAt:isFull?(o.fullyConvertedAt||hoje):null};
+}
+// Valor de cada procedimento no orçamento: o que você digitou ou o da tabela
+function orcPrecoItem(orc,name,precoTabela){
+  const v=orc&&orc.precos&&orc.precos[name];
+  return v!==undefined&&v!==null&&String(v)!==""?(Number(String(v).replace(",","."))||0):(Number(precoTabela)||0);
+}
 function orcGroupItems(items){const m=new Map();(items||[]).filter(Boolean).forEach(it=>m.set(it,(m.get(it)||0)+1));return [...m.entries()].map(([name,n])=>({name,n}));}
 function orcCondicoes(orc){
   const v=Number(orc.value)||0;const L=[];
@@ -16757,7 +17027,7 @@ function computeRetention({patients,agenda,returnRules,procedures,products}){
   const T=new Date();T.setHours(12,0,0,0);
   const todayStr=localISO(T);
   const pats=(patients||[]).map(p=>({p,v:(p.sessions||[]).map(s=>({s,d:parseAnyDate(s.date)})).filter(x=>x.d).sort((a,b)=>a.d-b.d)})).filter(x=>x.v.length>0);
-  const hasUpcoming=pp=>(agenda||[]).some(a=>!a.blocked&&apptIsFor(a,pp)&&a.date>=todayStr&&a.status!=="Cancelado");
+  const hasUpcoming=pp=>agendaDe(agenda,pp).some(a=>!a.blocked&&a.date>=todayStr&&a.status!=="Cancelado");
   const paidTotal=p=>(p.sessions||[]).filter(s=>s.paid).reduce((a,s)=>a+(Number(s.value)||0),0);
   const first=n=>String(n||"").trim().split(" ")[0];
 
@@ -17626,7 +17896,7 @@ function AppInner({ session, onLogout }) {
       {k:"dashboard",l:"Início",ti:"ti-layout-dashboard"},
       {k:"agenda",l:"Agenda",ti:"ti-calendar",badge:todayApptCount||null,badgeColor:P.statusBlue},
       {k:"pacientes",l:"Pacientes",ti:"ti-users"},
-      {k:"filadia",group:"relac",l:"Relacionamento",ti:"ti-heart-handshake",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agenda.filter(a=>apptIsFor(a,p)&&a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
+      {k:"filadia",group:"relac",l:"Relacionamento",ti:"ti-heart-handshake",badge:(()=>{const today=new Date();const nRetorno=patients.filter(p=>{const s=(p.sessions||[]);if(!s.length)return false;const last=[...s].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const d=parseDMY(last.date);if(!d)return false;return Number(last.returnReminderDays)>0&&daysBetween(d,today)>Number(last.returnReminderDays);}).length;const nRisco=patients.filter(p=>{const sessions=(p.sessions||[]);const last=[...sessions].sort((a,b)=>(parseDMY(b.date)||new Date(0))-(parseDMY(a.date)||new Date(0)))[0];const lastDate=last?parseDMY(last.date):null;const dias=lastDate?daysBetween(lastDate,new Date()):null;const cancelamentos=agendaDe(agenda,p).filter(a=>a.status==="Cancelado").length;let score=0;if(dias!=null&&dias>90)score+=25;if(cancelamentos>=2)score+=15;return score>=25;}).length;return(nRetorno+nRisco)||null;})(),badgeColor:P.statusRed},
     ]},
     {label:"Atendimento",items:[
       {k:"sessoes",l:"Controle de sessões",ti:"ti-list-check"},
@@ -17645,7 +17915,7 @@ function AppInner({ session, onLogout }) {
   const nav=navGroups.flatMap(g=>g.items);
   // Áreas com várias telas: aparecem como um item no menu e como abas no topo da página
   const PAGE_AREAS={
-    relac:[{k:"filadia",l:"Fila do dia"},{k:"aniversariantes",l:"Aniversários"},{k:"retornos",l:"Retornos",hidden:true},{k:"whatsapp",l:"Mensagens",hidden:true}],
+    relac:[{k:"filadia",l:"Fila do dia"},{k:"aniversariantes",l:"Aniversários"},{k:"retornos",l:"Retornos"},{k:"whatsapp",l:"Modelos de mensagem"}],
     fin:[{k:"financeiro",l:"Financeiro"},{k:"salas",l:"Salas"},{k:"precificadora",l:"Precificadora"}],
   };
   const currentArea=Object.keys(PAGE_AREAS).find(a=>PAGE_AREAS[a].some(t=>t.k===page))||null;
