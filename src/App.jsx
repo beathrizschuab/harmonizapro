@@ -933,6 +933,13 @@ async function generatePacientesExcel(patients){
 
 
 // Identidade visual nos PDFs gerados (dossiê, financeiro, relatórios)
+// Contato da clínica para os documentos da paciente: "(21) 99999-9999 · @clinica"
+function contatoClinica(settings){
+  const tel=String((settings&&settings.clinicPhone)||"").trim();
+  let ig=String((settings&&settings.clinicInstagram)||"").trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i,"").replace(/\/+$/,"");
+  if(ig&&!ig.startsWith("@"))ig="@"+ig;
+  return [tel,ig].filter(Boolean).join("  ·  ");
+}
 function _pdfClinic(settings){const c=String((settings&&settings.clinicName)||"").trim();return c&&!/harmonizapro/i.test(c)?c+" · ":"";}
 function _pdfCover(doc,{settings,eyebrow,title,sub,foot}){
   const W=595.28,H=841.89;
@@ -951,6 +958,8 @@ function _pdfCover(doc,{settings,eyebrow,title,sub,foot}){
   const prof=String((settings&&settings.doctorName)||"").trim();
   if(prof){doc.setDrawColor(184,156,147);doc.line(W/2-90,690,W/2+90,690);doc.setFont("times","normal");doc.setFontSize(13);doc.setTextColor(59,26,34);doc.text(prof,W/2,708,{align:"center"});
     const t=String((settings&&settings.doctorTitle)||"").trim();if(t){doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(156,134,129);doc.text(t.toUpperCase(),W/2,721,{align:"center"});}}
+  const ct=contatoClinica(settings).replace(/\s+·\s+/g,"   |   ");
+  if(ct){doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(140,107,102);doc.text(ct,W/2,742,{align:"center"});}
   if(foot){doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(156,134,129);doc.text(foot,W/2,770,{align:"center"});}
 }
 async function generatePatientDossier(patient,{products,settings}={}){
@@ -14082,6 +14091,10 @@ function Configuracoes({onZerar,patients=[],setPatients=()=>{},procedures,setPro
       h(Field,{label:"Nome da profissional"},h(Inp,{value:settings.doctorName||"",onChange:v=>setSettings(s=>({...s,doctorName:v})),placeholder:"Ex.: Dra. Sofia"})),
       h(Field,{label:"Profissão ou título"},h(Inp,{value:settings.doctorTitle||"",onChange:v=>setSettings(s=>({...s,doctorTitle:v})),placeholder:"Médica Responsável"})),
       h(Field,{label:"Nome da clínica"},h(Inp,{value:settings.clinicName||"",onChange:v=>setSettings(s=>({...s,clinicName:v})),placeholder:"HarmonizaPro"})),
+      h("div",{style:{display:"flex",gap:12,flexWrap:"wrap"}},
+        h(Field,{label:"WhatsApp / telefone",half:true},h(Inp,{value:settings.clinicPhone||"",onChange:v=>setSettings(s=>({...s,clinicPhone:v})),placeholder:"Ex.: (21) 99999-9999"})),
+        h(Field,{label:"Instagram",half:true},h(Inp,{value:settings.clinicInstagram||"",onChange:v=>setSettings(s=>({...s,clinicInstagram:v})),placeholder:"Ex.: @suaclinica"}))),
+      h("div",{style:{fontSize:11.5,color:P.text3,marginTop:-4,marginBottom:6}},"Telefone e Instagram aparecem no rodapé dos PDFs e na arte dos vouchers."),
       h("div",{style:{marginTop:20,paddingTop:16,borderTop:`1px solid ${P.border}`}},
         h("div",{style:{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:P.text,marginBottom:12}},"Aparência"),
         h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",borderRadius:10,background:P.bg3,border:`1px solid ${P.border}`}},
@@ -15208,6 +15221,8 @@ async function renderVoucherArt(v,tpl,settings){
   const prof=String((settings&&settings.doctorName)||"").trim();
   if(val){x.font=`300 23px ${sans}`;x.fillStyle=T.soft;x.fillText(val+(prof?"  ·  "+prof:""),W/2,by+156);}
   else if(prof){x.font=`300 23px ${sans}`;x.fillStyle=T.soft;x.fillText(prof,W/2,by+156);}
+  const ct=contatoClinica(settings);
+  if(ct){x.font=`300 21px ${sans}`;x.fillStyle=T.soft;x.globalAlpha=.85;x.fillText(ct,W/2,by+196);x.globalAlpha=1;}
   return cv.toDataURL("image/png");
 }
 // No celular abre o compartilhamento (WhatsApp, Instagram…); no computador, baixa o arquivo
@@ -16067,7 +16082,8 @@ td.s{color:#9C8681;font-size:9pt}
 .total .v{font-family:'Cormorant Garamond',serif;font-size:28pt;line-height:1}
 .mini{display:flex;justify-content:space-between;font-size:10pt;padding:3mm 0 0;color:#5A3A3F}
 .nota{margin-top:6mm;font-size:9pt;color:#8C6B66;line-height:1.6;text-align:center}
-.foot{margin-top:auto;padding-top:14mm;display:flex;justify-content:center}
+.foot{margin-top:auto;padding-top:14mm;display:flex;flex-direction:column;align-items:center;gap:4mm}
+.foot .ct{font-size:8.5pt;letter-spacing:.08em;color:#9C8681}
 .sig{text-align:center;min-width:70mm}
 .sig .ln{border-top:.5pt solid #B89C93;margin-bottom:2.5mm}
 .sig .nm{font-family:'Cormorant Garamond',serif;font-size:14pt;color:#3B1A22}
@@ -16110,7 +16126,7 @@ ${para?`<div class="para">${_escH(para)}</div>`:""}
 <div class="data">${_escH(hoje)}</div>`}
 ${bodyHtml||""}
 ${nota?`<div class="nota">${_escH(nota)}</div>`:""}
-<div class="foot">${prof?`<div class="sig"><div class="ln"></div><div class="nm">${_escH(prof)}</div>${tit?`<div class="tt">${_escH(tit)}</div>`:""}</div>`:""}</div>
+<div class="foot">${prof?`<div class="sig"><div class="ln"></div><div class="nm">${_escH(prof)}</div>${tit?`<div class="tt">${_escH(tit)}</div>`:""}</div>`:""}${contatoClinica(settings)?`<div class="ct">${_escH(contatoClinica(settings))}</div>`:""}</div>
 </div></body></html>`);
   w.document.close();
   setTimeout(()=>{try{w.focus();w.print();}catch(e){}},1000);
@@ -17432,19 +17448,7 @@ function AppInner({ session, onLogout }) {
       if(!uid||cancelled)return;
       const migKey="hapro2_migrated_v1_"+uid;
       if(localStorage.getItem(migKey))return;
-      const keys=["patients","agenda","expenses","recurring_expenses","incomes","products","settings","procedures","locations","return_rules","proc_cats","skincare_config"];
-      await Promise.all(keys.map(async k=>{
-        const raw=localStorage.getItem("hapro2_"+k);
-        if(!raw)return;
-        try{
-          const parsed=JSON.parse(raw);
-          const hasData=Array.isArray(parsed)?parsed.length>0:(parsed&&typeof parsed==="object"&&Object.keys(parsed).length>0);
-          if(!hasData)return;
-          const remote=await supaRead(k);
-          const remoteEmpty=remote===null||(Array.isArray(remote)&&remote.length===0);
-          if(remoteEmpty)await supaWrite(k,parsed);
-        }catch{}
-      }));
+      // O envio do que está no aparelho para a nuvem agora é feito por cada tabela (useSupaTable), juntando sem sobrescrever
       if(!cancelled)localStorage.setItem(migKey,"1");
     })();
     return()=>{cancelled=true;};
