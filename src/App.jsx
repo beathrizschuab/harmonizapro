@@ -14070,7 +14070,6 @@ function Configuracoes({onZerar,patients=[],setPatients=()=>{},procedures,setPro
 const BACKUP_PREFIX="_backup_";
 const BACKUP_SLOTS=["_backup_w0","_backup_w1","_backup_w2","_backup_w3"];
 const BACKUP_ZERAR="_backup_antes_de_zerar"; // cópia feita antes de limpar os dados de teste
-const BASE_LIMPA_KEY="base_limpa_v1";
 const BACKUP_LABELS={patients:"Pacientes",agenda:"Agendamentos",expenses:"Despesas",incomes:"Receitas",products:"Produtos",vouchers:"Vouchers",procedures:"Procedimentos",recurring_expenses:"Despesas recorrentes",room_bookings:"Reservas de sala",agenda_log:"Histórico da agenda",wa_log:"Mensagens enviadas"};
 async function readAllAppData(){
   const uid=await getUserId();if(!uid)throw new Error("Sessão expirada. Entre de novo.");
@@ -14192,7 +14191,7 @@ function BackupPanel(){
       snaps===null?h("div",{style:{fontSize:12.5,color:P.text3}},"Carregando…"):
       snaps.length===0?h("div",{style:{fontSize:12.5,color:P.text3,marginBottom:10}},"Nenhuma cópia ainda. A primeira é feita automaticamente — ou clique em \"Fazer cópia agora\"."):
       h("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:10}},snaps.map(s=>h("div",{key:s.key,style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"8px 12px",background:P.card,borderRadius:9,border:`1px solid ${P.border}`}},
-        h("span",{style:{fontSize:13,color:P.text}},(s.key===BACKUP_ZERAR?"Dados de teste (antes de limpar) · ":"Cópia de ")+fmt(s.updated_at)),
+        h("span",{style:{fontSize:13,color:P.text}},(s.key===BACKUP_ZERAR?"Cópia de antes da limpeza automática · ":"Cópia de ")+fmt(s.updated_at)),
         h(Btn,{variant:"ghost",disabled:!!busy,onClick:()=>abrirSnapshot(s.key),style:{fontSize:12,padding:"5px 12px"}},busy==="abrir"+s.key?"Abrindo…":"Restaurar esta")
       ))),
       h(Btn,{variant:"ghost",disabled:!!busy,onClick:copiaAgora,style:{fontSize:12.5}},busy==="copia"?"Fazendo cópia…":"Fazer cópia agora")
@@ -17463,33 +17462,6 @@ function AppInner({ session, onLogout }) {
     notify("Pronto. O sistema está limpo para os seus dados de verdade. O backup foi baixado no seu computador.","ok");
     handleNav("dashboard");
   }
-  // ── Base limpa (uma vez só): apaga os dados de teste para começar com as pacientes de verdade ──
-  // Guarda antes uma cópia completa na nuvem (aparece em Configurações → Backup) e marca a conta
-  // para nunca mais repetir. Se não conseguir ler a nuvem com certeza, não faz nada.
-  const baseLimpaRef=useRef(false);
-  const tudoCarregado=!loadingPatients&&!loadingAgenda&&!loadingExpenses&&!loadingRecurringExpenses&&!loadingIncomes&&!loadingProducts&&!loadingVouchers&&!loadingBookings&&!loadingSettings;
-  useEffect(()=>{
-    if(!tudoCarregado||baseLimpaRef.current)return;
-    baseLimpaRef.current=true;
-    (async()=>{
-      try{
-        const uid=await getUserId();if(!uid)return;
-        const{data:marca,error}=await supabase.from("app_data").select("key").eq("user_id",uid).eq("key",BASE_LIMPA_KEY).maybeSingle();
-        if(error||marca)return;
-        const tudo=await readAllAppData();
-        const at=new Date().toISOString();
-        if(Object.keys(tudo).length){
-          const{error:e1}=await supabase.from("app_data").upsert({key:BACKUP_ZERAR,user_id:uid,value:{at,data:tudo},updated_at:at},{onConflict:"key,user_id"});
-          if(e1)return;
-        }
-        const{error:e2}=await supabase.from("app_data").upsert({key:BASE_LIMPA_KEY,user_id:uid,value:{at},updated_at:at},{onConflict:"key,user_id"});
-        if(e2)return;
-        limparGrupos(new Set(["pacientes","agenda","financeiro","estoque","vouchers"]));
-        try{localStorage.removeItem("hapro2_patients");}catch(e){}
-        handleNav("dashboard");
-      }catch(e){console.warn("[base limpa]",e);}
-    })();
-  },[tudoCarregado]);
   // ── Prontuário integrado à agenda: atendimento realizado vira sessão preenchida ──
   const[sessPrefill,setSessPrefill]=useState(null);
   const[showRegistrar,setShowRegistrar]=useState(false);
